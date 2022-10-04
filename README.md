@@ -1,1 +1,1 @@
-# zc - C compiler written in Zig
+# rc - C compiler written in Rust
