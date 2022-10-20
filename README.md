@@ -1,1 +1,1 @@
-# rc - C compiler written in Rust
+# rcc - C compiler written in Rust
