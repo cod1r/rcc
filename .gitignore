@@ -1,4 +1,4 @@
-*.c
+test_c_files/
 .ccls-cache/
 # Added by cargo
 

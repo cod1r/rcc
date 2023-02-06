@@ -1,14 +1,11 @@
-use std::fs::File;
-use std::io::Read;
+mod lexer;
 use std::env;
-fn main() {
+use std::error::Error;
+fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
     if env::args().len() < 2 {
         panic!("number of args low");
     }
-    let mut file = File::open(args[1].trim()).expect("expected file to open");
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .expect("expected read_to_string to work");
-    print!("{}", contents);
+    let file_contents = std::fs::read_to_string(args[1].trim())?;
+    Ok(())
 }
