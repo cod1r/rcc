@@ -100,7 +100,8 @@ enum Token {
     KEYWORD__THREAD_LOCAL,
     TYPE,
 }
-fn match_identifier(token: &str) -> Option<Token> {
+fn match_identifier(token: &'static str) -> Option<Token> {
+    None
 }
 fn match_keyword(token: &str) -> Option<Token> {
     const KEYWORD_AUTO: &str = "auto";
@@ -197,6 +198,13 @@ fn match_keyword(token: &str) -> Option<Token> {
 }
 fn lexer(program_str: String) -> Vec<Token> {
     let mut tokens = Vec::new();
-
+    let mut curr_token = String::new();
+    for character in program_str.chars() {
+        if character != ' ' && character == '\n' && character != '\t' {
+            curr_token.push(character);
+        } else {
+            let matched_keyword = match_keyword(&curr_token);
+        }
+    }
     tokens
 }
