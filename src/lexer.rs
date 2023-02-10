@@ -1,3 +1,4 @@
+#[allow(non_camel_case_types)]
 enum Token {
     IDENT(&'static str),
     PREDEF_IDENT___FUNC__,
