@@ -1,5 +1,6 @@
 enum Token {
     IDENT(&'static str),
+    PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
     PUNCT_CLOSE_SQR,
     PUNCT_OPEN_PAR,
@@ -99,8 +100,32 @@ enum Token {
     KEYWORD__STATIC_ASSERT,
     KEYWORD__THREAD_LOCAL,
     TYPE,
+    CONSTANT_INT(&'static str),
+    CONSTANT_FLOAT(&'static str),
+    CONSTANT_ENUM(&'static str),
+    CONSTANT_CHAT(&'static str),
+}
+fn match_constant() {}
+fn match_punctuator(token: &'static str) -> Option<Token> {
+    if token.len() <= 3 {
+        let _bytes = token.as_bytes();
+    }
+    None
 }
 fn match_identifier(token: &'static str) -> Option<Token> {
+    let bytes = token.as_bytes();
+    // TODO: we need to check for universal character names
+    if !bytes[0].is_ascii_digit()
+        && bytes
+            .iter()
+            .find(|b| !b.is_ascii() && **b != b'_')
+            .is_none()
+        && token != "__func__"
+    {
+        return Some(Token::IDENT(token.clone()));
+    } else if token == "__func__" {
+        return Some(Token::PREDEF_IDENT___FUNC__);
+    }
     None
 }
 fn match_keyword(token: &str) -> Option<Token> {
@@ -197,14 +222,22 @@ fn match_keyword(token: &str) -> Option<Token> {
     }
 }
 fn lexer(program_str: String) -> Vec<Token> {
-    let mut tokens = Vec::new();
+    let tokens = Vec::new();
     let mut curr_token = String::new();
     for character in program_str.chars() {
         if character != ' ' && character == '\n' && character != '\t' {
             curr_token.push(character);
         } else {
-            let matched_keyword = match_keyword(&curr_token);
+            let _matched_keyword = match_keyword(&curr_token);
         }
     }
     tokens
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_lexer() {
+        let program_str: &'static str = "int main() {\n\tint four = 4;\n\treturn 0;\n}";
+    }
 }
