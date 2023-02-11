@@ -107,15 +107,33 @@ enum Token {
     CONSTANT_CHAT(&'static str),
 }
 fn match_constant() {}
-fn match_punctuator(program_str_bytes: &[u8], index: usize) -> Option<Token> {
-    let byte_index = index;
+fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let byte_index = *index;
     match program_str_bytes[byte_index] {
-        b'[' => return Some(Token::PUNCT_OPEN_SQR),
-        b']' => return Some(Token::PUNCT_CLOSE_SQR),
-        b'(' => return Some(Token::PUNCT_OPEN_PAR),
-        b')' => return Some(Token::PUNCT_CLOSE_PAR),
-        b'{' => return Some(Token::PUNCT_OPEN_CURLY),
-        b'}' => return Some(Token::PUNCT_CLOSE_CURLY),
+        b'[' => {
+            *index += 1;
+            return Some(Token::PUNCT_OPEN_SQR);
+        }
+        b']' => {
+            *index += 1;
+            return Some(Token::PUNCT_CLOSE_SQR);
+        }
+        b'(' => {
+            *index += 1;
+            return Some(Token::PUNCT_OPEN_PAR);
+        }
+        b')' => {
+            *index += 1;
+            return Some(Token::PUNCT_CLOSE_PAR);
+        }
+        b'{' => {
+            *index += 1;
+            return Some(Token::PUNCT_OPEN_CURLY);
+        }
+        b'}' => {
+            *index += 1;
+            return Some(Token::PUNCT_CLOSE_CURLY);
+        }
         b'.' => {
             if byte_index + 2 < program_str_bytes.len() {
                 match (
@@ -123,69 +141,113 @@ fn match_punctuator(program_str_bytes: &[u8], index: usize) -> Option<Token> {
                     program_str_bytes[byte_index + 1],
                     program_str_bytes[byte_index + 2],
                 ) {
-                    (b'.', b'.', b'.') => return Some(Token::PUNCT_ELLIPSIS),
+                    (b'.', b'.', b'.') => {
+                        *index += 3;
+                        return Some(Token::PUNCT_ELLIPSIS);
+                    }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_DOT);
         }
         b'-' => {
             if byte_index + 1 < program_str_bytes.len() {
                 match program_str_bytes[byte_index + 1] {
-                    b'-' => return Some(Token::PUNCT_DECREMENT),
-                    b'=' => return Some(Token::PUNCT_SUB_ASSIGN),
+                    b'-' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_DECREMENT);
+                    }
+                    b'=' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_SUB_ASSIGN);
+                    }
+                    b'>' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_ARROW);
+                    }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_MINUS);
         }
         b'+' => {
             if byte_index + 1 < program_str_bytes.len() {
                 match program_str_bytes[byte_index + 1] {
-                    b'+' => return Some(Token::PUNCT_INCREMENT),
-                    b'=' => return Some(Token::PUNCT_ADD_ASSIGN),
+                    b'+' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_INCREMENT);
+                    }
+                    b'=' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_ADD_ASSIGN);
+                    }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_PLUS);
         }
         b'&' => {
             if byte_index + 1 < program_str_bytes.len() {
                 match program_str_bytes[byte_index + 1] {
-                    b'&' => return Some(Token::PUNCT_AND_BOOL),
-                    b'=' => return Some(Token::PUNCT_AND_BIT_ASSIGN),
+                    b'&' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_AND_BOOL);
+                    }
+                    b'=' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_AND_BIT_ASSIGN);
+                    }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_AND_BIT);
         }
         b'*' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
             {
+                *index += 2;
                 return Some(Token::PUNCT_MULT_ASSIGN);
             }
+            *index += 1;
             return Some(Token::PUNCT_MULT);
         }
-        b'~' => return Some(Token::PUNCT_TILDE),
+        b'~' => {
+            *index += 1;
+            return Some(Token::PUNCT_TILDE);
+        }
         b'!' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
             {
+                *index += 2;
                 return Some(Token::PUNCT_NOT_EQ_BOOL);
             }
+            *index += 1;
             return Some(Token::PUNCT_NOT_BOOL);
         }
         b'/' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
             {
+                *index += 2;
                 return Some(Token::PUNCT_DIV_ASSIGN);
             }
+            *index += 1;
             return Some(Token::PUNCT_DIV);
         }
         b'%' => {
             if byte_index + 1 < program_str_bytes.len() {
                 match program_str_bytes[byte_index + 1] {
-                    b'=' => return Some(Token::PUNCT_MODULO_ASSIGN),
-                    b'>' => return Some(Token::PUNCT_DIGRAPH_CLOSE_CURLY),
+                    b'=' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_MODULO_ASSIGN);
+                    }
+                    b'>' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_DIGRAPH_CLOSE_CURLY);
+                    }
                     b':' => {
                         if byte_index + 3 < program_str_bytes.len() {
                             match (
@@ -195,16 +257,19 @@ fn match_punctuator(program_str_bytes: &[u8], index: usize) -> Option<Token> {
                                 program_str_bytes[byte_index + 3],
                             ) {
                                 (b'%', b':', b'%', b':') => {
-                                    return Some(Token::PUNCT_DIGRAPH_HASH_HASH)
+                                    *index += 4;
+                                    return Some(Token::PUNCT_DIGRAPH_HASH_HASH);
                                 }
                                 _ => {}
                             }
                         }
+                        *index += 2;
                         return Some(Token::PUNCT_DIGRAPH_HASH);
                     }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_MODULO);
         }
         b'<' => {
@@ -214,22 +279,28 @@ fn match_punctuator(program_str_bytes: &[u8], index: usize) -> Option<Token> {
                         if byte_index + 2 < program_str_bytes.len()
                             && program_str_bytes[byte_index + 2] == b'='
                         {
+                            *index += 3;
                             return Some(Token::PUNCT_L_SHIFT_BIT_ASSIGN);
                         }
+                        *index += 2;
                         return Some(Token::PUNCT_BITSHFT_LEFT);
                     }
                     b'=' => {
+                        *index += 2;
                         return Some(Token::PUNCT_LESS_THAN_EQ);
                     }
                     b':' => {
+                        *index += 2;
                         return Some(Token::PUNCT_DIGRAPH_OPEN_SQR);
                     }
                     b'%' => {
+                        *index += 2;
                         return Some(Token::PUNCT_DIGRAPH_OPEN_CURLY);
                     }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_LESS_THAN);
         }
         b'>' => {
@@ -239,80 +310,130 @@ fn match_punctuator(program_str_bytes: &[u8], index: usize) -> Option<Token> {
                         if byte_index + 2 < program_str_bytes.len()
                             && program_str_bytes[byte_index + 2] == b'='
                         {
+                            *index += 3;
                             return Some(Token::PUNCT_R_SHIFT_BIT_ASSIGN);
                         }
+                        *index += 2;
                         return Some(Token::PUNCT_BITSHFT_RIGHT);
                     }
                     b'=' => {
+                        *index += 2;
                         return Some(Token::PUNCT_GREATER_THAN_EQ);
                     }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_GREATER_THAN);
         }
         b'=' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
             {
+                *index += 2;
                 return Some(Token::PUNCT_EQ_BOOL);
             }
+            *index += 1;
             return Some(Token::PUNCT_ASSIGNMENT);
         }
         b'^' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
             {
+                *index += 2;
                 return Some(Token::PUNCT_XOR_BIT_ASSIGN);
             }
+            *index += 1;
             return Some(Token::PUNCT_XOR_BIT);
         }
         b'|' => {
             if byte_index + 1 < program_str_bytes.len() {
                 match program_str_bytes[byte_index + 1] {
-                    b'=' => return Some(Token::PUNCT_OR_BIT_ASSIGN),
-                    b'|' => return Some(Token::PUNCT_OR_BOOL),
+                    b'=' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_OR_BIT_ASSIGN);
+                    }
+                    b'|' => {
+                        *index += 2;
+                        return Some(Token::PUNCT_OR_BOOL);
+                    }
                     _ => {}
                 }
             }
+            *index += 1;
             return Some(Token::PUNCT_OR_BIT);
         }
-        b'?' => return Some(Token::PUNCT_QUESTION_MARK),
+        b'?' => {
+            *index += 1;
+            return Some(Token::PUNCT_QUESTION_MARK);
+        }
         b':' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'>'
             {
+                *index += 2;
                 return Some(Token::PUNCT_DIGRAPH_CLOSE_SQR);
             }
+            *index += 1;
             return Some(Token::PUNCT_COLON);
         }
-        b';' => return Some(Token::PUNCT_SEMI_COLON),
-        b',' => return Some(Token::PUNCT_COMMA),
+        b';' => {
+            *index += 1;
+            return Some(Token::PUNCT_SEMI_COLON);
+        }
+        b',' => {
+            *index += 1;
+            return Some(Token::PUNCT_COMMA);
+        }
         b'#' => {
             if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'#'
             {
+                *index += 2;
                 return Some(Token::PUNCT_HASH_HASH);
             }
+            *index += 1;
             return Some(Token::PUNCT_HASH);
         }
-        _ => unimplemented!(),
+        _ => {}
     }
     None
 }
-fn match_identifier(token: &'static str) -> Option<Token> {
-    let bytes = token.as_bytes();
+fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    while program_str_bytes[byte_index].is_ascii_alphanumeric()
+        || program_str_bytes[byte_index] == b'_'
+    {
+        byte_index += 1;
+    }
+    let bytes = &program_str_bytes[*index..byte_index];
     // TODO: we need to check for universal character names
     if !bytes[0].is_ascii_digit()
         && bytes
             .iter()
             .find(|b| !b.is_ascii_alphanumeric() && **b != b'_')
             .is_none()
-        && token != "__func__"
+        && bytes
+            .iter()
+            .map(|b| b.to_string())
+            .fold(String::new(), |acc, e| acc + &e)
+            != "__func__"
     {
-        return Some(Token::IDENT(token.clone()));
-    } else if token == "__func__" {
+        *index = byte_index;
+        return Some(Token::IDENT(
+            &bytes
+                .iter()
+                .map(|b| b.to_string())
+                .fold(String::new(), |acc, e| acc + &e),
+        ));
+    } else if bytes
+        .iter()
+        .map(|b| b.to_string())
+        .fold(String::new(), |acc, e| acc + &e)
+        == "__func__"
+    {
+        *index = byte_index;
         return Some(Token::PREDEF_IDENT___FUNC__);
     }
     None
 }
-fn match_keyword(token: &str) -> Option<Token> {
+fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     const KEYWORD_AUTO: &str = "auto";
     const KEYWORD_BREAK: &str = "break";
     const KEYWORD_CASE: &str = "case";
@@ -412,7 +533,6 @@ fn lexer(program_str: String) -> Vec<Token> {
         if character != ' ' && character == '\n' && character != '\t' {
             curr_token.push(character);
         } else {
-            let _matched_keyword = match_keyword(&curr_token);
         }
     }
     tokens
