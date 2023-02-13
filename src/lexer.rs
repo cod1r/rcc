@@ -1,6 +1,6 @@
 #[allow(non_camel_case_types)]
 enum Token {
-    IDENT(&'static str),
+    IDENT(String),
     PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
     PUNCT_CLOSE_SQR,
@@ -101,12 +101,121 @@ enum Token {
     KEYWORD__STATIC_ASSERT,
     KEYWORD__THREAD_LOCAL,
     TYPE,
-    CONSTANT_INT(&'static str),
-    CONSTANT_FLOAT(&'static str),
-    CONSTANT_ENUM(&'static str),
-    CONSTANT_CHAT(&'static str),
+    CONSTANT_OCTAL_INT {
+        value: String,
+        suffix: Option<String>,
+    },
+    CONSTANT_HEXA_INT {
+        value: String,
+        suffix: Option<String>,
+    },
+    CONSTANT_DEC_INT {
+        value: String,
+        suffix: Option<String>,
+    },
+    CONSTANT_DEC_FLOAT {
+        value: String,
+        exp_part: Option<String>,
+        suffix: Option<String>,
+    },
+    CONSTANT_HEXA_FLOAT {
+        value: String,
+        binary_exp_part: String,
+        suffix: Option<String>,
+    },
+    CONSTANT_ENUM(String),
+    CONSTANT_CHAR(String),
 }
-fn match_constant() {}
+fn match_constant_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    match program_str_bytes[byte_index] {
+        b'0' => {
+            // could be octal or hexadecimal
+            let mut is_hexa = false;
+            if byte_index + 1 < program_str_bytes.len()
+                && (program_str_bytes[byte_index + 1] == b'x'
+                    || program_str_bytes[byte_index + 1] == b'X')
+            {
+                byte_index += 2;
+                is_hexa = true;
+            }
+            while byte_index < program_str_bytes.len()
+                && program_str_bytes[byte_index].is_ascii_digit()
+            {
+                byte_index += 1;
+            }
+            let has_dot_exponent =
+                [b'.', b'e', b'E', b'p', b'P'].contains(&program_str_bytes[byte_index]);
+            let mut token = match (is_hexa, has_dot_exponent) {
+                (true, true) => Token::CONSTANT_HEXA_FLOAT {
+                    value: program_str_bytes[*index..byte_index]
+                        .iter()
+                        .fold(String::new(), |acc, e| acc + &e.to_string()),
+                    binary_exp_part: String::new(),
+                    suffix: None,
+                },
+                (true, false) => Token::CONSTANT_HEXA_INT {
+                    value: program_str_bytes[*index..byte_index]
+                        .iter()
+                        .fold(String::new(), |acc, e| acc + &e.to_string()),
+                    suffix: None,
+                },
+                (false, true) => Token::CONSTANT_DEC_FLOAT {
+                    value: program_str_bytes[*index..byte_index]
+                        .iter()
+                        .fold(String::new(), |acc, e| acc + &e.to_string()),
+                    exp_part: None,
+                    suffix: None,
+                },
+                (false, false) => Token::CONSTANT_OCTAL_INT {
+                    value: program_str_bytes[*index..byte_index]
+                        .iter()
+                        .fold(String::new(), |acc, e| acc + &e.to_string()),
+                    suffix: None,
+                },
+            };
+            // TODO: handle the rest of the floating constant
+            let start_suffex = byte_index;
+            while byte_index < program_str_bytes.len()
+                && program_str_bytes[byte_index].is_ascii_alphabetic()
+            {
+                byte_index += 1;
+            }
+            match program_str_bytes[start_suffex..byte_index] {
+                [b'U', b'L']
+                | [b'U', b'l']
+                | [b'u', b'L']
+                | [b'u', b'l']
+                | [b'L', b'u']
+                | [b'L', b'U']
+                | [b'l', b'U']
+                | [b'l', b'u']
+                | [b'l', b'l', b'u']
+                | [b'l', b'l', b'U']
+                | [b'L', b'L', b'u']
+                | [b'L', b'L', b'U']
+                | [b'u', b'l', b'l']
+                | [b'u', b'L', b'L']
+                | [b'U', b'l', b'l']
+                | [b'U', b'L', b'L'] => {}
+                _ => {
+                    return None;
+                }
+            }
+        }
+        b'u' | b'U' | b'L' | b'"' => {}
+        _ => {
+            if program_str_bytes[byte_index].is_ascii_digit() {
+                while byte_index < program_str_bytes.len()
+                    && program_str_bytes[byte_index].is_ascii_digit()
+                {
+                    byte_index += 1;
+                }
+            }
+        }
+    }
+    None
+}
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let byte_index = *index;
     match program_str_bytes[byte_index] {
@@ -136,16 +245,13 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
         }
         b'.' => {
             if byte_index + 2 < program_str_bytes.len() {
-                match (
+                if let (b'.', b'.', b'.') = (
                     program_str_bytes[byte_index],
                     program_str_bytes[byte_index + 1],
                     program_str_bytes[byte_index + 2],
                 ) {
-                    (b'.', b'.', b'.') => {
-                        *index += 3;
-                        return Some(Token::PUNCT_ELLIPSIS);
-                    }
-                    _ => {}
+                    *index += 3;
+                    return Some(Token::PUNCT_ELLIPSIS);
                 }
             }
             *index += 1;
@@ -250,17 +356,14 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                     }
                     b':' => {
                         if byte_index + 3 < program_str_bytes.len() {
-                            match (
+                            if let (b'%', b':', b'%', b':') = (
                                 program_str_bytes[byte_index],
                                 program_str_bytes[byte_index + 1],
                                 program_str_bytes[byte_index + 2],
                                 program_str_bytes[byte_index + 3],
                             ) {
-                                (b'%', b':', b'%', b':') => {
-                                    *index += 4;
-                                    return Some(Token::PUNCT_DIGRAPH_HASH_HASH);
-                                }
-                                _ => {}
+                                *index += 4;
+                                return Some(Token::PUNCT_DIGRAPH_HASH_HASH);
                             }
                         }
                         *index += 2;
@@ -397,18 +500,16 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
 }
 fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
-    while program_str_bytes[byte_index].is_ascii_alphanumeric()
-        || program_str_bytes[byte_index] == b'_'
+    while byte_index < program_str_bytes.len()
+        && (program_str_bytes[byte_index].is_ascii_alphanumeric()
+            || program_str_bytes[byte_index] == b'_')
     {
         byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
     // TODO: we need to check for universal character names
-    if !bytes[0].is_ascii_digit()
-        && bytes
-            .iter()
-            .find(|b| !b.is_ascii_alphanumeric() && **b != b'_')
-            .is_none()
+    if bytes.len() > 0
+        && !bytes[0].is_ascii_digit()
         && bytes
             .iter()
             .map(|b| b.to_string())
@@ -417,7 +518,7 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
     {
         *index = byte_index;
         return Some(Token::IDENT(
-            &bytes
+            bytes
                 .iter()
                 .map(|b| b.to_string())
                 .fold(String::new(), |acc, e| acc + &e),
@@ -434,6 +535,14 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
     None
 }
 fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    while byte_index < program_str_bytes.len()
+        && (program_str_bytes[byte_index].is_ascii_alphanumeric()
+            || program_str_bytes[byte_index] == b'_')
+    {
+        byte_index += 1;
+    }
+    let bytes = &program_str_bytes[*index..byte_index];
     const KEYWORD_AUTO: &str = "auto";
     const KEYWORD_BREAK: &str = "break";
     const KEYWORD_CASE: &str = "case";
@@ -478,7 +587,11 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     const KEYWORD__NORETURN: &str = "_Noreturn";
     const KEYWORD__STATIC_ASSERT: &str = "_Static_assert";
     const KEYWORD__THREAD_LOCAL: &str = "_Thread_local";
-    match token {
+    let keyword = match &bytes
+        .iter()
+        .map(|b| b.to_string())
+        .fold(String::new(), |acc, e| acc + &e)[..]
+    {
         KEYWORD_AUTO => Some(Token::KEYWORD_AUTO),
         KEYWORD_BREAK => Some(Token::KEYWORD_BREAK),
         KEYWORD_CASE => Some(Token::KEYWORD_CASE),
@@ -524,15 +637,19 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
         KEYWORD__STATIC_ASSERT => Some(Token::KEYWORD__STATIC_ASSERT),
         KEYWORD__THREAD_LOCAL => Some(Token::KEYWORD__THREAD_LOCAL),
         _ => None,
+    };
+    if keyword.is_some() {
+        *index = byte_index;
     }
+    keyword
 }
 fn lexer(program_str: String) -> Vec<Token> {
     let tokens = Vec::new();
-    let mut curr_token = String::new();
-    for character in program_str.chars() {
-        if character != ' ' && character == '\n' && character != '\t' {
-            curr_token.push(character);
-        } else {
+    let program_str_bytes = program_str.as_bytes();
+    let mut index: usize = 0;
+    while index < program_str_bytes.len() {
+        if !program_str_bytes[index].is_ascii_whitespace() {
+            let _matched_keyword = match_keyword(program_str_bytes, &mut index);
         }
     }
     tokens
@@ -542,6 +659,6 @@ fn lexer(program_str: String) -> Vec<Token> {
 mod tests {
     #[test]
     fn test_lexer() {
-        let program_str: &'static str = "int main() {\n\tint four = 4;\n\treturn 0;\n}";
+        let _program_str: &'static str = "int main() {\n\tint four = 4;\n\treturn 0;\n}";
     }
 }
