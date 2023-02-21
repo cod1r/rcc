@@ -126,8 +126,10 @@ enum Token {
     CONSTANT_ENUM(String),
     CONSTANT_CHAR(String),
 }
-fn match_string_literal(program_str_bytes: &[u8], index: &mut size) -> Option<Token> {}
-fn match_integer_constant(program_str_bytes: &[u8], index: &mut size) -> Option<Token> {
+fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    None
+}
+fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
     match program_str_bytes[byte_index] {
         b'0' => {
@@ -177,21 +179,25 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut size) -> Option<
                         None
                     };
                     if is_hexa {
-                        return Some(Token::CONSTANT_HEXA_INT {
+                        let token = Some(Token::CONSTANT_HEXA_INT {
                             value: String::from_utf8_lossy(
                                 &program_str_bytes[*index..start_suffex],
                             )
                             .to_string(),
                             suffix,
                         });
+                        *index = byte_index;
+                        return token;
                     } else {
-                        return Some(Token::CONSTANT_OCTAL_INT {
+                        let token = Some(Token::CONSTANT_OCTAL_INT {
                             value: String::from_utf8_lossy(
                                 &program_str_bytes[*index..start_suffex],
                             )
                             .to_string(),
                             suffix,
                         });
+                        *index = byte_index;
+                        return token;
                     }
                 }
                 _ => {
@@ -240,13 +246,15 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut size) -> Option<
                         } else {
                             None
                         };
-                        return Some(Token::CONSTANT_DEC_INT {
+                        let token = Some(Token::CONSTANT_DEC_INT {
                             value: String::from_utf8_lossy(
                                 &program_str_bytes[*index..start_suffex],
                             )
                             .to_string(),
                             suffix,
                         });
+                        *index = byte_index;
+                        return token;
                     }
                     _ => {
                         return None;
@@ -259,7 +267,7 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut size) -> Option<
 }
 fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
-    let mut is_hexa = if byte_index + 1 < program_str_bytes.len()
+    let is_hexa = if byte_index + 1 < program_str_bytes.len()
         && (program_str_bytes[byte_index + 1] == b'x' || program_str_bytes[byte_index + 1] == b'X')
     {
         byte_index += 2;
@@ -275,9 +283,10 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
     let has_dot = byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'.';
     if has_dot {
         byte_index += 1;
-    }
-    while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit() {
-        byte_index += 1;
+        while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit()
+        {
+            byte_index += 1;
+        }
     }
     let length_of_second_digit_sequence = byte_index - end_of_first_digit_sequence;
     let end_of_second_digit_sequence = byte_index;
@@ -286,12 +295,94 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
             || program_str_bytes[byte_index] == b'E'
             || program_str_bytes[byte_index] == b'p'
             || program_str_bytes[byte_index] == b'P');
-    if (has_dot && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0)) || (has_exponential) {
+    if has_exponential {
+        byte_index += 1;
+        if byte_index < program_str_bytes.len()
+            && (program_str_bytes[byte_index] == b'-' || program_str_bytes[byte_index] == b'+')
+        {
+            byte_index += 1;
+        }
+        while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit()
+        {
+            byte_index += 1;
+        }
+    }
+    let length_exp_digit_sequence = byte_index - end_of_second_digit_sequence;
+    let end_of_exp_digit_sequence = byte_index;
+    if byte_index < program_str_bytes.len()
+        && (program_str_bytes[byte_index] == b'f'
+            || program_str_bytes[byte_index] == b'F'
+            || program_str_bytes[byte_index] == b'L'
+            || program_str_bytes[byte_index] == b'l')
+    {
+        byte_index += 1;
+    }
+    let length_of_suffix = byte_index - end_of_exp_digit_sequence;
+    if (has_dot
+        && !has_exponential
+        && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0))
+        || (has_exponential
+            && !has_dot
+            && length_exp_digit_sequence > 0
+            && length_first_digit_sequence > 0)
+        || (has_dot
+            && has_exponential
+            && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0)
+            && length_exp_digit_sequence > 0)
+    {
+        let suffix = if length_of_suffix > 0 {
+            Some(
+                String::from_utf8_lossy(&program_str_bytes[end_of_exp_digit_sequence..byte_index])
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+        if is_hexa {
+            let token = Some(Token::CONSTANT_HEXA_FLOAT {
+                value: String::from_utf8_lossy(
+                    &program_str_bytes[*index..end_of_second_digit_sequence],
+                )
+                .to_string(),
+                binary_exp_part: String::from_utf8_lossy(
+                    &program_str_bytes[end_of_second_digit_sequence..end_of_exp_digit_sequence],
+                )
+                .to_string(),
+                suffix,
+            });
+            *index = byte_index;
+            return token;
+        } else {
+            let token = Some(Token::CONSTANT_DEC_FLOAT {
+                value: String::from_utf8_lossy(
+                    &program_str_bytes[*index..end_of_second_digit_sequence],
+                )
+                .to_string(),
+                exp_part: if has_exponential {
+                    Some(
+                        String::from_utf8_lossy(
+                            &program_str_bytes
+                                [end_of_second_digit_sequence..end_of_exp_digit_sequence],
+                        )
+                        .to_string(),
+                    )
+                } else {
+                    None
+                },
+                suffix,
+            });
+            *index = byte_index;
+            return token;
+        }
     }
     None
 }
-fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {None}
-fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {None}
+fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    None
+}
+fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    None
+}
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let byte_index = *index;
     if byte_index < program_str_bytes.len() {
