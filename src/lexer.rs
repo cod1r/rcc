@@ -126,11 +126,11 @@ enum Token {
     CONSTANT_ENUM(String),
     CONSTANT_CHAR(String),
 }
-fn match_constant_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_string_literal(program_str_bytes: &[u8], index: &mut size) -> Option<Token> {}
+fn match_integer_constant(program_str_bytes: &[u8], index: &mut size) -> Option<Token> {
     let mut byte_index = *index;
     match program_str_bytes[byte_index] {
         b'0' => {
-            // could be octal or hexadecimal
             let mut is_hexa = false;
             if byte_index + 1 < program_str_bytes.len()
                 && (program_str_bytes[byte_index + 1] == b'x'
@@ -144,37 +144,6 @@ fn match_constant_literal(program_str_bytes: &[u8], index: &mut usize) -> Option
             {
                 byte_index += 1;
             }
-            let has_dot_exponent =
-                [b'.', b'e', b'E', b'p', b'P'].contains(&program_str_bytes[byte_index]);
-            let mut token = match (is_hexa, has_dot_exponent) {
-                (true, true) => Token::CONSTANT_HEXA_FLOAT {
-                    value: program_str_bytes[*index..byte_index]
-                        .iter()
-                        .fold(String::new(), |acc, e| acc + &e.to_string()),
-                    binary_exp_part: String::new(),
-                    suffix: None,
-                },
-                (true, false) => Token::CONSTANT_HEXA_INT {
-                    value: program_str_bytes[*index..byte_index]
-                        .iter()
-                        .fold(String::new(), |acc, e| acc + &e.to_string()),
-                    suffix: None,
-                },
-                (false, true) => Token::CONSTANT_DEC_FLOAT {
-                    value: program_str_bytes[*index..byte_index]
-                        .iter()
-                        .fold(String::new(), |acc, e| acc + &e.to_string()),
-                    exp_part: None,
-                    suffix: None,
-                },
-                (false, false) => Token::CONSTANT_OCTAL_INT {
-                    value: program_str_bytes[*index..byte_index]
-                        .iter()
-                        .fold(String::new(), |acc, e| acc + &e.to_string()),
-                    suffix: None,
-                },
-            };
-            // TODO: handle the rest of the floating constant
             let start_suffex = byte_index;
             while byte_index < program_str_bytes.len()
                 && program_str_bytes[byte_index].is_ascii_alphabetic()
@@ -197,13 +166,39 @@ fn match_constant_literal(program_str_bytes: &[u8], index: &mut usize) -> Option
                 | [b'u', b'l', b'l']
                 | [b'u', b'L', b'L']
                 | [b'U', b'l', b'l']
-                | [b'U', b'L', b'L'] => {}
+                | [b'U', b'L', b'L']
+                | [] => {
+                    let suffix = if byte_index - start_suffex > 0 {
+                        Some(
+                            String::from_utf8_lossy(&program_str_bytes[start_suffex..byte_index])
+                                .to_string(),
+                        )
+                    } else {
+                        None
+                    };
+                    if is_hexa {
+                        return Some(Token::CONSTANT_HEXA_INT {
+                            value: String::from_utf8_lossy(
+                                &program_str_bytes[*index..start_suffex],
+                            )
+                            .to_string(),
+                            suffix,
+                        });
+                    } else {
+                        return Some(Token::CONSTANT_OCTAL_INT {
+                            value: String::from_utf8_lossy(
+                                &program_str_bytes[*index..start_suffex],
+                            )
+                            .to_string(),
+                            suffix,
+                        });
+                    }
+                }
                 _ => {
                     return None;
                 }
             }
         }
-        b'u' | b'U' | b'L' | b'"' => {}
         _ => {
             if program_str_bytes[byte_index].is_ascii_digit() {
                 while byte_index < program_str_bytes.len()
@@ -211,290 +206,380 @@ fn match_constant_literal(program_str_bytes: &[u8], index: &mut usize) -> Option
                 {
                     byte_index += 1;
                 }
+                let start_suffex = byte_index;
+                while byte_index < program_str_bytes.len()
+                    && program_str_bytes[byte_index].is_ascii_alphabetic()
+                {
+                    byte_index += 1;
+                }
+                match program_str_bytes[start_suffex..byte_index] {
+                    [b'U', b'L']
+                    | [b'U', b'l']
+                    | [b'u', b'L']
+                    | [b'u', b'l']
+                    | [b'L', b'u']
+                    | [b'L', b'U']
+                    | [b'l', b'U']
+                    | [b'l', b'u']
+                    | [b'l', b'l', b'u']
+                    | [b'l', b'l', b'U']
+                    | [b'L', b'L', b'u']
+                    | [b'L', b'L', b'U']
+                    | [b'u', b'l', b'l']
+                    | [b'u', b'L', b'L']
+                    | [b'U', b'l', b'l']
+                    | [b'U', b'L', b'L']
+                    | [] => {
+                        let suffix = if byte_index - start_suffex > 0 {
+                            Some(
+                                String::from_utf8_lossy(
+                                    &program_str_bytes[start_suffex..byte_index],
+                                )
+                                .to_string(),
+                            )
+                        } else {
+                            None
+                        };
+                        return Some(Token::CONSTANT_DEC_INT {
+                            value: String::from_utf8_lossy(
+                                &program_str_bytes[*index..start_suffex],
+                            )
+                            .to_string(),
+                            suffix,
+                        });
+                    }
+                    _ => {
+                        return None;
+                    }
+                }
             }
+            return None;
         }
+    }
+}
+fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    let mut is_hexa = if byte_index + 1 < program_str_bytes.len()
+        && (program_str_bytes[byte_index + 1] == b'x' || program_str_bytes[byte_index + 1] == b'X')
+    {
+        byte_index += 2;
+        true
+    } else {
+        false
+    };
+    while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit() {
+        byte_index += 1;
+    }
+    let length_first_digit_sequence = byte_index - *index;
+    let end_of_first_digit_sequence = byte_index;
+    let has_dot = byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'.';
+    if has_dot {
+        byte_index += 1;
+    }
+    while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit() {
+        byte_index += 1;
+    }
+    let length_of_second_digit_sequence = byte_index - end_of_first_digit_sequence;
+    let end_of_second_digit_sequence = byte_index;
+    let has_exponential = byte_index < program_str_bytes.len()
+        && (program_str_bytes[byte_index] == b'e'
+            || program_str_bytes[byte_index] == b'E'
+            || program_str_bytes[byte_index] == b'p'
+            || program_str_bytes[byte_index] == b'P');
+    if (has_dot && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0)) || (has_exponential) {
     }
     None
 }
+fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {None}
+fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {None}
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let byte_index = *index;
-    match program_str_bytes[byte_index] {
-        b'[' => {
-            *index += 1;
-            return Some(Token::PUNCT_OPEN_SQR);
-        }
-        b']' => {
-            *index += 1;
-            return Some(Token::PUNCT_CLOSE_SQR);
-        }
-        b'(' => {
-            *index += 1;
-            return Some(Token::PUNCT_OPEN_PAR);
-        }
-        b')' => {
-            *index += 1;
-            return Some(Token::PUNCT_CLOSE_PAR);
-        }
-        b'{' => {
-            *index += 1;
-            return Some(Token::PUNCT_OPEN_CURLY);
-        }
-        b'}' => {
-            *index += 1;
-            return Some(Token::PUNCT_CLOSE_CURLY);
-        }
-        b'.' => {
-            if byte_index + 2 < program_str_bytes.len() {
-                if let (b'.', b'.', b'.') = (
-                    program_str_bytes[byte_index],
-                    program_str_bytes[byte_index + 1],
-                    program_str_bytes[byte_index + 2],
-                ) {
-                    *index += 3;
-                    return Some(Token::PUNCT_ELLIPSIS);
+    if byte_index < program_str_bytes.len() {
+        match program_str_bytes[byte_index] {
+            b'[' => {
+                *index += 1;
+                return Some(Token::PUNCT_OPEN_SQR);
+            }
+            b']' => {
+                *index += 1;
+                return Some(Token::PUNCT_CLOSE_SQR);
+            }
+            b'(' => {
+                *index += 1;
+                return Some(Token::PUNCT_OPEN_PAR);
+            }
+            b')' => {
+                *index += 1;
+                return Some(Token::PUNCT_CLOSE_PAR);
+            }
+            b'{' => {
+                *index += 1;
+                return Some(Token::PUNCT_OPEN_CURLY);
+            }
+            b'}' => {
+                *index += 1;
+                return Some(Token::PUNCT_CLOSE_CURLY);
+            }
+            b'.' => {
+                if byte_index + 2 < program_str_bytes.len() {
+                    if let (b'.', b'.', b'.') = (
+                        program_str_bytes[byte_index],
+                        program_str_bytes[byte_index + 1],
+                        program_str_bytes[byte_index + 2],
+                    ) {
+                        *index += 3;
+                        return Some(Token::PUNCT_ELLIPSIS);
+                    }
                 }
+                *index += 1;
+                return Some(Token::PUNCT_DOT);
             }
-            *index += 1;
-            return Some(Token::PUNCT_DOT);
-        }
-        b'-' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'-' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_DECREMENT);
+            b'-' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'-' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_DECREMENT);
+                        }
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_SUB_ASSIGN);
+                        }
+                        b'>' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_ARROW);
+                        }
+                        _ => {}
                     }
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_SUB_ASSIGN);
-                    }
-                    b'>' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_ARROW);
-                    }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_MINUS);
             }
-            *index += 1;
-            return Some(Token::PUNCT_MINUS);
-        }
-        b'+' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'+' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_INCREMENT);
+            b'+' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'+' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_INCREMENT);
+                        }
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_ADD_ASSIGN);
+                        }
+                        _ => {}
                     }
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_ADD_ASSIGN);
-                    }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_PLUS);
             }
-            *index += 1;
-            return Some(Token::PUNCT_PLUS);
-        }
-        b'&' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'&' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_AND_BOOL);
+            b'&' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'&' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_AND_BOOL);
+                        }
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_AND_BIT_ASSIGN);
+                        }
+                        _ => {}
                     }
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_AND_BIT_ASSIGN);
-                    }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_AND_BIT);
             }
-            *index += 1;
-            return Some(Token::PUNCT_AND_BIT);
-        }
-        b'*' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
-            {
-                *index += 2;
-                return Some(Token::PUNCT_MULT_ASSIGN);
+            b'*' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'='
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_MULT_ASSIGN);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_MULT);
             }
-            *index += 1;
-            return Some(Token::PUNCT_MULT);
-        }
-        b'~' => {
-            *index += 1;
-            return Some(Token::PUNCT_TILDE);
-        }
-        b'!' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
-            {
-                *index += 2;
-                return Some(Token::PUNCT_NOT_EQ_BOOL);
+            b'~' => {
+                *index += 1;
+                return Some(Token::PUNCT_TILDE);
             }
-            *index += 1;
-            return Some(Token::PUNCT_NOT_BOOL);
-        }
-        b'/' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
-            {
-                *index += 2;
-                return Some(Token::PUNCT_DIV_ASSIGN);
+            b'!' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'='
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_NOT_EQ_BOOL);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_NOT_BOOL);
             }
-            *index += 1;
-            return Some(Token::PUNCT_DIV);
-        }
-        b'%' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_MODULO_ASSIGN);
-                    }
-                    b'>' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_DIGRAPH_CLOSE_CURLY);
-                    }
-                    b':' => {
-                        if byte_index + 3 < program_str_bytes.len() {
-                            if let (b'%', b':', b'%', b':') = (
-                                program_str_bytes[byte_index],
-                                program_str_bytes[byte_index + 1],
-                                program_str_bytes[byte_index + 2],
-                                program_str_bytes[byte_index + 3],
-                            ) {
-                                *index += 4;
-                                return Some(Token::PUNCT_DIGRAPH_HASH_HASH);
+            b'/' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'='
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_DIV_ASSIGN);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_DIV);
+            }
+            b'%' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_MODULO_ASSIGN);
+                        }
+                        b'>' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_DIGRAPH_CLOSE_CURLY);
+                        }
+                        b':' => {
+                            if byte_index + 3 < program_str_bytes.len() {
+                                if let (b'%', b':', b'%', b':') = (
+                                    program_str_bytes[byte_index],
+                                    program_str_bytes[byte_index + 1],
+                                    program_str_bytes[byte_index + 2],
+                                    program_str_bytes[byte_index + 3],
+                                ) {
+                                    *index += 4;
+                                    return Some(Token::PUNCT_DIGRAPH_HASH_HASH);
+                                }
                             }
+                            *index += 2;
+                            return Some(Token::PUNCT_DIGRAPH_HASH);
                         }
-                        *index += 2;
-                        return Some(Token::PUNCT_DIGRAPH_HASH);
+                        _ => {}
                     }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_MODULO);
             }
-            *index += 1;
-            return Some(Token::PUNCT_MODULO);
-        }
-        b'<' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'<' => {
-                        if byte_index + 2 < program_str_bytes.len()
-                            && program_str_bytes[byte_index + 2] == b'='
-                        {
-                            *index += 3;
-                            return Some(Token::PUNCT_L_SHIFT_BIT_ASSIGN);
+            b'<' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'<' => {
+                            if byte_index + 2 < program_str_bytes.len()
+                                && program_str_bytes[byte_index + 2] == b'='
+                            {
+                                *index += 3;
+                                return Some(Token::PUNCT_L_SHIFT_BIT_ASSIGN);
+                            }
+                            *index += 2;
+                            return Some(Token::PUNCT_BITSHFT_LEFT);
                         }
-                        *index += 2;
-                        return Some(Token::PUNCT_BITSHFT_LEFT);
-                    }
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_LESS_THAN_EQ);
-                    }
-                    b':' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_DIGRAPH_OPEN_SQR);
-                    }
-                    b'%' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_DIGRAPH_OPEN_CURLY);
-                    }
-                    _ => {}
-                }
-            }
-            *index += 1;
-            return Some(Token::PUNCT_LESS_THAN);
-        }
-        b'>' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'>' => {
-                        if byte_index + 2 < program_str_bytes.len()
-                            && program_str_bytes[byte_index + 2] == b'='
-                        {
-                            *index += 3;
-                            return Some(Token::PUNCT_R_SHIFT_BIT_ASSIGN);
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_LESS_THAN_EQ);
                         }
-                        *index += 2;
-                        return Some(Token::PUNCT_BITSHFT_RIGHT);
+                        b':' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_DIGRAPH_OPEN_SQR);
+                        }
+                        b'%' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_DIGRAPH_OPEN_CURLY);
+                        }
+                        _ => {}
                     }
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_GREATER_THAN_EQ);
-                    }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_LESS_THAN);
             }
-            *index += 1;
-            return Some(Token::PUNCT_GREATER_THAN);
-        }
-        b'=' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
-            {
-                *index += 2;
-                return Some(Token::PUNCT_EQ_BOOL);
-            }
-            *index += 1;
-            return Some(Token::PUNCT_ASSIGNMENT);
-        }
-        b'^' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'='
-            {
-                *index += 2;
-                return Some(Token::PUNCT_XOR_BIT_ASSIGN);
-            }
-            *index += 1;
-            return Some(Token::PUNCT_XOR_BIT);
-        }
-        b'|' => {
-            if byte_index + 1 < program_str_bytes.len() {
-                match program_str_bytes[byte_index + 1] {
-                    b'=' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_OR_BIT_ASSIGN);
+            b'>' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'>' => {
+                            if byte_index + 2 < program_str_bytes.len()
+                                && program_str_bytes[byte_index + 2] == b'='
+                            {
+                                *index += 3;
+                                return Some(Token::PUNCT_R_SHIFT_BIT_ASSIGN);
+                            }
+                            *index += 2;
+                            return Some(Token::PUNCT_BITSHFT_RIGHT);
+                        }
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_GREATER_THAN_EQ);
+                        }
+                        _ => {}
                     }
-                    b'|' => {
-                        *index += 2;
-                        return Some(Token::PUNCT_OR_BOOL);
-                    }
-                    _ => {}
                 }
+                *index += 1;
+                return Some(Token::PUNCT_GREATER_THAN);
             }
-            *index += 1;
-            return Some(Token::PUNCT_OR_BIT);
-        }
-        b'?' => {
-            *index += 1;
-            return Some(Token::PUNCT_QUESTION_MARK);
-        }
-        b':' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'>'
-            {
-                *index += 2;
-                return Some(Token::PUNCT_DIGRAPH_CLOSE_SQR);
+            b'=' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'='
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_EQ_BOOL);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_ASSIGNMENT);
             }
-            *index += 1;
-            return Some(Token::PUNCT_COLON);
-        }
-        b';' => {
-            *index += 1;
-            return Some(Token::PUNCT_SEMI_COLON);
-        }
-        b',' => {
-            *index += 1;
-            return Some(Token::PUNCT_COMMA);
-        }
-        b'#' => {
-            if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'#'
-            {
-                *index += 2;
-                return Some(Token::PUNCT_HASH_HASH);
+            b'^' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'='
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_XOR_BIT_ASSIGN);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_XOR_BIT);
             }
-            *index += 1;
-            return Some(Token::PUNCT_HASH);
+            b'|' => {
+                if byte_index + 1 < program_str_bytes.len() {
+                    match program_str_bytes[byte_index + 1] {
+                        b'=' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_OR_BIT_ASSIGN);
+                        }
+                        b'|' => {
+                            *index += 2;
+                            return Some(Token::PUNCT_OR_BOOL);
+                        }
+                        _ => {}
+                    }
+                }
+                *index += 1;
+                return Some(Token::PUNCT_OR_BIT);
+            }
+            b'?' => {
+                *index += 1;
+                return Some(Token::PUNCT_QUESTION_MARK);
+            }
+            b':' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'>'
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_DIGRAPH_CLOSE_SQR);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_COLON);
+            }
+            b';' => {
+                *index += 1;
+                return Some(Token::PUNCT_SEMI_COLON);
+            }
+            b',' => {
+                *index += 1;
+                return Some(Token::PUNCT_COMMA);
+            }
+            b'#' => {
+                if byte_index + 1 < program_str_bytes.len()
+                    && program_str_bytes[byte_index + 1] == b'#'
+                {
+                    *index += 2;
+                    return Some(Token::PUNCT_HASH_HASH);
+                }
+                *index += 1;
+                return Some(Token::PUNCT_HASH);
+            }
+            _ => {}
         }
-        _ => {}
     }
     None
 }
@@ -508,12 +593,11 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
     }
     let bytes = &program_str_bytes[*index..byte_index];
     // TODO: we need to check for universal character names
-    if bytes.len() > 0
+    if !bytes.is_empty()
         && !bytes[0].is_ascii_digit()
         && bytes
             .iter()
-            .map(|b| b.to_string())
-            .fold(String::new(), |acc, e| acc + &e)
+            .fold(String::new(), |acc, e| acc + &e.to_string())
             != "__func__"
     {
         *index = byte_index;
