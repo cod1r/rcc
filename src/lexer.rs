@@ -126,7 +126,7 @@ enum Token {
     CONSTANT_ENUM(String),
     CONSTANT_CHAR(String),
 }
-fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_string_literal(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
     None
 }
 fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
@@ -187,7 +187,7 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                             suffix,
                         });
                         *index = byte_index;
-                        return token;
+                        token
                     } else {
                         let token = Some(Token::CONSTANT_OCTAL_INT {
                             value: String::from_utf8_lossy(
@@ -197,12 +197,10 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                             suffix,
                         });
                         *index = byte_index;
-                        return token;
+                        token
                     }
                 }
-                _ => {
-                    return None;
-                }
+                _ => None,
             }
         }
         _ => {
@@ -261,7 +259,7 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                     }
                 }
             }
-            return None;
+            None
         }
     }
 }
@@ -275,26 +273,30 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
     } else {
         false
     };
+    let start = byte_index;
     while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit() {
         byte_index += 1;
     }
-    let length_first_digit_sequence = byte_index - *index;
+    let length_first_digit_sequence = byte_index - start;
     let end_of_first_digit_sequence = byte_index;
     let has_dot = byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'.';
+    let mut length_of_second_digit_sequence = 0;
     if has_dot {
         byte_index += 1;
         while byte_index < program_str_bytes.len() && program_str_bytes[byte_index].is_ascii_digit()
         {
             byte_index += 1;
         }
+        length_of_second_digit_sequence = byte_index - end_of_first_digit_sequence - 1;
     }
-    let length_of_second_digit_sequence = byte_index - end_of_first_digit_sequence;
     let end_of_second_digit_sequence = byte_index;
     let has_exponential = byte_index < program_str_bytes.len()
-        && (program_str_bytes[byte_index] == b'e'
-            || program_str_bytes[byte_index] == b'E'
-            || program_str_bytes[byte_index] == b'p'
-            || program_str_bytes[byte_index] == b'P');
+        && ((!is_hexa
+            && (program_str_bytes[byte_index] == b'e' || program_str_bytes[byte_index] == b'E'))
+            || (is_hexa
+                && (program_str_bytes[byte_index] == b'p'
+                    || program_str_bytes[byte_index] == b'P')));
+    let mut length_of_exp_digit_sequence = 0;
     if has_exponential {
         byte_index += 1;
         if byte_index < program_str_bytes.len()
@@ -306,8 +308,8 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
         {
             byte_index += 1;
         }
+        length_of_exp_digit_sequence = byte_index - end_of_second_digit_sequence - 1;
     }
-    let length_exp_digit_sequence = byte_index - end_of_second_digit_sequence;
     let end_of_exp_digit_sequence = byte_index;
     if byte_index < program_str_bytes.len()
         && (program_str_bytes[byte_index] == b'f'
@@ -323,12 +325,12 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
         && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0))
         || (has_exponential
             && !has_dot
-            && length_exp_digit_sequence > 0
+            && length_of_exp_digit_sequence > 0
             && length_first_digit_sequence > 0)
         || (has_dot
             && has_exponential
             && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0)
-            && length_exp_digit_sequence > 0)
+            && length_of_exp_digit_sequence > 0)
     {
         let suffix = if length_of_suffix > 0 {
             Some(
@@ -377,10 +379,10 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
     }
     None
 }
-fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_enumeration_constant(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
     None
 }
-fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_character_constant(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
     None
 }
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
@@ -832,8 +834,114 @@ fn lexer(program_str: String) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
+    use super::match_floating_constant;
+
     #[test]
-    fn test_lexer() {
-        let _program_str: &'static str = "int main() {\n\tint four = 4;\n\treturn 0;\n}";
+    fn test_match_float_constant() {
+        let s = "0x.0p0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_HEXA_FLOAT { .. }) => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_none_invalid_fractional_constant() {
+        let s = "0x.p0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_none_invalid_exponent() {
+        let s = "0x0e";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_none() {
+        let s = "";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_none_invalid_decimal() {
+        let s = "01";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_none_invalid_hexadecimal() {
+        let s = "0x1";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_none_invalid_hexa_exponent() {
+        let s = "0x1e0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            None => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_none());
+    }
+    #[test]
+    fn test_match_float_constant_valid_hexadecimal() {
+        let s = "0x1p0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_HEXA_FLOAT { .. }) => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_valid_decimal() {
+        let s = "001223e0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_DEC_FLOAT { .. }) => {}
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
     }
 }
