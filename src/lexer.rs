@@ -837,13 +837,39 @@ mod tests {
     use super::match_floating_constant;
 
     #[test]
-    fn test_match_float_constant() {
+    fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
         let s = "0x.0p0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let float_token = match_floating_constant(s_bytes, &mut index);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT { .. }) => {}
+            Some(super::Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix: _,
+            }) => {
+                assert_eq!(*value, "0x.0");
+                assert_eq!(*binary_exp_part, "p0");
+            }
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_valid_hexadecimal_first_digit_sequence() {
+        let s = "0x0.p0";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix: _,
+            }) => {
+                assert_eq!(*value, "0x0.");
+                assert_eq!(*binary_exp_part, "p0");
+            }
             _ => panic!(),
         }
         assert!(float_token.is_some());
@@ -927,7 +953,14 @@ mod tests {
         let mut index = 0;
         let float_token = match_floating_constant(s_bytes, &mut index);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT { .. }) => {}
+            Some(super::Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix: _,
+            }) => {
+                assert_eq!(value, "0x1");
+                assert_eq!(binary_exp_part, "p0");
+            }
             _ => panic!(),
         }
         assert!(float_token.is_some());
@@ -939,7 +972,74 @@ mod tests {
         let mut index = 0;
         let float_token = match_floating_constant(s_bytes, &mut index);
         match &float_token {
-            Some(super::Token::CONSTANT_DEC_FLOAT { .. }) => {}
+            Some(super::Token::CONSTANT_DEC_FLOAT {
+                value,
+                exp_part,
+                suffix: _,
+            }) => {
+                assert_eq!(value, "001223");
+                assert_eq!(exp_part.clone().unwrap(), "e0");
+            }
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_valid_decimal_suffix() {
+        let s = "001223e0L";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_DEC_FLOAT {
+                value,
+                exp_part,
+                suffix,
+            }) => {
+                assert_eq!(value, "001223");
+                assert_eq!(exp_part.clone().unwrap(), "e0");
+                assert_eq!(suffix.clone().unwrap(), "L");
+            }
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_valid_hexadecimal_suffix() {
+        let s = "0x01223p0L";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix,
+            }) => {
+                assert_eq!(value, "0x01223");
+                assert_eq!(binary_exp_part, "p0");
+                assert_eq!(suffix.clone().unwrap(), "L");
+            }
+            _ => panic!(),
+        }
+        assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_float_constant_valid_hexadecimal_suffix_sign() {
+        let s = "0x01223p+0L";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let float_token = match_floating_constant(s_bytes, &mut index);
+        match &float_token {
+            Some(super::Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix,
+            }) => {
+                assert_eq!(value, "0x01223");
+                assert_eq!(binary_exp_part, "p+0");
+                assert_eq!(suffix.clone().unwrap(), "L");
+            }
             _ => panic!(),
         }
         assert!(float_token.is_some());
