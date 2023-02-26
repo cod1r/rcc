@@ -1,5 +1,22 @@
-Identifiers can represent objects, functions, enums, labels, macro name, or macro parameter.
-The same identifiers can mean different things at different points in the program.
+source character set:
+	A B C D E F G H I J K L M
+	N O P Q R S T U V W X Y Z
+
+	a b c d e f g h i j k l m
+	n o p q r s t u v w x y z
+
+	0 1 2 3 4 5 6 7 8 9
+
+	! " # % & ’ ( ) * + , - . / :
+	; < = > ? [ \ ] ^ _ { | } ~
+	the space character, and control characters representing horizontal tab, vertical tab, and form feed
+
+	In a character constant or string literal, members of the execution character set shall be represented by
+	corresponding members of the source character set or by escape sequences consisting of the backslash
+	\ followed by one or more characters. A byte with all bits set to 0, called the null character, shall exist
+	in the basic execution character set; it is used to terminate a character string.
+	Identifiers can represent objects, functions, enums, labels, macro name, or macro parameter.
+	The same identifiers can mean different things at different points in the program.
 
 Identifiers can only be used within their scope.
 

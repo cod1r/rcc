@@ -379,10 +379,53 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
     }
     None
 }
-fn match_enumeration_constant(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
+fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     None
 }
-fn match_character_constant(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
+fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    if program_str_bytes[byte_index] == b'L'
+        || program_str_bytes[byte_index] == b'u'
+        || program_str_bytes[byte_index] == b'U'
+        || program_str_bytes[byte_index] == b'\''
+    {
+        byte_index += 1;
+        if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\'' {
+            byte_index += 1;
+            let symbols = [
+                b'!', b'"', b'#', b'%', b'&', b'(', b')', b'*', b'+', b',', b'-', b'.', b'/', b':',
+                b';', b'<', b'=', b'>', b'?', b'[', b'\\', b']', b'^', b'_', b'{', b'|', b'}',
+                b'~', b' ', b'\t', 11, 12,
+            ];
+            while byte_index < program_str_bytes.len()
+                && (program_str_bytes[byte_index].is_ascii_alphanumeric()
+                    || symbols.contains(&program_str_bytes[byte_index]))
+            {
+                if program_str_bytes[byte_index] == b'\\' {
+                    if byte_index + 1 < program_str_bytes.len()
+                        && ([b'\'', b'\"', b'?', b'\\', 7, 8, 11, 12, b'\n', b'\r']
+                            .contains(&program_str_bytes[byte_index + 1])
+                            || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1])
+                            || program_str_bytes[byte_index + 1].is_ascii_hexdigit())
+                    {
+                        byte_index += 2;
+                        continue;
+                    } else {
+                        return None;
+                    }
+                }
+                byte_index += 1;
+            }
+            if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\'' {
+                byte_index += 1;
+                let token = Some(Token::CONSTANT_CHAR(
+                    String::from_utf8_lossy(&program_str_bytes[*index..byte_index]).to_string(),
+                ));
+                *index = byte_index;
+                return token;
+            }
+        }
+    }
     None
 }
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
@@ -834,7 +877,7 @@ fn lexer(program_str: String) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
-    use super::match_floating_constant;
+    use super::{match_character_constant, match_floating_constant};
 
     #[test]
     fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
@@ -1043,5 +1086,19 @@ mod tests {
             _ => panic!(),
         }
         assert!(float_token.is_some());
+    }
+    #[test]
+    fn test_match_character_constant() {
+        let s = "U'hi'";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let char_token = match_character_constant(s_bytes, &mut index);
+        match &char_token {
+            Some(super::Token::CONSTANT_CHAR(s)) => {
+                assert_eq!(s, "U'hi'");
+            }
+            _ => panic!(),
+        }
+        assert!(char_token.is_some());
     }
 }
