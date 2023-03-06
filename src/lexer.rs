@@ -406,11 +406,17 @@ fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Opti
                 || symbols.contains(&program_str_bytes[byte_index]))
         {
             if program_str_bytes[byte_index] == b'\\' {
+                // allowed escape characters
+                // else return None
                 if byte_index + 1 < program_str_bytes.len()
-                    && ([b'\'', b'\"', b'?', b'\\', 7, 8, 11, 12, b'\n', b'\r']
-                        .contains(&program_str_bytes[byte_index + 1])
-                        || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1])
-                        || program_str_bytes[byte_index + 1].is_ascii_hexdigit())
+                    && (([
+                        b'\'', b'\"', b'?', b'\\', b'a', b'b', b'f', b'n', b'r', b't', b'v',
+                    ]
+                    .contains(&program_str_bytes[byte_index + 1])
+                        || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1]))
+                        || (byte_index + 2 < program_str_bytes.len()
+                            && program_str_bytes[byte_index + 1] == b'x'
+                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit()))
                 {
                     byte_index += 2;
                     continue;
