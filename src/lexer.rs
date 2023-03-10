@@ -123,10 +123,70 @@ enum Token {
         binary_exp_part: String,
         suffix: Option<String>,
     },
+    StringLiteral {
+        prefix: Option<String>,
+        sequence: String,
+    },
     CONSTANT_ENUM(String),
     CONSTANT_CHAR(String),
 }
-fn match_string_literal(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
+fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    let mut token = Token::StringLiteral {
+        prefix: None,
+        sequence: String::new(),
+    };
+    if byte_index < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'8' {
+        if let Token::StringLiteral {
+            prefix,
+            sequence: _,
+        } = &mut token
+        {
+            *prefix = Some(
+                String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 2]).to_string(),
+            );
+        }
+        byte_index += 2;
+    } else {
+        if let Token::StringLiteral {
+            prefix,
+            sequence: _,
+        } = &mut token
+        {
+            *prefix = Some(
+                String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 1]).to_string(),
+            );
+        }
+        byte_index += 1;
+    }
+    if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\"' {
+        byte_index += 1;
+        let start_of_seq = byte_index;
+        let symbols = [
+            b'!', b'\'', b'#', b'%', b'&', b'(', b')', b'*', b'+', b',', b'-', b'.', b'/', b':',
+            b';', b'<', b'=', b'>', b'?', b'[', b'\\', b']', b'^', b'_', b'{', b'|', b'}', b'~',
+            b' ', b'\t', 11, 12,
+        ];
+        while byte_index < program_str_bytes.len()
+            && (program_str_bytes[byte_index].is_ascii_alphanumeric()
+                || symbols.contains(&program_str_bytes[byte_index]))
+        {
+            byte_index += 1;
+        }
+        if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'"' {
+            if let Token::StringLiteral {
+                prefix: _,
+                sequence,
+            } = &mut token
+            {
+                *sequence = String::from_utf8_lossy(&program_str_bytes[start_of_seq..byte_index])
+                    .to_string();
+            }
+            byte_index += 1;
+            *index = byte_index;
+            return Some(token);
+        }
+    }
     None
 }
 fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
