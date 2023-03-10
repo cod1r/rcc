@@ -136,28 +136,34 @@ fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<T
         prefix: None,
         sequence: String::new(),
     };
-    if byte_index < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'8' {
-        if let Token::StringLiteral {
-            prefix,
-            sequence: _,
-        } = &mut token
-        {
-            *prefix = Some(
-                String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 2]).to_string(),
-            );
+    if byte_index < program_str_bytes.len()
+        && [b'u', b'U', b'L'].contains(&program_str_bytes[byte_index])
+    {
+        if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'8' {
+            if let Token::StringLiteral {
+                prefix,
+                sequence: _,
+            } = &mut token
+            {
+                *prefix = Some(
+                    String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 2])
+                        .to_string(),
+                );
+            }
+            byte_index += 2;
+        } else {
+            if let Token::StringLiteral {
+                prefix,
+                sequence: _,
+            } = &mut token
+            {
+                *prefix = Some(
+                    String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 1])
+                        .to_string(),
+                );
+            }
+            byte_index += 1;
         }
-        byte_index += 2;
-    } else {
-        if let Token::StringLiteral {
-            prefix,
-            sequence: _,
-        } = &mut token
-        {
-            *prefix = Some(
-                String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 1]).to_string(),
-            );
-        }
-        byte_index += 1;
     }
     if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\"' {
         byte_index += 1;
