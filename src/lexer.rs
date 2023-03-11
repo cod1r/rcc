@@ -952,6 +952,8 @@ fn lexer(program_str: String) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
+    use crate::lexer::match_string_literal;
+
     use super::{match_character_constant, match_floating_constant};
 
     #[test]
@@ -1231,5 +1233,50 @@ mod tests {
             _ => panic!(),
         }
         assert!(char_token.is_some());
+    }
+    #[test]
+    fn test_match_string_literal() {
+        let s = "U\"hi\"";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let string_literal = match_string_literal(s_bytes, &mut index);
+        match &string_literal {
+            Some(super::Token::StringLiteral { prefix, sequence }) => {
+                assert_eq!(prefix.clone().unwrap(), "U");
+                assert_eq!(sequence.clone(), "hi");
+            }
+            _ => panic!(),
+        }
+        assert!(string_literal.is_some());
+    }
+    #[test]
+    fn test_match_string_literal_no_prefix() {
+        let s = "\"hi\"";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let string_literal = match_string_literal(s_bytes, &mut index);
+        match &string_literal {
+            Some(super::Token::StringLiteral { prefix, sequence }) => {
+                assert!(prefix.is_none());
+                assert_eq!(sequence.clone(), "hi");
+            }
+            _ => panic!(),
+        }
+        assert!(string_literal.is_some());
+    }
+    #[test]
+    fn test_match_string_literal_no_prefix_universal_char_name() {
+        let s = "\"\\U0001F600\"";
+        let s_bytes = s.as_bytes();
+        let mut index = 0;
+        let string_literal = match_string_literal(s_bytes, &mut index);
+        match &string_literal {
+            Some(super::Token::StringLiteral { prefix, sequence }) => {
+                assert!(prefix.is_none());
+                assert_eq!(sequence.clone(), "\\U0001F600");
+            }
+            _ => panic!(),
+        }
+        assert!(string_literal.is_some());
     }
 }

@@ -1,11 +1,13 @@
+mod cpp;
 mod lexer;
+mod parser;
 use std::env;
-use std::error::Error;
-fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    if env::args().len() < 2 {
-        panic!("number of args low");
+fn main() {
+    let args = env::args();
+    let mut files = Vec::new();
+    for arg in args {
+        if arg.contains(".c") && arg.len() > 2 && !files.contains(&arg) {
+            files.push(arg);
+        }
     }
-    let _file_contents = std::fs::read_to_string(args[1].trim())?;
-    Ok(())
 }
