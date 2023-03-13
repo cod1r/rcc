@@ -2,6 +2,7 @@ mod cpp;
 mod lexer;
 mod parser;
 use std::env;
+// TODO: add flag to enable trigraphs
 fn main() {
     let args = env::args();
     let mut files = Vec::new();
