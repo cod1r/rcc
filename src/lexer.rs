@@ -1,6 +1,10 @@
+use std::ascii::AsciiExt;
+
 #[allow(non_camel_case_types)]
-enum Token {
+#[derive(PartialEq, Debug)]
+pub enum Token {
     IDENT(String),
+    NEWLINE,
     PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
     PUNCT_CLOSE_SQR,
@@ -198,11 +202,13 @@ fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<T
 fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
     match program_str_bytes[byte_index] {
-        b'0' => {
+        b'0' if byte_index + 1 < program_str_bytes.len()
+            && (program_str_bytes[byte_index + 1].is_ascii_digit()
+                || program_str_bytes[byte_index + 1].to_ascii_lowercase() == b'x') =>
+        {
             let mut is_hexa = false;
             if byte_index + 1 < program_str_bytes.len()
-                && (program_str_bytes[byte_index + 1] == b'x'
-                    || program_str_bytes[byte_index + 1] == b'X')
+                && program_str_bytes[byte_index + 1].to_ascii_uppercase() == b'x'
             {
                 byte_index += 2;
                 is_hexa = true;
@@ -815,7 +821,7 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
         return Some(Token::IDENT(
             bytes
                 .iter()
-                .map(|b| b.to_string())
+                .map(|b| (*b as char).to_string())
                 .fold(String::new(), |acc, e| acc + &e),
         ));
     } else if bytes
@@ -884,7 +890,7 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     const KEYWORD__THREAD_LOCAL: &str = "_Thread_local";
     let keyword = match &bytes
         .iter()
-        .map(|b| b.to_string())
+        .map(|b| (*b as char).to_string())
         .fold(String::new(), |acc, e| acc + &e)[..]
     {
         KEYWORD_AUTO => Some(Token::KEYWORD_AUTO),
@@ -938,13 +944,54 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     }
     keyword
 }
-fn lexer(program_str: String) -> Vec<Token> {
-    let tokens = Vec::new();
-    let program_str_bytes = program_str.as_bytes();
+fn chain_lex(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let punctuator = match_punctuator(&program_str_bytes, index);
+    if punctuator.is_some() {
+        return punctuator;
+    } else {
+        let keyword = match_keyword(&program_str_bytes, index);
+        if keyword.is_some() {
+            return keyword;
+        } else {
+            let identifier = match_identifier(&program_str_bytes, index);
+            if identifier.is_some() {
+                return identifier;
+            } else {
+                let string_lit = match_string_literal(&program_str_bytes, index);
+                if string_lit.is_some() {
+                    return string_lit;
+                } else {
+                    let integer_const = match_integer_constant(&program_str_bytes, index);
+                    if integer_const.is_some() {
+                        return integer_const;
+                    } else {
+                        let float_const = match_floating_constant(&program_str_bytes, index);
+                        if float_const.is_some() {
+                            return float_const;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+pub fn lexer(program_str_bytes: Vec<u8>) -> Vec<Token> {
+    let mut tokens = Vec::new();
     let mut index: usize = 0;
     while index < program_str_bytes.len() {
-        if !program_str_bytes[index].is_ascii_whitespace() {
-            let _matched_keyword = match_keyword(program_str_bytes, &mut index);
+        if program_str_bytes[index] == b'\n' {
+            tokens.push(Token::NEWLINE);
+            index += 1;
+        } else if !program_str_bytes[index].is_ascii_whitespace() {
+            let token = chain_lex(&program_str_bytes, &mut index);
+            if let Some(t) = token {
+                tokens.push(t);
+            } else {
+                panic!("unhandled token: {}", program_str_bytes[index] as char);
+            }
+        } else {
+            index += 1;
         }
     }
     tokens
@@ -952,9 +999,9 @@ fn lexer(program_str: String) -> Vec<Token> {
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::match_string_literal;
-
-    use super::{match_character_constant, match_floating_constant};
+    use super::{
+        lexer, match_character_constant, match_floating_constant, match_string_literal, Token,
+    };
 
     #[test]
     fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
@@ -1278,5 +1325,60 @@ mod tests {
             _ => panic!(),
         }
         assert!(string_literal.is_some());
+    }
+    #[test]
+    fn test_lexer() {
+        let s = "int main() {\nint hi = 4;\nreturn 0;\n}";
+        let s_bytes = s.as_bytes();
+        let tokens = lexer(s_bytes.to_vec());
+        let tokens_assert = vec![
+            Token::KEYWORD_INT,
+            Token::IDENT("main".to_string()),
+            Token::PUNCT_OPEN_PAR,
+            Token::PUNCT_CLOSE_PAR,
+            Token::PUNCT_OPEN_CURLY,
+            Token::NEWLINE,
+            Token::KEYWORD_INT,
+            Token::IDENT("hi".to_string()),
+            Token::PUNCT_ASSIGNMENT,
+            Token::CONSTANT_DEC_INT {
+                value: "4".to_string(),
+                suffix: None,
+            },
+            Token::PUNCT_SEMI_COLON,
+            Token::NEWLINE,
+            Token::KEYWORD_RETURN,
+            Token::CONSTANT_DEC_INT {
+                value: "0".to_string(),
+                suffix: None,
+            },
+            Token::PUNCT_SEMI_COLON,
+            Token::NEWLINE,
+            Token::PUNCT_CLOSE_CURLY,
+        ];
+        assert_eq!(tokens, tokens_assert);
+    }
+    #[test]
+    fn test_lexer_directives() {
+        let s = "#include <stdio.h>\nint main() {}";
+        let s_bytes = s.as_bytes();
+        let tokens = lexer(s_bytes.to_vec());
+        let tokens_assert = vec![
+            Token::PUNCT_HASH,
+            Token::IDENT("include".to_string()),
+            Token::PUNCT_LESS_THAN,
+            Token::IDENT("stdio".to_string()),
+            Token::PUNCT_DOT,
+            Token::IDENT("h".to_string()),
+            Token::PUNCT_GREATER_THAN,
+            Token::NEWLINE,
+            Token::KEYWORD_INT,
+            Token::IDENT("main".to_string()),
+            Token::PUNCT_OPEN_PAR,
+            Token::PUNCT_CLOSE_PAR,
+            Token::PUNCT_OPEN_CURLY,
+            Token::PUNCT_CLOSE_CURLY,
+        ];
+        assert_eq!(tokens, tokens_assert);
     }
 }

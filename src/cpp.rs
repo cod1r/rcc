@@ -1,14 +1,5 @@
-/*
-   ??= #
-   ??( [
-   ??/ \
-   ??) ]
-   ??’ ^
-   ??< {
-   ??! |
-   ??> }
-   ??- ~
-*/
+use crate::lexer;
+
 fn comments(bytes: &[u8]) -> Vec<u8> {
     let mut byte_index = 0;
     let mut within_quotes = false;
@@ -43,10 +34,20 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
     }
     comments_removed
 }
-fn preprocessing_directives(bytes: &[u8]) -> Vec<u8> {
+fn preprocessing_directives(tokens: &[lexer::Token]) -> Vec<u8> {
+    // the C standard talks about "grouping" where the operands are grouped with the operators
+    //
+    // if <condition>; the condition is an integer constant expression except that all identifiers
+    // are treated like they are either macro names or not.
+    // Right now, I'm confused as to where in the spec does it talk about what punctuators are
+    // allowed in the expressions following #if preprocessor directives
+    // The constant-expression section in the c17 spec sort of states why...i guess.
+    // An integer constant expression shall have integer type and shall only have operands that are integer
+    // constants, enumeration constants, character constants
     todo!()
 }
-pub fn cpp(program_str: Vec<u8>) -> Vec<u8> {
+// TODO: add flag options so that the user could specify if they wanted to only preprocess
+pub fn cpp(program_str: Vec<u8>) -> Vec<lexer::Token> {
     let backslash_newline_spliced = program_str
         .iter()
         .map(|b| *b as char)
@@ -54,7 +55,7 @@ pub fn cpp(program_str: Vec<u8>) -> Vec<u8> {
         .replace("\\\n", "");
     let backslash_newline_spliced = backslash_newline_spliced.as_bytes();
     let comments_removed = comments(backslash_newline_spliced);
-    let preprocessed = preprocessing_directives(&comments_removed);
+    let lexed_tokens = lexer::lexer(comments_removed);
     todo!()
 }
 
