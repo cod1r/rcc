@@ -1,9 +1,8 @@
-use std::ascii::AsciiExt;
-
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug)]
 pub enum Token {
     IDENT(String),
+    HeaderName(String),
     NEWLINE,
     PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
@@ -131,7 +130,6 @@ pub enum Token {
         prefix: Option<String>,
         sequence: String,
     },
-    CONSTANT_ENUM(String),
     CONSTANT_CHAR(String),
 }
 fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
@@ -208,7 +206,7 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
         {
             let mut is_hexa = false;
             if byte_index + 1 < program_str_bytes.len()
-                && program_str_bytes[byte_index + 1].to_ascii_uppercase() == b'x'
+                && program_str_bytes[byte_index + 1].to_ascii_lowercase() == b'x'
             {
                 byte_index += 2;
                 is_hexa = true;
@@ -809,27 +807,12 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
         byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
+    let utf8_lossy = String::from_utf8_lossy(bytes).to_string();
     // TODO: we need to check for universal character names
-    if !bytes.is_empty()
-        && !bytes[0].is_ascii_digit()
-        && bytes
-            .iter()
-            .fold(String::new(), |acc, e| acc + &e.to_string())
-            != "__func__"
-    {
+    if !bytes.is_empty() && !bytes[0].is_ascii_digit() && utf8_lossy != "__func__" {
         *index = byte_index;
-        return Some(Token::IDENT(
-            bytes
-                .iter()
-                .map(|b| (*b as char).to_string())
-                .fold(String::new(), |acc, e| acc + &e),
-        ));
-    } else if bytes
-        .iter()
-        .map(|b| b.to_string())
-        .fold(String::new(), |acc, e| acc + &e)
-        == "__func__"
-    {
+        return Some(Token::IDENT(utf8_lossy));
+    } else if utf8_lossy == "__func__" {
         *index = byte_index;
         return Some(Token::PREDEF_IDENT___FUNC__);
     }
@@ -888,11 +871,7 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     const KEYWORD__NORETURN: &str = "_Noreturn";
     const KEYWORD__STATIC_ASSERT: &str = "_Static_assert";
     const KEYWORD__THREAD_LOCAL: &str = "_Thread_local";
-    let keyword = match &bytes
-        .iter()
-        .map(|b| (*b as char).to_string())
-        .fold(String::new(), |acc, e| acc + &e)[..]
-    {
+    let keyword = match String::from_utf8_lossy(bytes).to_string().as_str() {
         KEYWORD_AUTO => Some(Token::KEYWORD_AUTO),
         KEYWORD_BREAK => Some(Token::KEYWORD_BREAK),
         KEYWORD_CASE => Some(Token::KEYWORD_CASE),
@@ -944,57 +923,108 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     }
     keyword
 }
-fn chain_lex(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
-    let punctuator = match_punctuator(&program_str_bytes, index);
-    if punctuator.is_some() {
-        return punctuator;
-    } else {
-        let keyword = match_keyword(&program_str_bytes, index);
-        if keyword.is_some() {
-            return keyword;
-        } else {
-            let identifier = match_identifier(&program_str_bytes, index);
-            if identifier.is_some() {
-                return identifier;
-            } else {
-                let string_lit = match_string_literal(&program_str_bytes, index);
-                if string_lit.is_some() {
-                    return string_lit;
-                } else {
-                    let integer_const = match_integer_constant(&program_str_bytes, index);
-                    if integer_const.is_some() {
-                        return integer_const;
-                    } else {
-                        let float_const = match_floating_constant(&program_str_bytes, index);
-                        if float_const.is_some() {
-                            return float_const;
-                        }
-                    }
-                }
-            }
+fn match_header_name(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+    let mut byte_index = *index;
+    let beginning_byte = program_str_bytes[byte_index];
+    let ending_byte = match beginning_byte {
+        b'"' => Some(b'"'),
+        b'<' => Some(b'>'),
+        _ => None,
+    };
+    if ending_byte.is_some() {
+        byte_index += 1;
+        let start = byte_index;
+        let ending_byte = ending_byte.expect("ending byte to be some");
+        while byte_index < program_str_bytes.len() && program_str_bytes[byte_index] != ending_byte {
+            byte_index += 1;
+        }
+        if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == ending_byte {
+            let token = Some(Token::HeaderName(
+                String::from_utf8_lossy(&program_str_bytes[start..byte_index]).to_string(),
+            ));
+            *index = byte_index + 1;
+            return token;
         }
     }
     None
 }
-pub fn lexer(program_str_bytes: Vec<u8>) -> Vec<Token> {
+fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option<Token> {
+    let punctuator = match_punctuator(&program_str_bytes, index);
+    if punctuator.is_some() {
+        return punctuator;
+    }
+    if !is_pp {
+        let keyword = match_keyword(&program_str_bytes, index);
+        if keyword.is_some() {
+            return keyword;
+        }
+    }
+    let identifier = match_identifier(&program_str_bytes, index);
+    if identifier.is_some() {
+        return identifier;
+    }
+    let string_lit = match_string_literal(&program_str_bytes, index);
+    if string_lit.is_some() {
+        return string_lit;
+    }
+    let integer_const = match_integer_constant(&program_str_bytes, index);
+    if integer_const.is_some() {
+        return integer_const;
+    }
+    let float_const = match_floating_constant(&program_str_bytes, index);
+    if float_const.is_some() {
+        return float_const;
+    }
+    None
+}
+pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut index: usize = 0;
+    let mut is_pp_directive = false;
+    let mut is_include_directive = false;
     while index < program_str_bytes.len() {
         if program_str_bytes[index] == b'\n' {
             tokens.push(Token::NEWLINE);
             index += 1;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
-            let token = chain_lex(&program_str_bytes, &mut index);
+            if is_include_directive
+                && (program_str_bytes[index] == b'"' || program_str_bytes[index] == b'<')
+            {
+                let start_byte = program_str_bytes[index];
+                if let Some(hn) = match_header_name(&program_str_bytes, &mut index) {
+                    if start_byte == b'<' {
+                        tokens.push(Token::PUNCT_LESS_THAN);
+                        tokens.push(hn);
+                        tokens.push(Token::PUNCT_GREATER_THAN);
+                    } else {
+                        tokens.push(hn);
+                    }
+                    is_pp_directive = false;
+                    is_include_directive = false;
+                    continue;
+                }
+            }
+            let token = chain_lex(&program_str_bytes, &mut index, is_pp);
             if let Some(t) = token {
+                match &t {
+                    Token::PUNCT_HASH => is_pp_directive = true,
+                    Token::IDENT(id) if id == "include" && is_pp_directive => {
+                        is_include_directive = true;
+                    }
+                    _ => (),
+                }
                 tokens.push(t);
             } else {
-                panic!("unhandled token: {}", program_str_bytes[index] as char);
+                return Err(format!(
+                    "unhandled token: \"{}\" at index: {}",
+                    program_str_bytes[index] as char, index
+                ));
             }
         } else {
             index += 1;
         }
     }
-    tokens
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -1327,10 +1357,10 @@ mod tests {
         assert!(string_literal.is_some());
     }
     #[test]
-    fn test_lexer() {
+    fn test_lexer() -> Result<(), String> {
         let s = "int main() {\nint hi = 4;\nreturn 0;\n}";
         let s_bytes = s.as_bytes();
-        let tokens = lexer(s_bytes.to_vec());
+        let tokens = lexer(s_bytes.to_vec(), false)?;
         let tokens_assert = vec![
             Token::KEYWORD_INT,
             Token::IDENT("main".to_string()),
@@ -1357,22 +1387,21 @@ mod tests {
             Token::PUNCT_CLOSE_CURLY,
         ];
         assert_eq!(tokens, tokens_assert);
+        Ok(())
     }
     #[test]
-    fn test_lexer_directives() {
+    fn test_lexer_directives() -> Result<(), String> {
         let s = "#include <stdio.h>\nint main() {}";
         let s_bytes = s.as_bytes();
-        let tokens = lexer(s_bytes.to_vec());
+        let tokens = lexer(s_bytes.to_vec(), true)?;
         let tokens_assert = vec![
             Token::PUNCT_HASH,
             Token::IDENT("include".to_string()),
             Token::PUNCT_LESS_THAN,
-            Token::IDENT("stdio".to_string()),
-            Token::PUNCT_DOT,
-            Token::IDENT("h".to_string()),
+            Token::HeaderName("stdio.h".to_string()),
             Token::PUNCT_GREATER_THAN,
             Token::NEWLINE,
-            Token::KEYWORD_INT,
+            Token::IDENT("int".to_string()),
             Token::IDENT("main".to_string()),
             Token::PUNCT_OPEN_PAR,
             Token::PUNCT_CLOSE_PAR,
@@ -1380,5 +1409,39 @@ mod tests {
             Token::PUNCT_CLOSE_CURLY,
         ];
         assert_eq!(tokens, tokens_assert);
+        Ok(())
+    }
+    #[test]
+    fn test_lexer_if_directives() -> Result<(), String> {
+        let s = "#if 1 + 1\n#define CHICKEN 5\n#endif\n";
+        let s_bytes = s.as_bytes();
+        let tokens = lexer(s_bytes.to_vec(), true)?;
+        let tokens_assert = vec![
+            Token::PUNCT_HASH,
+            Token::IDENT("if".to_string()),
+            Token::CONSTANT_DEC_INT {
+                value: "1".to_string(),
+                suffix: None,
+            },
+            Token::PUNCT_PLUS,
+            Token::CONSTANT_DEC_INT {
+                value: "1".to_string(),
+                suffix: None,
+            },
+            Token::NEWLINE,
+            Token::PUNCT_HASH,
+            Token::IDENT("define".to_string()),
+            Token::IDENT("CHICKEN".to_string()),
+            Token::CONSTANT_DEC_INT {
+                value: "5".to_string(),
+                suffix: None,
+            },
+            Token::NEWLINE,
+            Token::PUNCT_HASH,
+            Token::IDENT("endif".to_string()),
+            Token::NEWLINE,
+        ];
+        assert_eq!(tokens, tokens_assert);
+        Ok(())
     }
 }

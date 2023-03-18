@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::lexer;
 
 fn comments(bytes: &[u8]) -> Vec<u8> {
@@ -34,7 +36,49 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
     }
     comments_removed
 }
-fn preprocessing_directives(tokens: &[lexer::Token]) -> Vec<u8> {
+fn include_directive(
+    tokens: &[lexer::Token],
+    include_paths: &[&str],
+    defines: &HashMap<&str, &str>,
+) -> Result<Vec<lexer::Token>, &'static str> {
+    // 2 because index 0 and index 1 are the # and "include" tokens
+    let mut index: usize = 2;
+    let mut file_name;
+    match &tokens[index] {
+        lexer::Token::PUNCT_LESS_THAN => {}
+        lexer::Token::StringLiteral { prefix, sequence } => {
+            if prefix.is_some() {
+                return Err("unknown token in include directive");
+            }
+            file_name = sequence.clone();
+        }
+        lexer::Token::IDENT(identifier) => {}
+        _ => return Err("unknown token in include directive"),
+    }
+    for path in include_paths {
+        match std::fs::read_dir(path) {
+            Ok(mut e) => {
+                while let Some(entry) = e.next() {
+                    match entry {
+                        Ok(aha) => {}
+                        Err(_) => {}
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    todo!()
+}
+fn if_directive(tokens: &[lexer::Token]) {}
+fn define_directive(tokens: &[lexer::Token]) {}
+fn error_directive(tokens: &[lexer::Token]) {}
+fn line_directive(tokens: &[lexer::Token]) {}
+fn undef_directive(tokens: &[lexer::Token]) {}
+fn preprocessing_directives(
+    tokens: &[lexer::Token],
+    include_paths: &[&str],
+) -> Result<Vec<lexer::Token>, &'static str> {
     // the C standard talks about "grouping" where the operands are grouped with the operators
     //
     // if <condition>; the condition is an integer constant expression except that all identifiers
@@ -44,6 +88,47 @@ fn preprocessing_directives(tokens: &[lexer::Token]) -> Vec<u8> {
     // The constant-expression section in the c17 spec sort of states why...i guess.
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
+    let mut defines = HashMap::new();
+    let mut index: usize = 0;
+    while index < tokens.len() {
+        match tokens[index] {
+            lexer::Token::PUNCT_HASH => {
+                if index + 1 < tokens.len() {
+                    let mut newline = index + 2;
+                    while newline < tokens.len()
+                        && match tokens[newline] {
+                            lexer::Token::NEWLINE => false,
+                            _ => true,
+                        }
+                    {
+                        newline += 1;
+                    }
+                    match &tokens[index + 1] {
+                        lexer::Token::IDENT(s) => match s.as_str() {
+                            "include" => {
+                                include_directive(
+                                    &tokens[index..newline],
+                                    include_paths,
+                                    &defines,
+                                )?;
+                            }
+                            "if" => {}
+                            "ifdef" => {}
+                            "ifndef" => {}
+                            "define" => {}
+                            "undef" => {}
+                            "error" => {}
+                            "line" => {}
+                            "pragma" => {}
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     todo!()
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
@@ -55,21 +140,20 @@ pub fn cpp(program_str: Vec<u8>) -> Vec<lexer::Token> {
         .replace("\\\n", "");
     let backslash_newline_spliced = backslash_newline_spliced.as_bytes();
     let comments_removed = comments(backslash_newline_spliced);
-    let lexed_tokens = lexer::lexer(comments_removed);
+    let lexed_tokens = lexer::lexer(comments_removed, true);
     todo!()
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::comments;
     #[test]
     fn comments_removal_outside_quotes() {
         let src = "int main() {\n\"hi\"; // this is me\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes);
-        let stringed = removed
-            .iter()
-            .fold(String::new(), |acc, e| acc + &(*e as char).to_string());
+        let stringed = String::from_utf8_lossy(&removed);
         assert_eq!(stringed, "int main() {\n\"hi\";  \n}\n");
     }
     #[test]
@@ -77,9 +161,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; '// this is me';\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes);
-        let stringed = removed
-            .iter()
-            .fold(String::new(), |acc, e| acc + &(*e as char).to_string());
+        let stringed = String::from_utf8_lossy(&removed);
         assert_eq!(stringed, "int main() {\n\"hi\"; '// this is me';\n}\n");
     }
     #[test]
@@ -87,9 +169,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; \"// this is me\";\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes);
-        let stringed = removed
-            .iter()
-            .fold(String::new(), |acc, e| acc + &(*e as char).to_string());
+        let stringed = String::from_utf8_lossy(&removed);
         assert_eq!(stringed, "int main() {\n\"hi\"; \"// this is me\";\n}\n");
     }
 }
