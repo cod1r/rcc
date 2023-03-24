@@ -1,2 +1,1 @@
-fn parser() {
-}
+fn parser() {}

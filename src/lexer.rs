@@ -1,5 +1,5 @@
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum Token {
     IDENT(String),
     HeaderName(String),
@@ -992,13 +992,7 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
             {
                 let start_byte = program_str_bytes[index];
                 if let Some(hn) = match_header_name(&program_str_bytes, &mut index) {
-                    if start_byte == b'<' {
-                        tokens.push(Token::PUNCT_LESS_THAN);
-                        tokens.push(hn);
-                        tokens.push(Token::PUNCT_GREATER_THAN);
-                    } else {
-                        tokens.push(hn);
-                    }
+                    tokens.push(hn);
                     is_pp_directive = false;
                     is_include_directive = false;
                     continue;
@@ -1397,9 +1391,7 @@ mod tests {
         let tokens_assert = vec![
             Token::PUNCT_HASH,
             Token::IDENT("include".to_string()),
-            Token::PUNCT_LESS_THAN,
             Token::HeaderName("stdio.h".to_string()),
-            Token::PUNCT_GREATER_THAN,
             Token::NEWLINE,
             Token::IDENT("int".to_string()),
             Token::IDENT("main".to_string()),

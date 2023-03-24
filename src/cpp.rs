@@ -37,30 +37,33 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
     comments_removed
 }
 fn include_directive(
-    tokens: &[lexer::Token],
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    end: usize,
     include_paths: &[&str],
-    defines: &HashMap<&str, &str>,
+    defines: &HashMap<String, Vec<lexer::Token>>,
 ) -> Result<Vec<lexer::Token>, &'static str> {
-    // 2 because index 0 and index 1 are the # and "include" tokens
-    let mut index: usize = 2;
-    let mut file_name;
-    match &tokens[index] {
-        lexer::Token::PUNCT_LESS_THAN => {}
-        lexer::Token::StringLiteral { prefix, sequence } => {
-            if prefix.is_some() {
-                return Err("unknown token in include directive");
-            }
-            file_name = sequence.clone();
+    todo!(
+        "WE HAVE TO KEEP ON INCLUDING FILES AND LEXING THEM UNTIL THERE ARE NO MORE INCLUDE FILES"
+    );
+    let index_header_file = index + 2;
+    let mut file_name = String::new();
+    match &tokens[index_header_file] {
+        lexer::Token::HeaderName(hn) => {
+            file_name = hn.clone();
         }
         lexer::Token::IDENT(identifier) => {}
         _ => return Err("unknown token in include directive"),
     }
     for path in include_paths {
         match std::fs::read_dir(path) {
-            Ok(mut e) => {
-                while let Some(entry) = e.next() {
-                    match entry {
-                        Ok(aha) => {}
+            Ok(mut ei) => {
+                while let Some(entry_res) = ei.next() {
+                    match entry_res {
+                        Ok(entry) => {
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            if name == file_name {}
+                        }
                         Err(_) => {}
                     }
                 }
@@ -70,13 +73,49 @@ fn include_directive(
     }
     todo!()
 }
-fn if_directive(tokens: &[lexer::Token]) {}
-fn define_directive(tokens: &[lexer::Token]) {}
-fn error_directive(tokens: &[lexer::Token]) {}
-fn line_directive(tokens: &[lexer::Token]) {}
-fn undef_directive(tokens: &[lexer::Token]) {}
+fn if_directive(tokens: &mut Vec<lexer::Token>) {
+    todo!()
+}
+fn define_directive(
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    end: usize,
+    defines: &mut HashMap<String, Vec<lexer::Token>>,
+) -> Result<(), &'static str> {
+    let index_of_identifier = index + 2;
+    if let Some(lexer::Token::IDENT(identifier_to_be_replaced)) = tokens.get(index_of_identifier) {
+        defines.insert(
+            identifier_to_be_replaced.to_string(),
+            tokens[index + 3..end].to_vec(),
+        );
+        return Ok(());
+    }
+    Err("unknown token in define directive")
+}
+fn error_directive(tokens: &mut Vec<lexer::Token>) {
+    todo!()
+}
+fn line_directive(
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    end: usize,
+) -> Result<(), &'static str> {
+    todo!()
+}
+fn undef_directive(
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    end: usize,
+    defines: &mut HashMap<String, Vec<lexer::Token>>,
+) -> Result<(), &'static str> {
+    let index_of_identifier = index + 2;
+    if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
+        defines.remove(identifier_to_be_undef);
+    }
+    Err("unknown token in undef directive")
+}
 fn preprocessing_directives(
-    tokens: &[lexer::Token],
+    tokens: &mut Vec<lexer::Token>,
     include_paths: &[&str],
 ) -> Result<Vec<lexer::Token>, &'static str> {
     // the C standard talks about "grouping" where the operands are grouped with the operators
@@ -103,33 +142,41 @@ fn preprocessing_directives(
                     {
                         newline += 1;
                     }
-                    match &tokens[index + 1] {
-                        lexer::Token::IDENT(s) => match s.as_str() {
-                            "include" => {
-                                include_directive(
-                                    &tokens[index..newline],
-                                    include_paths,
-                                    &defines,
-                                )?;
-                            }
-                            "if" => {}
-                            "ifdef" => {}
-                            "ifndef" => {}
-                            "define" => {}
-                            "undef" => {}
-                            "error" => {}
-                            "line" => {}
-                            "pragma" => {}
+                    if let Some(lexer::Token::NEWLINE) = tokens.get(newline) {
+                        match &tokens[index + 1] {
+                            lexer::Token::IDENT(s) => match s.as_str() {
+                                "include" => {
+                                    *tokens = include_directive(
+                                        tokens,
+                                        index,
+                                        newline,
+                                        include_paths,
+                                        &defines,
+                                    )?;
+                                }
+                                "if" => {
+                                }
+                                "ifdef" => {}
+                                "ifndef" => {}
+                                "define" => {}
+                                "undef" => {
+                                    undef_directive(tokens, index, newline, &mut defines)?;
+                                }
+                                "error" => {}
+                                "line" => {}
+                                "pragma" => {}
+                                _ => {}
+                            },
                             _ => {}
-                        },
-                        _ => {}
+                        }
+                        index = newline + 1;
                     }
                 }
             }
             _ => {}
         }
     }
-    todo!()
+    Err("unable to preprocess")
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
 pub fn cpp(program_str: Vec<u8>) -> Vec<lexer::Token> {
