@@ -44,7 +44,7 @@ fn get_header_name_from_tokens(tokens: &[lexer::Token]) -> Option<String> {
             lexer::Token::IDENT(s) => Some(s.as_str()),
             _ => t.to_string(),
         });
-        if stringified.find(|t_opt| t_opt.is_none()).is_some() {
+        if stringified.any(|t_opt| t_opt.is_none()) {
             return None;
         }
         return Some(stringified.fold(String::new(), |mut acc, e| {
@@ -112,38 +112,32 @@ fn include_directive(
     }
     for path in include_paths {
         if let Ok(mut ei) = std::fs::read_dir(path) {
-            while let Some(entry_res) = ei.next() {
-                match entry_res {
-                    Ok(entry) => {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        if name == file_name {
-                            if let Ok(file_contents) = std::fs::read(path.to_string() + "/" + &name)
-                            {
-                                if let Ok(tokens_from_file) = lexer::lexer(file_contents, true) {
-                                    loop {
-                                        if let lexer::Token::NEWLINE = tokens[index] {
-                                            tokens.remove(index);
-                                            break;
-                                        }
-                                        tokens.remove(index);
-                                    }
-                                    for t in tokens_from_file {
-                                        tokens.insert(index, t);
-                                        index += 1;
-                                    }
-                                    return Ok(());
+            for entry in ei.by_ref().flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name == file_name {
+                    if let Ok(file_contents) = std::fs::read(path.to_string() + "/" + &name) {
+                        if let Ok(tokens_from_file) = lexer::lexer(file_contents, true) {
+                            loop {
+                                if let lexer::Token::NEWLINE = tokens[index] {
+                                    tokens.remove(index);
+                                    break;
                                 }
+                                tokens.remove(index);
                             }
+                            for t in tokens_from_file {
+                                tokens.insert(index, t);
+                                index += 1;
+                            }
+                            return Ok(());
                         }
                     }
-                    Err(_) => {}
                 }
             }
         }
     }
     Err(String::from("file not found"))
 }
-fn if_directive(tokens: &mut Vec<lexer::Token>) {
+fn if_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) {
     todo!()
 }
 fn define_directive(
@@ -212,10 +206,7 @@ fn preprocessing_directives(
                 if index + 1 < tokens.len() {
                     let mut newline = index + 2;
                     while newline < tokens.len()
-                        && match tokens[newline] {
-                            lexer::Token::NEWLINE => false,
-                            _ => true,
-                        }
+                        && !matches!(tokens[newline], lexer::Token::NEWLINE)
                     {
                         newline += 1;
                     }
@@ -237,6 +228,7 @@ fn preprocessing_directives(
                                 "define" => {
                                     define_directive(tokens, index, newline, &mut defines)?;
                                 }
+                                "defined" => todo!(),
                                 "undef" => {
                                     undef_directive(tokens, index, newline, &mut defines)?;
                                 }
@@ -353,7 +345,10 @@ mod tests {
             lexer::Token::PUNCT_CLOSE_PAR,
             lexer::Token::PUNCT_OPEN_CURLY,
             lexer::Token::NEWLINE,
-            lexer::Token::CONSTANT_DEC_INT { value: 5.to_string(), suffix: None },
+            lexer::Token::CONSTANT_DEC_INT {
+                value: 5.to_string(),
+                suffix: None,
+            },
             lexer::Token::PUNCT_SEMI_COLON,
             lexer::Token::NEWLINE,
             lexer::Token::PUNCT_CLOSE_CURLY,

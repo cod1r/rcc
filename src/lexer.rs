@@ -984,29 +984,29 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     keyword
 }
 fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option<Token> {
-    let punctuator = match_punctuator(&program_str_bytes, index);
+    let punctuator = match_punctuator(program_str_bytes, index);
     if punctuator.is_some() {
         return punctuator;
     }
     if !is_pp {
-        let keyword = match_keyword(&program_str_bytes, index);
+        let keyword = match_keyword(program_str_bytes, index);
         if keyword.is_some() {
             return keyword;
         }
     }
-    let identifier = match_identifier(&program_str_bytes, index);
+    let identifier = match_identifier(program_str_bytes, index);
     if identifier.is_some() {
         return identifier;
     }
-    let string_lit = match_string_literal(&program_str_bytes, index);
+    let string_lit = match_string_literal(program_str_bytes, index);
     if string_lit.is_some() {
         return string_lit;
     }
-    let integer_const = match_integer_constant(&program_str_bytes, index);
+    let integer_const = match_integer_constant(program_str_bytes, index);
     if integer_const.is_some() {
         return integer_const;
     }
-    let float_const = match_floating_constant(&program_str_bytes, index);
+    let float_const = match_floating_constant(program_str_bytes, index);
     if float_const.is_some() {
         return float_const;
     }
