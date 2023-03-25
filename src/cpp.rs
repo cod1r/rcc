@@ -131,9 +131,9 @@ fn include_directive(
                                         tokens.insert(index, t);
                                         index += 1;
                                     }
+                                    return Ok(());
                                 }
                             }
-                            return Ok(());
                         }
                     }
                     Err(_) => {}
@@ -184,12 +184,12 @@ fn undef_directive(
     index: usize,
     end: usize,
     defines: &mut HashMap<String, Vec<lexer::Token>>,
-) -> Result<(), &'static str> {
+) -> Result<(), String> {
     let index_of_identifier = index + 2;
     if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
         defines.remove(identifier_to_be_undef);
     }
-    Err("unknown token in undef directive")
+    Err(String::from("unknown token in undef directive"))
 }
 fn preprocessing_directives(
     tokens: &mut Vec<lexer::Token>,
@@ -207,7 +207,7 @@ fn preprocessing_directives(
     let mut defines = HashMap::new();
     let mut index: usize = 0;
     while index < tokens.len() {
-        match tokens[index] {
+        match &mut tokens[index] {
             lexer::Token::PUNCT_HASH => {
                 if index + 1 < tokens.len() {
                     let mut newline = index + 2;
@@ -220,8 +220,8 @@ fn preprocessing_directives(
                         newline += 1;
                     }
                     if let Some(lexer::Token::NEWLINE) = tokens.get(newline) {
-                        match &tokens[index + 1] {
-                            lexer::Token::IDENT(s) => match s.as_str() {
+                        if let lexer::Token::IDENT(s) = &tokens[index + 1] {
+                            match s.as_str() {
                                 "include" => {
                                     include_directive(
                                         tokens,
@@ -234,23 +234,41 @@ fn preprocessing_directives(
                                 "if" => {}
                                 "ifdef" => {}
                                 "ifndef" => {}
-                                "define" => {}
+                                "define" => {
+                                    define_directive(tokens, index, newline, &mut defines)?;
+                                }
                                 "undef" => {
                                     undef_directive(tokens, index, newline, &mut defines)?;
                                 }
                                 "error" => {}
                                 "line" => {}
                                 "pragma" => {}
-                                _ => {}
-                            },
-                            _ => {}
+                                _ => {
+                                    index = newline + 1;
+                                }
+                            }
                         }
-                        todo!("how should we change the index");
                     }
                 }
             }
-            _ => {}
+            lexer::Token::IDENT(id) => {
+                if let Some(replacement) = defines.get(id) {
+                    tokens.remove(index);
+                    for t in replacement {
+                        tokens.insert(index, t.clone());
+                        index += 1;
+                    }
+                } else {
+                    index += 1;
+                }
+            }
+            _ => {
+                index += 1;
+            }
         }
+    }
+    if index >= tokens.len() {
+        return Ok(());
     }
     Err(String::from("unable to preprocess"))
 }
@@ -273,7 +291,7 @@ mod tests {
     use crate::lexer::{self, lexer};
     use std::collections::HashMap;
 
-    use super::{comments, include_directive};
+    use super::{comments, include_directive, preprocessing_directives};
     #[test]
     fn comments_removal_outside_quotes() {
         let src = "int main() {\n\"hi\"; // this is me\n}\n";
@@ -316,6 +334,29 @@ mod tests {
             lexer::Token::NEWLINE,
             lexer::Token::PUNCT_CLOSE_CURLY,
             lexer::Token::NEWLINE,
+        ];
+        assert_eq!(tokens, assert_tokens);
+        Ok(())
+    }
+    #[test]
+    fn preprocess_test() -> Result<(), String> {
+        let src = r##"#include "hi2.h"
+        int main() {
+        hi;
+        }"##;
+        let mut tokens = lexer(src.as_bytes().to_vec(), true)?;
+        preprocessing_directives(&mut tokens, &["./test_c_files"])?;
+        let assert_tokens = [
+            lexer::Token::IDENT(String::from("int")),
+            lexer::Token::IDENT(String::from("main")),
+            lexer::Token::PUNCT_OPEN_PAR,
+            lexer::Token::PUNCT_CLOSE_PAR,
+            lexer::Token::PUNCT_OPEN_CURLY,
+            lexer::Token::NEWLINE,
+            lexer::Token::CONSTANT_DEC_INT { value: 5.to_string(), suffix: None },
+            lexer::Token::PUNCT_SEMI_COLON,
+            lexer::Token::NEWLINE,
+            lexer::Token::PUNCT_CLOSE_CURLY,
         ];
         assert_eq!(tokens, assert_tokens);
         Ok(())
