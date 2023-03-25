@@ -2,7 +2,6 @@
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
     IDENT(String),
-    HeaderName(String),
     NEWLINE,
     PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
@@ -131,6 +130,67 @@ pub enum Token {
         sequence: String,
     },
     CONSTANT_CHAR(String),
+}
+impl Token {
+    pub fn to_string(&self) -> Option<&str> {
+        match self {
+            Token::PUNCT_OPEN_SQR => Some("["),
+            Token::PUNCT_CLOSE_SQR => Some("]"),
+            Token::PUNCT_OPEN_PAR => Some("("),
+            Token::PUNCT_CLOSE_PAR => Some(")"),
+            Token::PUNCT_OPEN_CURLY => Some("{"),
+            Token::PUNCT_CLOSE_CURLY => Some("}"),
+            Token::PUNCT_DOT => Some("."),
+            Token::PUNCT_ARROW => Some("=>"),
+            Token::PUNCT_INCREMENT => Some("++"),
+            Token::PUNCT_DECREMENT => Some("--"),
+            Token::PUNCT_AND_BIT => Some("&"),
+            Token::PUNCT_MULT => Some("*"),
+            Token::PUNCT_PLUS => Some("+"),
+            Token::PUNCT_MINUS => Some("-"),
+            Token::PUNCT_TILDE => Some("~"),
+            Token::PUNCT_NOT_BOOL => Some("!"),
+            Token::PUNCT_DIV => Some("/"),
+            Token::PUNCT_MODULO => Some("%"),
+            Token::PUNCT_BITSHFT_LEFT => Some("<<"),
+            Token::PUNCT_BITSHFT_RIGHT => Some(">>"),
+            Token::PUNCT_LESS_THAN => Some("<"),
+            Token::PUNCT_GREATER_THAN => Some(">"),
+            Token::PUNCT_LESS_THAN_EQ => Some("<="),
+            Token::PUNCT_GREATER_THAN_EQ => Some(">="),
+            Token::PUNCT_EQ_BOOL => Some("=="),
+            Token::PUNCT_NOT_EQ_BOOL => Some("!="),
+            Token::PUNCT_XOR_BIT => Some("^"),
+            Token::PUNCT_OR_BIT => Some("|"),
+            Token::PUNCT_AND_BOOL => Some("&&"),
+            Token::PUNCT_OR_BOOL => Some("||"),
+            Token::PUNCT_QUESTION_MARK => Some("?"),
+            Token::PUNCT_COLON => Some(":"),
+            Token::PUNCT_SEMI_COLON => Some(";"),
+            Token::PUNCT_ELLIPSIS => Some("..."),
+            Token::PUNCT_ASSIGNMENT => Some("="),
+            Token::PUNCT_MULT_ASSIGN => Some("*="),
+            Token::PUNCT_DIV_ASSIGN => Some("/="),
+            Token::PUNCT_MODULO_ASSIGN => Some("%="),
+            Token::PUNCT_ADD_ASSIGN => Some("+="),
+            Token::PUNCT_SUB_ASSIGN => Some("-="),
+            Token::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<="),
+            Token::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>="),
+            Token::PUNCT_AND_BIT_ASSIGN => Some("&="),
+            Token::PUNCT_XOR_BIT_ASSIGN => Some("^="),
+            Token::PUNCT_OR_BIT_ASSIGN => Some("|="),
+            Token::PUNCT_COMMA => Some(","),
+            Token::PUNCT_HASH => Some("#"),
+            Token::PUNCT_HASH_HASH => Some("##"),
+            Token::PUNCT_DIGRAPH_OPEN_SQR => Some("<:"),
+            Token::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>"),
+            Token::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%"),
+            Token::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>"),
+            Token::PUNCT_DIGRAPH_HASH => Some("%:"),
+            Token::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:"),
+            _ => None,
+        }
+    }
 }
 fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
@@ -923,31 +983,6 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     }
     keyword
 }
-fn match_header_name(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
-    let mut byte_index = *index;
-    let beginning_byte = program_str_bytes[byte_index];
-    let ending_byte = match beginning_byte {
-        b'"' => Some(b'"'),
-        b'<' => Some(b'>'),
-        _ => None,
-    };
-    if ending_byte.is_some() {
-        byte_index += 1;
-        let start = byte_index;
-        let ending_byte = ending_byte.expect("ending byte to be some");
-        while byte_index < program_str_bytes.len() && program_str_bytes[byte_index] != ending_byte {
-            byte_index += 1;
-        }
-        if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == ending_byte {
-            let token = Some(Token::HeaderName(
-                String::from_utf8_lossy(&program_str_bytes[start..byte_index]).to_string(),
-            ));
-            *index = byte_index + 1;
-            return token;
-        }
-    }
-    None
-}
 fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option<Token> {
     let punctuator = match_punctuator(&program_str_bytes, index);
     if punctuator.is_some() {
@@ -980,33 +1015,13 @@ fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option
 pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut index: usize = 0;
-    let mut is_pp_directive = false;
-    let mut is_include_directive = false;
     while index < program_str_bytes.len() {
         if program_str_bytes[index] == b'\n' {
             tokens.push(Token::NEWLINE);
             index += 1;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
-            if is_include_directive
-                && (program_str_bytes[index] == b'"' || program_str_bytes[index] == b'<')
-            {
-                let start_byte = program_str_bytes[index];
-                if let Some(hn) = match_header_name(&program_str_bytes, &mut index) {
-                    tokens.push(hn);
-                    is_pp_directive = false;
-                    is_include_directive = false;
-                    continue;
-                }
-            }
             let token = chain_lex(&program_str_bytes, &mut index, is_pp);
             if let Some(t) = token {
-                match &t {
-                    Token::PUNCT_HASH => is_pp_directive = true,
-                    Token::IDENT(id) if id == "include" && is_pp_directive => {
-                        is_include_directive = true;
-                    }
-                    _ => (),
-                }
                 tokens.push(t);
             } else {
                 return Err(format!(
@@ -1391,7 +1406,11 @@ mod tests {
         let tokens_assert = vec![
             Token::PUNCT_HASH,
             Token::IDENT("include".to_string()),
-            Token::HeaderName("stdio.h".to_string()),
+            Token::PUNCT_LESS_THAN,
+            Token::IDENT("stdio".to_string()),
+            Token::PUNCT_DOT,
+            Token::IDENT("h".to_string()),
+            Token::PUNCT_GREATER_THAN,
             Token::NEWLINE,
             Token::IDENT("int".to_string()),
             Token::IDENT("main".to_string()),
