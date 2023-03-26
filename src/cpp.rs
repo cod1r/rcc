@@ -137,7 +137,59 @@ fn include_directive(
     }
     Err(String::from("file not found"))
 }
-fn if_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) {
+fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
+    todo!()
+}
+fn if_directive(
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    defines: &HashMap<String, Vec<lexer::Token>>,
+) -> Result<(), String> {
+    let index_identifier = index + 2;
+    let first_newline_index = index_identifier + 1;
+    if !matches!(
+        tokens.get(index_identifier + 1),
+        Some(lexer::Token::NEWLINE)
+    ) {
+        return Err(format!("unknown token in ifdef directive"));
+    }
+    let mut index_search = index_identifier + 1;
+    let mut if_parts: Vec<(&str, usize)> = Vec::with_capacity(2);
+    while index_search < tokens.len() {
+        if let [Some(lexer::Token::NEWLINE), Some(lexer::Token::PUNCT_HASH), Some(lexer::Token::IDENT(id))] = [
+            tokens.get(index_search),
+            tokens.get(index_search + 1),
+            tokens.get(index_search + 2),
+        ] {
+            let index_of_punct_hash = index_search + 1;
+            match id.as_str() {
+                "elif" => {
+                    if_parts.push(("elif", index_of_punct_hash));
+                }
+                "else" if !matches!(tokens.get(index_search + 3), Some(lexer::Token::NEWLINE)) => {
+                    if_parts.push(("else", index_of_punct_hash));
+                }
+                "endif" if !matches!(tokens.get(index_search + 3), Some(lexer::Token::NEWLINE)) => {
+                    if_parts.push(("endif", index_of_punct_hash));
+                    break;
+                }
+                _ => {}
+            }
+        }
+        index_search += 1;
+    }
+    if let Some(lexer::Token::IDENT(identifier)) = tokens.get(index_identifier) {
+        if defines.contains_key(identifier) {
+            loop {
+                if let Some(lexer::Token::NEWLINE) = tokens.get(first_newline_index) {
+                    tokens.remove(first_newline_index);
+                    break;
+                }
+                tokens.remove(first_newline_index);
+            }
+        } else {
+        }
+    }
     todo!()
 }
 fn define_directive(
@@ -223,8 +275,6 @@ fn preprocessing_directives(
                                     )?;
                                 }
                                 "if" => {}
-                                "ifdef" => {}
-                                "ifndef" => {}
                                 "define" => {
                                     define_directive(tokens, index, newline, &mut defines)?;
                                 }
