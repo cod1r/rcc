@@ -2,6 +2,13 @@ use std::collections::HashMap;
 
 use crate::lexer;
 
+struct Define {
+    identifier: String,
+    args: Option<Vec<String>>,
+    var_arg: bool,
+    replacement_list: Vec<lexer::Token>,
+}
+
 fn comments(bytes: &[u8]) -> Vec<u8> {
     let mut byte_index = 0;
     let mut within_quotes = false;
@@ -59,7 +66,7 @@ fn include_directive(
     mut index: usize,
     end: usize,
     include_paths: &[&str],
-    defines: &HashMap<String, Vec<lexer::Token>>,
+    defines: &HashMap<String, Define>,
 ) -> Result<(), String> {
     let index_header_file = index + 2;
     let mut file_name = String::new();
@@ -77,8 +84,9 @@ fn include_directive(
             }
         }
         lexer::Token::IDENT(identifier) => {
-            if let Some(replacement) = defines.get(identifier) {
-                if let Some(new_file_name) = get_header_name_from_tokens(replacement) {
+            if let Some(def_data) = defines.get(identifier) {
+                if let Some(new_file_name) = get_header_name_from_tokens(&def_data.replacement_list)
+                {
                     file_name = new_file_name;
                 } else {
                     return Err(format!(
@@ -145,97 +153,91 @@ fn if_directive(
     index: usize,
     defines: &HashMap<String, Vec<lexer::Token>>,
 ) -> Result<(), String> {
-    let index_identifier = index + 2;
-    let first_newline_index = index_identifier + 1;
-    if !matches!(
-        tokens.get(index_identifier + 1),
-        Some(lexer::Token::NEWLINE)
-    ) {
-        return Err(format!("unknown token in ifdef directive"));
-    }
-    let mut index_search = index_identifier + 1;
-    let mut if_parts: Vec<(&str, usize)> = Vec::with_capacity(2);
-    while index_search < tokens.len() {
-        if let [Some(lexer::Token::NEWLINE), Some(lexer::Token::PUNCT_HASH), Some(lexer::Token::IDENT(id))] = [
-            tokens.get(index_search),
-            tokens.get(index_search + 1),
-            tokens.get(index_search + 2),
-        ] {
-            let index_of_punct_hash = index_search + 1;
-            match id.as_str() {
-                "elif" => {
-                    if_parts.push(("elif", index_of_punct_hash));
-                }
-                "else" if !matches!(tokens.get(index_search + 3), Some(lexer::Token::NEWLINE)) => {
-                    if_parts.push(("else", index_of_punct_hash));
-                }
-                "endif" if !matches!(tokens.get(index_search + 3), Some(lexer::Token::NEWLINE)) => {
-                    if_parts.push(("endif", index_of_punct_hash));
-                    break;
-                }
-                _ => {}
-            }
-        }
-        index_search += 1;
-    }
-    if let Some(lexer::Token::IDENT(identifier)) = tokens.get(index_identifier) {
-        if defines.contains_key(identifier) {
-            loop {
-                if let Some(lexer::Token::NEWLINE) = tokens.get(first_newline_index) {
-                    tokens.remove(first_newline_index);
-                    break;
-                }
-                tokens.remove(first_newline_index);
-            }
-        } else {
-        }
-    }
     todo!()
 }
 fn define_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
     end: usize,
-    defines: &mut HashMap<String, Vec<lexer::Token>>,
+    defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     let index_of_identifier = index + 2;
-    if let Some(lexer::Token::IDENT(identifier_to_be_replaced)) = tokens.get(index_of_identifier) {
-        defines.insert(
-            identifier_to_be_replaced.to_string(),
-            tokens[index + 3..end].to_vec(),
-        );
-        loop {
-            if let lexer::Token::NEWLINE = tokens[index] {
-                tokens.remove(index);
-                break;
+    let mut def_data = Define {
+        identifier: String::new(),
+        args: None,
+        var_arg: false,
+        replacement_list: Vec::new(),
+    };
+    if let Some([lexer::Token::IDENT(id), lexer::Token::PUNCT_OPEN_PAR]) =
+        tokens.get(index_of_identifier..index_of_identifier + 2)
+    {
+        def_data.identifier = id.to_string();
+        let start = index_of_identifier + 1;
+        let mut fn_like_macro_index = start + 1;
+        while matches!(
+            tokens.get(fn_like_macro_index),
+            Some(lexer::Token::IDENT(_)) | Some(lexer::Token::PUNCT_COMMA)
+        ) {
+            if let Some(lexer::Token::IDENT(arg)) = tokens.get(fn_like_macro_index) {
+                if let Some(ref mut v) = def_data.args {
+                    v.push(arg.to_string());
+                } else {
+                    def_data.args = Some(vec![arg.to_string()]);
+                }
             }
-            tokens.remove(index);
+            fn_like_macro_index += 1;
         }
-        return Ok(());
+        if matches!(
+            tokens.get(fn_like_macro_index),
+            Some(lexer::Token::PUNCT_CLOSE_PAR)
+        ) {
+            def_data
+                .replacement_list
+                .extend_from_slice(&tokens[fn_like_macro_index + 1..end]);
+            defines.insert(def_data.identifier.clone(), def_data);
+        } else if matches!(
+            tokens.get(fn_like_macro_index..fn_like_macro_index + 2),
+            Some([lexer::Token::PUNCT_ELLIPSIS, lexer::Token::PUNCT_CLOSE_PAR])
+        ) {
+            def_data.var_arg = true;
+            def_data
+                .replacement_list
+                .extend_from_slice(&tokens[fn_like_macro_index + 2..end]);
+            defines.insert(def_data.identifier.clone(), def_data);
+        }
+    } else if let Some(lexer::Token::IDENT(id)) = tokens.get(index_of_identifier) {
+        def_data
+            .replacement_list
+            .extend_from_slice(&tokens[index_of_identifier + 1..end]);
+        defines.insert(def_data.identifier.clone(), def_data);
     }
-    Err(String::from("unknown token in define directive"))
+    Err(String::from("define directive not properly formed"))
 }
 fn error_directive(tokens: &mut Vec<lexer::Token>) {
     todo!()
 }
-fn line_directive(
-    tokens: &mut Vec<lexer::Token>,
-    index: usize,
-    end: usize,
-) -> Result<(), &'static str> {
+fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> Result<(), String> {
     todo!()
 }
 fn undef_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
     end: usize,
-    defines: &mut HashMap<String, Vec<lexer::Token>>,
+    defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     let index_of_identifier = index + 2;
     if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
         defines.remove(identifier_to_be_undef);
     }
     Err(String::from("unknown token in undef directive"))
+}
+fn expand_macro(
+    tokens: &mut Vec<lexer::Token>,
+    index: usize,
+    end: usize,
+    macro_id: String,
+) -> Result<(), String> {
+    todo!();
 }
 fn preprocessing_directives(
     tokens: &mut Vec<lexer::Token>,
@@ -253,7 +255,7 @@ fn preprocessing_directives(
     let mut defines = HashMap::new();
     let mut index: usize = 0;
     while index < tokens.len() {
-        match &mut tokens[index] {
+        match &tokens[index] {
             lexer::Token::PUNCT_HASH => {
                 if index + 1 < tokens.len() {
                     let mut newline = index + 2;
@@ -274,7 +276,7 @@ fn preprocessing_directives(
                                         &defines,
                                     )?;
                                 }
-                                "if" => {}
+                                "if" | "ifdef" | "ifndef" => {}
                                 "define" => {
                                     define_directive(tokens, index, newline, &mut defines)?;
                                 }
@@ -294,15 +296,7 @@ fn preprocessing_directives(
                 }
             }
             lexer::Token::IDENT(id) => {
-                if let Some(replacement) = defines.get(id) {
-                    tokens.remove(index);
-                    for t in replacement {
-                        tokens.insert(index, t.clone());
-                        index += 1;
-                    }
-                } else {
-                    index += 1;
-                }
+                expand_macro(tokens, index, newline, id.to_string())?;
             }
             _ => {
                 index += 1;
@@ -330,7 +324,7 @@ pub fn cpp(program_str: Vec<u8>) -> Vec<lexer::Token> {
 #[cfg(test)]
 mod tests {
 
-    use crate::lexer::{self, lexer};
+    use crate::lexer;
     use std::collections::HashMap;
 
     use super::{comments, include_directive, preprocessing_directives};
@@ -364,7 +358,7 @@ mod tests {
         int main() {
         }
         "##;
-        let mut tokens = lexer(src.as_bytes().to_vec(), true)?;
+        let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
         let mut defines = HashMap::new();
         include_directive(&mut tokens, 0, 18, &["./test_c_files/"], &mut defines)?;
         let assert_tokens = [
@@ -386,7 +380,35 @@ mod tests {
         int main() {
         hi;
         }"##;
-        let mut tokens = lexer(src.as_bytes().to_vec(), true)?;
+        let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
+        preprocessing_directives(&mut tokens, &["./test_c_files"])?;
+        let assert_tokens = [
+            lexer::Token::IDENT(String::from("int")),
+            lexer::Token::IDENT(String::from("main")),
+            lexer::Token::PUNCT_OPEN_PAR,
+            lexer::Token::PUNCT_CLOSE_PAR,
+            lexer::Token::PUNCT_OPEN_CURLY,
+            lexer::Token::NEWLINE,
+            lexer::Token::CONSTANT_DEC_INT {
+                value: 5.to_string(),
+                suffix: None,
+            },
+            lexer::Token::PUNCT_SEMI_COLON,
+            lexer::Token::NEWLINE,
+            lexer::Token::PUNCT_CLOSE_CURLY,
+        ];
+        assert_eq!(tokens, assert_tokens);
+        Ok(())
+    }
+    #[test]
+    fn preprocess_test_defines() -> Result<(), String> {
+        let src = r##"#define hash_hash # ## #
+#define mkstr(a) # a
+#define in_between(a) mkstr(a)
+#define join(c, d) in_between(c hash_hash d)
+char p[] = join(x, y); // equivalent to
+// char p[] = "x ## y";"##;
+        let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
         preprocessing_directives(&mut tokens, &["./test_c_files"])?;
         let assert_tokens = [
             lexer::Token::IDENT(String::from("int")),

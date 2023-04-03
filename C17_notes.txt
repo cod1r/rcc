@@ -1,3 +1,12 @@
+For conditional inclusion:
+	The expression that controls conditional inclusion shall be an integer constant expression
+
+	An integer constant expression shall have integer type and shall only have operands that are integer
+	constants, enumeration constants, character constants, sizeof expressions whose results are integer
+	constants, _Alignof expressions, and floating constants that are the immediate operands of casts.
+	Cast operators in an integer constant expression shall only convert arithmetic types to integer types,
+	except as part of an operand to the sizeof or _Alignof operator
+
 source character set:
 	A B C D E F G H I J K L M
 	N O P Q R S T U V W X Y Z
