@@ -195,6 +195,7 @@ fn define_directive(
                 .replacement_list
                 .extend_from_slice(&tokens[fn_like_macro_index + 1..end]);
             defines.insert(def_data.identifier.clone(), def_data);
+            return Ok(());
         } else if matches!(
             tokens.get(fn_like_macro_index..fn_like_macro_index + 2),
             Some([lexer::Token::PUNCT_ELLIPSIS, lexer::Token::PUNCT_CLOSE_PAR])
@@ -204,12 +205,14 @@ fn define_directive(
                 .replacement_list
                 .extend_from_slice(&tokens[fn_like_macro_index + 2..end]);
             defines.insert(def_data.identifier.clone(), def_data);
+            return Ok(());
         }
     } else if let Some(lexer::Token::IDENT(id)) = tokens.get(index_of_identifier) {
         def_data
             .replacement_list
             .extend_from_slice(&tokens[index_of_identifier + 1..end]);
         defines.insert(def_data.identifier.clone(), def_data);
+        return Ok(());
     }
     Err(String::from("define directive not properly formed"))
 }
