@@ -1,3 +1,4 @@
+use core::slice::sort::partition_at_index;
 use std::collections::HashMap;
 
 use crate::lexer;
@@ -180,7 +181,11 @@ fn define_directive(
         ) {
             if let Some(lexer::Token::IDENT(arg)) = tokens.get(fn_like_macro_index) {
                 if let Some(ref mut v) = def_data.args {
-                    v.push(arg.to_string());
+                    if !v.contains(arg) {
+                        v.push(arg.to_string());
+                    } else {
+                        return Err(format!("duplicate argument name found in define directive"));
+                    }
                 } else {
                     def_data.args = Some(vec![arg.to_string()]);
                 }
@@ -231,16 +236,63 @@ fn undef_directive(
     let index_of_identifier = index + 2;
     if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
         defines.remove(identifier_to_be_undef);
+        return Ok(());
     }
-    Err(String::from("unknown token in undef directive"))
+    Err(format!("unknown token in undef directive"))
 }
 fn expand_macro(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
-    end: usize,
     macro_id: String,
+    defines: &HashMap<String, Define>,
 ) -> Result<(), String> {
-    todo!();
+    if let Some(def_data) = defines.get(&macro_id) {
+        if let Some(args) = &def_data.args {
+            let mut argument_count = 0;
+            let mut fn_like_macro_index = index + 1;
+            if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(fn_like_macro_index) {
+                fn_like_macro_index += 1;
+            }
+            let mut seen_args = Vec::new();
+            let mut beginning_of_argument_index = fn_like_macro_index;
+            while !matches!(
+                tokens.get(fn_like_macro_index),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                match tokens.get(fn_like_macro_index) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        while !matches!(
+                            tokens.get(fn_like_macro_index),
+                            Some(lexer::Token::PUNCT_CLOSE_PAR)
+                        ) {
+                            fn_like_macro_index += 1;
+                        }
+                        if !matches!(
+                            tokens.get(fn_like_macro_index),
+                            Some(lexer::Token::PUNCT_CLOSE_PAR)
+                        ) {
+                            return Err(format!("no matching parentheses for macro invocation"));
+                        }
+                    }
+                    Some(lexer::Token::PUNCT_COMMA) => {
+                        if let Some(slice) =
+                            tokens.get(beginning_of_argument_index..fn_like_macro_index)
+                        {
+                            seen_args.push(slice);
+                        }
+                        beginning_of_argument_index = fn_like_macro_index + 1;
+                    }
+                    _ => {}
+                }
+                fn_like_macro_index += 1;
+            }
+            if seen_args.len() < args.len() || (seen_args.len() != args.len() && !def_data.var_arg)
+            {
+                return Err(format!("wrong number of macro arguments given"));
+            }
+        }
+    }
+    Ok(())
 }
 fn preprocessing_directives(
     tokens: &mut Vec<lexer::Token>,
@@ -299,7 +351,7 @@ fn preprocessing_directives(
                 }
             }
             lexer::Token::IDENT(id) => {
-                expand_macro(tokens, index, newline, id.to_string())?;
+                expand_macro(tokens, index, id.to_string(), &defines)?;
             }
             _ => {
                 index += 1;
