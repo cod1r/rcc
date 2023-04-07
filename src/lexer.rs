@@ -2,6 +2,8 @@
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
     IDENT(String),
+    PLACEMARKER,
+    WHITESPACE,
     NEWLINE,
     PREDEF_IDENT___FUNC__,
     PUNCT_OPEN_SQR,
@@ -134,6 +136,8 @@ pub enum Token {
 impl Token {
     pub fn to_string(&self) -> Option<&str> {
         match self {
+            Token::WHITESPACE => Some(" "),
+            Token::NEWLINE => Some("\n"),
             Token::PUNCT_OPEN_SQR => Some("["),
             Token::PUNCT_CLOSE_SQR => Some("]"),
             Token::PUNCT_OPEN_PAR => Some("("),
@@ -1030,7 +1034,10 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
                 ));
             }
         } else {
-            index += 1;
+            while matches!(program_str_bytes.get(index), Some(b' ')) {
+                index += 1;
+            }
+            tokens.push(Token::WHITESPACE);
         }
     }
     Ok(tokens)
@@ -1372,14 +1379,19 @@ mod tests {
         let tokens = lexer(s_bytes.to_vec(), false)?;
         let tokens_assert = vec![
             Token::KEYWORD_INT,
+            Token::WHITESPACE,
             Token::IDENT("main".to_string()),
             Token::PUNCT_OPEN_PAR,
             Token::PUNCT_CLOSE_PAR,
+            Token::WHITESPACE,
             Token::PUNCT_OPEN_CURLY,
             Token::NEWLINE,
             Token::KEYWORD_INT,
+            Token::WHITESPACE,
             Token::IDENT("hi".to_string()),
+            Token::WHITESPACE,
             Token::PUNCT_ASSIGNMENT,
+            Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value: "4".to_string(),
                 suffix: None,
@@ -1387,6 +1399,7 @@ mod tests {
             Token::PUNCT_SEMI_COLON,
             Token::NEWLINE,
             Token::KEYWORD_RETURN,
+            Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value: "0".to_string(),
                 suffix: None,
@@ -1406,6 +1419,7 @@ mod tests {
         let tokens_assert = vec![
             Token::PUNCT_HASH,
             Token::IDENT("include".to_string()),
+            Token::WHITESPACE,
             Token::PUNCT_LESS_THAN,
             Token::IDENT("stdio".to_string()),
             Token::PUNCT_DOT,
@@ -1413,9 +1427,11 @@ mod tests {
             Token::PUNCT_GREATER_THAN,
             Token::NEWLINE,
             Token::IDENT("int".to_string()),
+            Token::WHITESPACE,
             Token::IDENT("main".to_string()),
             Token::PUNCT_OPEN_PAR,
             Token::PUNCT_CLOSE_PAR,
+            Token::WHITESPACE,
             Token::PUNCT_OPEN_CURLY,
             Token::PUNCT_CLOSE_CURLY,
         ];
@@ -1430,11 +1446,14 @@ mod tests {
         let tokens_assert = vec![
             Token::PUNCT_HASH,
             Token::IDENT("if".to_string()),
+            Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value: "1".to_string(),
                 suffix: None,
             },
+            Token::WHITESPACE,
             Token::PUNCT_PLUS,
+            Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value: "1".to_string(),
                 suffix: None,
@@ -1442,7 +1461,9 @@ mod tests {
             Token::NEWLINE,
             Token::PUNCT_HASH,
             Token::IDENT("define".to_string()),
+            Token::WHITESPACE,
             Token::IDENT("CHICKEN".to_string()),
+            Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value: "5".to_string(),
                 suffix: None,

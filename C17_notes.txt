@@ -1,3 +1,6 @@
+TIP FOR ME:
+	To understand the C spec a little better. I have to read, read, read closely.
+
 For conditional inclusion:
 	The expression that controls conditional inclusion shall be an integer constant expression
 
