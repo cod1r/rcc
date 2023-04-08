@@ -4,7 +4,7 @@ use crate::lexer;
 
 struct Define {
     identifier: String,
-    args: Option<Vec<String>>,
+    parameters: Option<Vec<String>>,
     var_arg: bool,
     replacement_list: Vec<lexer::Token>,
 }
@@ -164,7 +164,7 @@ fn define_directive(
     let index_of_identifier = index + 2;
     let mut def_data = Define {
         identifier: String::new(),
-        args: None,
+        parameters: None,
         var_arg: false,
         replacement_list: Vec::new(),
     };
@@ -179,14 +179,14 @@ fn define_directive(
             Some(lexer::Token::IDENT(_)) | Some(lexer::Token::PUNCT_COMMA)
         ) {
             if let Some(lexer::Token::IDENT(arg)) = tokens.get(fn_like_macro_index) {
-                if let Some(ref mut v) = def_data.args {
+                if let Some(ref mut v) = def_data.parameters {
                     if !v.contains(arg) {
                         v.push(arg.to_string());
                     } else {
                         return Err(format!("duplicate argument name found in define directive"));
                     }
                 } else {
-                    def_data.args = Some(vec![arg.to_string()]);
+                    def_data.parameters = Some(vec![arg.to_string()]);
                 }
             }
             fn_like_macro_index += 1;
@@ -249,9 +249,8 @@ fn expand_macro(
         lexer::Token::IDENT(id) => id,
         _ => return Err(format!("non identifier token given")),
     };
-    todo!("implement some stack/while loop so that we don't have to use recursion");
     if let Some(def_data) = defines.get(macro_id) {
-        if let Some(args) = &def_data.args {
+        if let Some(args) = &def_data.parameters {
             let mut fn_like_macro_index = index_copy + 1;
             if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(fn_like_macro_index) {
                 fn_like_macro_index += 1;
@@ -309,9 +308,9 @@ fn expand_macro(
                 for seen_arg_index in 0..seen_args.len() {
                     let parameter_name = &args[seen_arg_index];
                     for replacement_list_index in 0..replacement_list_copy.len() {
-                        match replacement_list_copy[replacement_list_index] {
+                        match &replacement_list_copy[replacement_list_index] {
                             lexer::Token::IDENT(p_name)
-                                if p_name == *parameter_name
+                                if *p_name == *parameter_name
                                     && !replaced_indices.contains(&replacement_list_index) =>
                             {
                                 if replacement_list_index > 0
@@ -320,40 +319,55 @@ fn expand_macro(
                                         lexer::Token::PUNCT_HASH
                                     )
                                 {
-                                    replacement_list_copy.remove(replacement_list_index - 1);
-                                    replacement_list_index -= 1;
-                                    replacement_list_copy.remove(replacement_list_index);
+                                    let mut removal_index = replacement_list_index;
+                                    replacement_list_copy.remove(removal_index - 1);
+                                    removal_index -= 1;
+                                    replacement_list_copy.remove(removal_index);
                                     let mut string_literal_token = lexer::Token::StringLiteral {
                                         prefix: None,
                                         sequence: String::new(),
                                     };
-                                    let replacement = seen_args[seen_arg_index];
-                                    let mut replacement_begin_index = 0;
-                                    let mut replacement_end_index = replacement.len() - 1;
+                                    let argument = &seen_args[seen_arg_index];
+                                    let mut argument_begin_index = 0;
+                                    let mut argument_end_index = argument.len() - 1;
                                     while matches!(
-                                        replacement.get(replacement_begin_index),
+                                        argument.get(argument_begin_index),
                                         Some(lexer::Token::WHITESPACE)
                                     ) {
-                                        replacement_begin_index += 1;
+                                        argument_begin_index += 1;
                                     }
-                                    while replacement_end_index > 0
-                                        && replacement_end_index > replacement_begin_index
+                                    while argument_end_index > 0
+                                        && argument_end_index > argument_begin_index
                                         && matches!(
-                                            replacement.get(replacement_end_index),
+                                            argument.get(argument_end_index),
                                             Some(lexer::Token::WHITESPACE)
                                         )
                                     {
-                                        replacement_end_index -= 1;
+                                        argument_end_index -= 1;
                                     }
-                                    let lexer::Token::StringLiteral { prefix, sequence } =
-                                        &mut string_literal_token;
-                                    while replacement_begin_index <= replacement_end_index {
-                                        if let Some(stringified_token) = replacement_list_copy
-                                            [replacement_begin_index]
-                                            .to_string()
+                                    let lexer::Token::StringLiteral { prefix: _, sequence } =
+                                        &mut string_literal_token else { todo!() };
+                                    while argument_begin_index <= argument_end_index {
+                                        if let Some(stringified_token) =
+                                            argument[argument_begin_index].to_string()
                                         {
-                                            sequence.extend(stringified_token.chars());
-                                            replacement_begin_index += 1;
+                                            sequence.push_str(stringified_token);
+                                            argument_begin_index += 1;
+                                        } else if let lexer::Token::IDENT(mut s) =
+                                            argument[argument_begin_index].clone()
+                                        {
+                                            s.insert_str(0, "\"");
+                                            for s_index in 0..s.len() {
+                                                if matches!(
+                                                    s.get(s_index..s_index + 1),
+                                                    Some("\\") | Some("\"")
+                                                ) {
+                                                    s.insert_str(s_index, "\\");
+                                                }
+                                            }
+                                            s.push_str("\"");
+                                            sequence.push_str(&s);
+                                            argument_begin_index += 1;
                                         } else {
                                             panic!("tried to stringify token that cannot be stringified");
                                         }
@@ -363,17 +377,53 @@ fn expand_macro(
                                     replaced_indices.push(replacement_list_index);
                                 } else {
                                     replacement_list_copy.remove(replacement_list_index);
+                                    let argument = &seen_args[seen_arg_index];
+                                    let mut replacement_list_index_copy = replacement_list_index;
+                                    for t in argument {
+                                        replacement_list_copy
+                                            .insert(replacement_list_index_copy, t.clone());
+                                        replacement_list_index_copy += 1;
+                                    }
+                                    replaced_indices.push(replacement_list_index);
                                 }
                             }
                             _ => {}
                         }
                     }
                 }
+                let mut length = fn_like_macro_index - *index + 1;
+                while length > 0 {
+                    tokens.remove(*index);
+                    length -= 1;
+                }
+                let mut insert_index = *index;
+                for t in replacement_list_copy {
+                    tokens.insert(insert_index, t);
+                    insert_index += 1;
+                }
             } else {
                 return Err(format!("no args given for function macro"));
             }
         } else {
-            todo!()
+            let mut ending_index = *index;
+            if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(*index + 1) {
+                while !matches!(
+                    tokens.get(ending_index),
+                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                ) {
+                    ending_index += 1;
+                }
+            }
+            let mut length = ending_index - *index + 1;
+            while length > 0 {
+                tokens.remove(*index);
+                length -= 1;
+            }
+            let mut insert_index = *index;
+            for t in def_data.replacement_list.clone() {
+                tokens.insert(insert_index, t);
+                insert_index += 1;
+            }
         }
     }
     Ok(())
@@ -431,7 +481,7 @@ fn preprocessing_directives(
                 }
             }
             lexer::Token::IDENT(_) => {
-                expand_macro(tokens, index, &defines)?;
+                expand_macro(tokens, &mut index, &defines)?;
                 todo!()
             }
             _ => {
