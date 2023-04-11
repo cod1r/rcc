@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::lexer;
 
+#[derive(PartialEq, Debug, Clone)]
 struct Define {
     identifier: String,
     parameters: Option<Vec<String>>,
@@ -267,7 +268,7 @@ fn define_directive(
                     "'##' cannot be at the beginning or end of a replacement list"
                 ));
             }
-            let mut length = end - index + 1;
+            let mut length = end - index;
             while length > 0 {
                 tokens.remove(index);
                 length -= 1;
@@ -868,11 +869,83 @@ char p[] = join(x, y);"##;
         let mut tokens3 = lexer::lexer(src3.as_bytes().to_vec(), true)?;
         let mut tokens4 = lexer::lexer(src4.as_bytes().to_vec(), true)?;
         let mut defines = HashMap::new();
-        define_directive(&mut tokens, 0, 9, &mut defines)?;
-        define_directive(&mut tokens2, 0, 11, &mut defines)?;
-        define_directive(&mut tokens3, 0, 11, &mut defines)?;
-        define_directive(&mut tokens4, 0, 18, &mut defines)?;
+        let tokens_len = tokens.len();
+        let tokens2_len = tokens2.len();
+        let tokens3_len = tokens3.len();
+        let tokens4_len = tokens4.len();
+        define_directive(&mut tokens, 0, tokens_len, &mut defines)?;
+        define_directive(&mut tokens2, 0, tokens2_len, &mut defines)?;
+        define_directive(&mut tokens3, 0, tokens3_len, &mut defines)?;
+        define_directive(&mut tokens4, 0, tokens4_len, &mut defines)?;
         assert_eq!(defines.len(), 4);
+        assert!(defines.contains_key("hash_hash"));
+        assert!(defines.contains_key("mkstr"));
+        assert!(defines.contains_key("in_between"));
+        assert!(defines.contains_key("join"));
+        assert_eq!(
+            Define {
+                identifier: "hash_hash".to_string(),
+                parameters: None,
+                var_arg: false,
+                replacement_list: vec![
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::PUNCT_HASH,
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::PUNCT_HASH_HASH,
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::PUNCT_HASH,
+                ]
+            },
+            *defines.get("hash_hash").unwrap()
+        );
+        assert_eq!(
+            Define {
+                identifier: "mkstr".to_string(),
+                parameters: Some(vec!["a".to_string()]),
+                var_arg: false,
+                replacement_list: vec![
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::PUNCT_HASH,
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::IDENT("a".to_string()),
+                ]
+            },
+            *defines.get("mkstr").unwrap()
+        );
+        assert_eq!(
+            Define {
+                identifier: "in_between".to_string(),
+                parameters: Some(vec!["a".to_string()]),
+                var_arg: false,
+                replacement_list: vec![
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::IDENT("mkstr".to_string()),
+                    lexer::Token::PUNCT_OPEN_PAR,
+                    lexer::Token::IDENT("a".to_string()),
+                    lexer::Token::PUNCT_CLOSE_PAR,
+                ]
+            },
+            *defines.get("in_between").unwrap()
+        );
+        assert_eq!(
+            Define {
+                identifier: "join".to_string(),
+                parameters: Some(vec!["c".to_string(),"d".to_string()]),
+                var_arg: false,
+                replacement_list: vec![
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::IDENT("in_between".to_string()),
+                    lexer::Token::PUNCT_OPEN_PAR,
+                    lexer::Token::IDENT("c".to_string()),
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::IDENT("hash_hash".to_string()),
+                    lexer::Token::WHITESPACE,
+                    lexer::Token::IDENT("d".to_string()),
+                    lexer::Token::PUNCT_CLOSE_PAR,
+                ]
+            },
+            *defines.get("join").unwrap()
+        );
         Ok(())
     }
 }
