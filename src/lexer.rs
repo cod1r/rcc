@@ -134,64 +134,106 @@ pub enum Token {
     CONSTANT_CHAR(String),
 }
 impl Token {
-    pub fn to_string(&self) -> Option<&str> {
+    pub fn to_string(&self) -> Option<String> {
         match self {
-            Token::WHITESPACE => Some(" "),
-            Token::NEWLINE => Some("\n"),
-            Token::PUNCT_OPEN_SQR => Some("["),
-            Token::PUNCT_CLOSE_SQR => Some("]"),
-            Token::PUNCT_OPEN_PAR => Some("("),
-            Token::PUNCT_CLOSE_PAR => Some(")"),
-            Token::PUNCT_OPEN_CURLY => Some("{"),
-            Token::PUNCT_CLOSE_CURLY => Some("}"),
-            Token::PUNCT_DOT => Some("."),
-            Token::PUNCT_ARROW => Some("=>"),
-            Token::PUNCT_INCREMENT => Some("++"),
-            Token::PUNCT_DECREMENT => Some("--"),
-            Token::PUNCT_AND_BIT => Some("&"),
-            Token::PUNCT_MULT => Some("*"),
-            Token::PUNCT_PLUS => Some("+"),
-            Token::PUNCT_MINUS => Some("-"),
-            Token::PUNCT_TILDE => Some("~"),
-            Token::PUNCT_NOT_BOOL => Some("!"),
-            Token::PUNCT_DIV => Some("/"),
-            Token::PUNCT_MODULO => Some("%"),
-            Token::PUNCT_BITSHFT_LEFT => Some("<<"),
-            Token::PUNCT_BITSHFT_RIGHT => Some(">>"),
-            Token::PUNCT_LESS_THAN => Some("<"),
-            Token::PUNCT_GREATER_THAN => Some(">"),
-            Token::PUNCT_LESS_THAN_EQ => Some("<="),
-            Token::PUNCT_GREATER_THAN_EQ => Some(">="),
-            Token::PUNCT_EQ_BOOL => Some("=="),
-            Token::PUNCT_NOT_EQ_BOOL => Some("!="),
-            Token::PUNCT_XOR_BIT => Some("^"),
-            Token::PUNCT_OR_BIT => Some("|"),
-            Token::PUNCT_AND_BOOL => Some("&&"),
-            Token::PUNCT_OR_BOOL => Some("||"),
-            Token::PUNCT_QUESTION_MARK => Some("?"),
-            Token::PUNCT_COLON => Some(":"),
-            Token::PUNCT_SEMI_COLON => Some(";"),
-            Token::PUNCT_ELLIPSIS => Some("..."),
-            Token::PUNCT_ASSIGNMENT => Some("="),
-            Token::PUNCT_MULT_ASSIGN => Some("*="),
-            Token::PUNCT_DIV_ASSIGN => Some("/="),
-            Token::PUNCT_MODULO_ASSIGN => Some("%="),
-            Token::PUNCT_ADD_ASSIGN => Some("+="),
-            Token::PUNCT_SUB_ASSIGN => Some("-="),
-            Token::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<="),
-            Token::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>="),
-            Token::PUNCT_AND_BIT_ASSIGN => Some("&="),
-            Token::PUNCT_XOR_BIT_ASSIGN => Some("^="),
-            Token::PUNCT_OR_BIT_ASSIGN => Some("|="),
-            Token::PUNCT_COMMA => Some(","),
-            Token::PUNCT_HASH => Some("#"),
-            Token::PUNCT_HASH_HASH => Some("##"),
-            Token::PUNCT_DIGRAPH_OPEN_SQR => Some("<:"),
-            Token::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>"),
-            Token::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%"),
-            Token::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>"),
-            Token::PUNCT_DIGRAPH_HASH => Some("%:"),
-            Token::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:"),
+            Token::CONSTANT_HEXA_FLOAT {
+                value,
+                binary_exp_part,
+                suffix,
+            } => {
+                if let Some(suff) = suffix {
+                    Some(value.clone() + binary_exp_part + suff)
+                } else {
+                    Some(value.clone() + binary_exp_part)
+                }
+            }
+            Token::CONSTANT_HEXA_INT { value, suffix } => {
+                if let Some(suff) = suffix {
+                    Some(value.clone() + suff)
+                } else {
+                    Some(value.to_string())
+                }
+            }
+            Token::CONSTANT_DEC_FLOAT {
+                value,
+                exp_part,
+                suffix,
+            } => match (exp_part, suffix) {
+                (Some(ep), Some(suff)) => Some(value.clone() + ep + suff),
+                (_, Some(suff)) => Some(value.clone() + suff),
+                _ => Some(value.to_string()),
+            },
+            Token::StringLiteral { prefix, sequence } => {
+                if let Some(pre) = prefix {
+                    Some(pre.clone() + sequence)
+                } else {
+                    Some(sequence.to_string())
+                }
+            }
+            Token::CONSTANT_DEC_INT { value, suffix } => {
+                if let Some(suff) = suffix {
+                    Some(value.clone() + suff)
+                } else {
+                    Some(value.to_string())
+                }
+            }
+            Token::IDENT(s) => Some(s.to_string()),
+            Token::WHITESPACE => Some(" ".to_string()),
+            Token::NEWLINE => Some("\n".to_string()),
+            Token::PUNCT_OPEN_SQR => Some("[".to_string()),
+            Token::PUNCT_CLOSE_SQR => Some("]".to_string()),
+            Token::PUNCT_OPEN_PAR => Some("(".to_string()),
+            Token::PUNCT_CLOSE_PAR => Some(")".to_string()),
+            Token::PUNCT_OPEN_CURLY => Some("{".to_string()),
+            Token::PUNCT_CLOSE_CURLY => Some("}".to_string()),
+            Token::PUNCT_DOT => Some(".".to_string()),
+            Token::PUNCT_ARROW => Some("=>".to_string()),
+            Token::PUNCT_INCREMENT => Some("++".to_string()),
+            Token::PUNCT_DECREMENT => Some("--".to_string()),
+            Token::PUNCT_AND_BIT => Some("&".to_string()),
+            Token::PUNCT_MULT => Some("*".to_string()),
+            Token::PUNCT_PLUS => Some("+".to_string()),
+            Token::PUNCT_MINUS => Some("-".to_string()),
+            Token::PUNCT_TILDE => Some("~".to_string()),
+            Token::PUNCT_NOT_BOOL => Some("!".to_string()),
+            Token::PUNCT_DIV => Some("/".to_string()),
+            Token::PUNCT_MODULO => Some("%".to_string()),
+            Token::PUNCT_BITSHFT_LEFT => Some("<<".to_string()),
+            Token::PUNCT_BITSHFT_RIGHT => Some(">>".to_string()),
+            Token::PUNCT_LESS_THAN => Some("<".to_string()),
+            Token::PUNCT_GREATER_THAN => Some(">".to_string()),
+            Token::PUNCT_LESS_THAN_EQ => Some("<=".to_string()),
+            Token::PUNCT_GREATER_THAN_EQ => Some(">=".to_string()),
+            Token::PUNCT_EQ_BOOL => Some("==".to_string()),
+            Token::PUNCT_NOT_EQ_BOOL => Some("!=".to_string()),
+            Token::PUNCT_XOR_BIT => Some("^".to_string()),
+            Token::PUNCT_OR_BIT => Some("|".to_string()),
+            Token::PUNCT_AND_BOOL => Some("&&".to_string()),
+            Token::PUNCT_OR_BOOL => Some("||".to_string()),
+            Token::PUNCT_QUESTION_MARK => Some("?".to_string()),
+            Token::PUNCT_COLON => Some(":".to_string()),
+            Token::PUNCT_SEMI_COLON => Some(";".to_string()),
+            Token::PUNCT_ELLIPSIS => Some("...".to_string()),
+            Token::PUNCT_ASSIGNMENT => Some("=".to_string()),
+            Token::PUNCT_MULT_ASSIGN => Some("*=".to_string()),
+            Token::PUNCT_DIV_ASSIGN => Some("/=".to_string()),
+            Token::PUNCT_MODULO_ASSIGN => Some("%=".to_string()),
+            Token::PUNCT_ADD_ASSIGN => Some("+=".to_string()),
+            Token::PUNCT_SUB_ASSIGN => Some("-=".to_string()),
+            Token::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<=".to_string()),
+            Token::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>=".to_string()),
+            Token::PUNCT_AND_BIT_ASSIGN => Some("&=".to_string()),
+            Token::PUNCT_XOR_BIT_ASSIGN => Some("^=".to_string()),
+            Token::PUNCT_OR_BIT_ASSIGN => Some("|=".to_string()),
+            Token::PUNCT_COMMA => Some(",".to_string()),
+            Token::PUNCT_HASH => Some("#".to_string()),
+            Token::PUNCT_HASH_HASH => Some("##".to_string()),
+            Token::PUNCT_DIGRAPH_OPEN_SQR => Some("<:".to_string()),
+            Token::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>".to_string()),
+            Token::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%".to_string()),
+            Token::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>".to_string()),
+            Token::PUNCT_DIGRAPH_HASH => Some("%:".to_string()),
+            Token::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:".to_string()),
             _ => None,
         }
     }
