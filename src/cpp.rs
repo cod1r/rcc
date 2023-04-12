@@ -39,7 +39,9 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
                 byte_index += 1;
             }
         }
-        comments_removed.push(bytes[byte_index]);
+        if byte_index < bytes.len() {
+            comments_removed.push(bytes[byte_index]);
+        }
         byte_index += 1;
     }
     comments_removed
@@ -596,7 +598,7 @@ fn expand_macro(
                 already_replaced_macro_names.push(macro_id.to_string());
             }
         } else {
-            break;
+            todo!("i need to find someway to rescan this part and expand more macros");
         }
     }
     *index = end + 1;
@@ -771,23 +773,11 @@ mod tests {
 #define join(c, d) in_between(c hash_hash d)
 char p[] = join(x, y); // equivalent to
 // char p[] = "x ## y";"##;
-        let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
+        let bytes = src.as_bytes();
+        let changed_bytes = comments(bytes);
+        let mut tokens = lexer::lexer(changed_bytes.to_vec(), true)?;
         preprocessing_directives(&mut tokens, &["./test_c_files"])?;
-        let assert_tokens = [
-            lexer::Token::IDENT(String::from("int")),
-            lexer::Token::IDENT(String::from("main")),
-            lexer::Token::PUNCT_OPEN_PAR,
-            lexer::Token::PUNCT_CLOSE_PAR,
-            lexer::Token::PUNCT_OPEN_CURLY,
-            lexer::Token::NEWLINE,
-            lexer::Token::CONSTANT_DEC_INT {
-                value: 5.to_string(),
-                suffix: None,
-            },
-            lexer::Token::PUNCT_SEMI_COLON,
-            lexer::Token::NEWLINE,
-            lexer::Token::PUNCT_CLOSE_CURLY,
-        ];
+        let assert_tokens = [];
         assert_eq!(tokens, assert_tokens);
         Ok(())
     }
@@ -896,23 +886,23 @@ char p[] = join(x, y);"##;
     }
     #[test]
     fn test_define_directive() -> Result<(), String> {
-        let src = r##"#define hash_hash # ## #"##;
-        let src2 = r##"#define mkstr(a) # a"##;
-        let src3 = r##"#define in_between(a) mkstr(a)"##;
-        let src4 = r##"#define join(c, d) in_between(c hash_hash d)"##;
+        let src = "#define hash_hash # ## #\n";
+        let src2 = "#define mkstr(a) # a\n";
+        let src3 = "#define in_between(a) mkstr(a)\n";
+        let src4 = "#define join(c, d) in_between(c hash_hash d)\n";
         let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
         let mut tokens2 = lexer::lexer(src2.as_bytes().to_vec(), true)?;
         let mut tokens3 = lexer::lexer(src3.as_bytes().to_vec(), true)?;
         let mut tokens4 = lexer::lexer(src4.as_bytes().to_vec(), true)?;
         let mut defines = HashMap::new();
-        let tokens_len = tokens.len();
-        let tokens2_len = tokens2.len();
-        let tokens3_len = tokens3.len();
-        let tokens4_len = tokens4.len();
-        define_directive(&mut tokens, 0, tokens_len, &mut defines)?;
-        define_directive(&mut tokens2, 0, tokens2_len, &mut defines)?;
-        define_directive(&mut tokens3, 0, tokens3_len, &mut defines)?;
-        define_directive(&mut tokens4, 0, tokens4_len, &mut defines)?;
+        let end_len = tokens.len() - 1;
+        let end2_len = tokens2.len() - 1;
+        let end3_len = tokens3.len() - 1;
+        let end4_len = tokens4.len() - 1;
+        define_directive(&mut tokens, 0, end_len, &mut defines)?;
+        define_directive(&mut tokens2, 0, end2_len, &mut defines)?;
+        define_directive(&mut tokens3, 0, end3_len, &mut defines)?;
+        define_directive(&mut tokens4, 0, end4_len, &mut defines)?;
         assert_eq!(defines.len(), 4);
         assert!(defines.contains_key("hash_hash"));
         assert!(defines.contains_key("mkstr"));
