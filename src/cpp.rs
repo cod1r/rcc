@@ -607,24 +607,35 @@ fn expand_macro(
                             if let Some(lexer::Token::PUNCT_HASH_HASH) =
                                 replacement_list_copy.get(punct_hash_hash_index)
                             {
-                                let case_for_placemarker = match (
-                                    replacement_list_copy.get(punct_hash_hash_index - 1),
-                                    replacement_list_copy.get(punct_hash_hash_index + 1),
+                                let mut start_removal = punct_hash_hash_index - 1;
+                                if !matches!(
+                                    replacement_list_copy.get(start_removal),
+                                    Some(lexer::Token::WHITESPACE)
                                 ) {
-                                    (
-                                        Some(lexer::Token::PLACEMARKER),
-                                        Some(lexer::Token::PLACEMARKER),
-                                    ) => Some(lexer::Token::PLACEMARKER),
-                                    (s, Some(lexer::Token::PLACEMARKER))
-                                    | (Some(lexer::Token::PLACEMARKER), s) => s.cloned(),
-                                    _ => None,
-                                };
-                                replacement_list_copy.remove(punct_hash_hash_index);
-                                if let Some(t) = case_for_placemarker {
-                                    replacement_list_copy.insert(punct_hash_hash_index, t);
+                                    start_removal += 1;
+                                }
+                                while matches!(
+                                    replacement_list_copy.get(start_removal),
+                                    Some(lexer::Token::WHITESPACE)
+                                        | Some(lexer::Token::PUNCT_HASH_HASH)
+                                ) {
+                                    replacement_list_copy.remove(start_removal);
+                                }
+                                match replacement_list_copy
+                                    .get(start_removal - 1..start_removal + 1)
+                                {
+                                    Some(
+                                        [lexer::Token::PLACEMARKER, lexer::Token::PLACEMARKER],
+                                    )
+                                    | Some([_, lexer::Token::PLACEMARKER]) => {
+                                        replacement_list_copy.remove(start_removal);
+                                    }
+                                    Some([lexer::Token::PLACEMARKER, _]) => {
+                                        replacement_list_copy.remove(start_removal - 1);
+                                    }
+                                    _ => {}
                                 }
                                 continue;
-                            } else {
                             }
                             punct_hash_hash_index += 1;
                         }

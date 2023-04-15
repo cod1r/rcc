@@ -1518,4 +1518,8 @@ mod tests {
         assert_eq!(tokens, tokens_assert);
         Ok(())
     }
+    #[test]
+    fn expand_macro_test_more_complex() -> Result<(), String> {
+        todo!()
+    }
 }
