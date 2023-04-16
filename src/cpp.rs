@@ -581,28 +581,19 @@ fn expand_macro(
                                 replacement_list_index += 1;
                             }
                         }
-
-                        let mut length = macros_to_replace.last().unwrap().end
-                            - macros_to_replace.last().unwrap().start;
-                        while length > 0 {
-                            tokens.remove(macros_to_replace.last().unwrap().start);
-                            macros_to_replace.last_mut().unwrap().end -= 1;
-                            length -= 1;
-                        }
                     } else {
                         return Err(format!(
                             "no args given for function macro: {} {:?}",
                             last_macro_interval.name, tokens
                         ));
                     }
-                } else {
-                    let mut length = macros_to_replace.last().unwrap().end
-                        - macros_to_replace.last().unwrap().start;
-                    while length > 0 {
-                        tokens.remove(macros_to_replace.last().unwrap().start);
-                        macros_to_replace.last_mut().unwrap().end -= 1;
-                        length -= 1;
-                    }
+                }
+                let mut length =
+                    macros_to_replace.last().unwrap().end - macros_to_replace.last().unwrap().start;
+                while length > 0 {
+                    tokens.remove(macros_to_replace.last().unwrap().start);
+                    macros_to_replace.last_mut().unwrap().end -= 1;
+                    length -= 1;
                 }
                 /*
                     For both object-like and function-like macro invocations,
