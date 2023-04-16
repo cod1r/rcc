@@ -9,6 +9,7 @@ struct Define {
     var_arg: bool,
     replacement_list: Vec<lexer::Token>,
 }
+#[derive(Debug)]
 struct MacroInterval {
     name: String,
     start: usize,
@@ -349,20 +350,10 @@ fn expand_macro(
         start: index_copy,
         end: index_copy + 1,
     });
-    let mut end = index_copy;
+    let mut where_index_should_be_after_we_are_done = index_copy;
     'outer: loop {
         if macros_to_replace.is_empty() {
-            if let Some(lexer::Token::IDENT(new_id)) = tokens.get(index_copy) {
-                if !already_replaced_macro_names.contains(new_id) && defines.contains_key(new_id) {
-                    macros_to_replace.push(MacroInterval {
-                        name: new_id.to_string(),
-                        start: index_copy,
-                        end: index_copy + 1,
-                    });
-                }
-            } else {
-                break;
-            }
+            break;
         }
         if let Some(last_macro_interval) = &macros_to_replace.last() {
             if let Some(def_data) = defines.get(&last_macro_interval.name) {
@@ -404,24 +395,6 @@ fn expand_macro(
                             ));
                         }
                         macros_to_replace.last_mut().unwrap().end = fn_like_macro_index + 1;
-                        let end_of_macro = macros_to_replace.last().unwrap().end;
-
-                        for start_of_args_index in start_of_arguments..end_of_macro {
-                            match &tokens[start_of_args_index] {
-                                lexer::Token::IDENT(id)
-                                    if defines.contains_key(id)
-                                        && !already_replaced_macro_names.contains(id) =>
-                                {
-                                    macros_to_replace.push(MacroInterval {
-                                        name: id.to_string(),
-                                        start: start_of_args_index,
-                                        end: start_of_args_index + 1,
-                                    });
-                                    continue 'outer;
-                                }
-                                _ => {}
-                            }
-                        }
 
                         let mut seen_args = Vec::new();
                         {
@@ -430,18 +403,20 @@ fn expand_macro(
                             while argument_temp_index <= fn_like_macro_index {
                                 match &tokens[argument_temp_index] {
                                     lexer::Token::PUNCT_OPEN_PAR => {
-                                        argument_temp_index += 1;
-                                        let mut parenth_balance_counter = 1;
-                                        while parenth_balance_counter > 0 {
+                                        let mut parenth_balance_counter = 0;
+                                        loop {
                                             match tokens.get(argument_temp_index) {
                                                 Some(lexer::Token::PUNCT_OPEN_PAR) => {
-                                                    parenth_balance_counter += 1
+                                                    parenth_balance_counter += 1;
                                                 }
                                                 Some(lexer::Token::PUNCT_CLOSE_PAR) => {
-                                                    parenth_balance_counter -= 1
+                                                    parenth_balance_counter -= 1;
                                                 }
                                                 None => unreachable!(),
                                                 _ => {}
+                                            }
+                                            if parenth_balance_counter == 0 {
+                                                break;
                                             }
                                             argument_temp_index += 1;
                                         }
@@ -479,9 +454,15 @@ fn expand_macro(
                         if seen_args.len() < args.len()
                             || (seen_args.len() != args.len() && !def_data.var_arg)
                         {
-                            return Err(format!(
-                            "wrong number of macro arguments given: seen_args len: {}, args len: {}, {:?}", seen_args.len(), args.len(), seen_args
-                        ));
+                            return Err(
+                                format!(
+                                    "wrong number of macro arguments given for macro: {}, seen_args len: {}, args len: {}, seen_args: {:?}, tokens: {:?}",
+                                    macros_to_replace.last().unwrap().name,
+                                    seen_args.len(),
+                                    args.len(),
+                                    seen_args,
+                                    tokens,
+                                ));
                         }
 
                         let mut replacement_list_copy = def_data.replacement_list.clone();
@@ -647,22 +628,17 @@ fn expand_macro(
                             macros_to_replace.last_mut().unwrap().end -= 1;
                             length -= 1;
                         }
-                        while let Some(lexer::Token::WHITESPACE) = replacement_list_copy.first() {
-                            replacement_list_copy.remove(0);
-                        }
-                        while let Some(lexer::Token::WHITESPACE) = replacement_list_copy.last() {
-                            replacement_list_copy.remove(replacement_list_copy.len() - 1);
-                        }
                         let mut insert_index = macros_to_replace.last().unwrap().start;
                         for t in replacement_list_copy {
                             tokens.insert(insert_index, t);
                             macros_to_replace.last_mut().unwrap().end += 1;
                             insert_index += 1;
                         }
+
                         already_replaced_macro_names
                             .push(macros_to_replace.last().unwrap().name.to_string());
-                        end = macros_to_replace.last().unwrap().end;
-                        macros_to_replace.pop();
+                        where_index_should_be_after_we_are_done =
+                            macros_to_replace.last().unwrap().end;
                     } else {
                         return Err(format!(
                             "no args given for function macro: {} {:?}",
@@ -731,15 +707,35 @@ fn expand_macro(
                     }
                     already_replaced_macro_names
                         .push(macros_to_replace.last().unwrap().name.to_string());
-                    end = macros_to_replace.last().unwrap().end;
-                    macros_to_replace.pop();
+                    where_index_should_be_after_we_are_done = macros_to_replace.last().unwrap().end;
+                }
+                if macros_to_replace.len() > 0 {
+                    let top_macro_interval = macros_to_replace.pop().unwrap();
+                    let beginning = top_macro_interval.start;
+                    let end = top_macro_interval.end;
+                    for looking_for_moar_macro_index in beginning..end {
+                        if let Some(lexer::Token::IDENT(identifier_that_could_be_macro)) =
+                            tokens.get(looking_for_moar_macro_index)
+                        {
+                            if defines.contains_key(identifier_that_could_be_macro)
+                                && !already_replaced_macro_names
+                                    .contains(identifier_that_could_be_macro)
+                            {
+                                macros_to_replace.push(MacroInterval {
+                                    name: identifier_that_could_be_macro.to_string(),
+                                    start: looking_for_moar_macro_index,
+                                    end: looking_for_moar_macro_index + 1,
+                                });
+                            }
+                        }
+                    }
                 }
             } else {
                 break;
             }
         }
     }
-    *index = end;
+    *index = where_index_should_be_after_we_are_done;
     Ok(())
 }
 fn preprocessing_directives(
@@ -942,7 +938,7 @@ HI(5 5);"##;
         Ok(())
     }
     #[test]
-    fn expand_macro_tests() -> Result<(), String> {
+    fn expand_macro_test_complex() -> Result<(), String> {
         let src = r##"#define hash_hash # ## #
 #define mkstr(a) # a
 #define in_between(a) mkstr(a)
@@ -1066,6 +1062,142 @@ char p[] = join(x, y);"##;
                 ]
             },
             *defines.get("join").unwrap()
+        );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_test_testing_object_macro_expansion_nested() -> Result<(), String> {
+        let src = r##"#define HEHE(a) a
+#define A HEHE(4)
+A"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![lexer::Token::CONSTANT_DEC_INT {
+                value: 4.to_string(),
+                suffix: None
+            }],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_test_testing_object_macro_expansion_nested_2() -> Result<(), String> {
+        let src = r##"#define HEHE(a) a
+#define A HEHE(4) HEHE(5) HEHE(6)
+A"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 4.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 5.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 6.to_string(),
+                    suffix: None
+                }
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_parentheses_argument() -> Result<(), String> {
+        let src = r##"#define HI(a,b) a,b
+HI((,),(,))"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_COMMA,
+                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::PUNCT_COMMA,
+                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_COMMA,
+                lexer::Token::PUNCT_CLOSE_PAR,
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_test_testing_fn_macro_expansion_nested() -> Result<(), String> {
+        let src = r##"#define HEHE(a,b) a b
+HEHE(HEHE(1,2),HEHE(3,4))"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 1.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 2.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 3.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 4.to_string(),
+                    suffix: None
+                },
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_test_fn_macro_with_arg_that_expands_to_comma() -> Result<(), String> {
+        let src = r##"#define HAHA(a,b) a + b
+#define C ,
+HAHA(C,4)"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::PUNCT_COMMA,
+                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_PLUS,
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 4.to_string(),
+                    suffix: None
+                },
+            ],
+            tokens
         );
         Ok(())
     }
