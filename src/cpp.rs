@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::lexer;
+use crate::lexer::{self, lexer};
 
 #[derive(PartialEq, Debug, Clone)]
 struct Define {
@@ -466,6 +466,21 @@ fn expand_macro(
                                 ));
                         }
 
+                        for arg in &mut seen_args {
+                            let mut index = 0;
+                            while index < arg.len() {
+                                if let lexer::Token::IDENT(inside_id) = &arg[index] {
+                                    if defines.contains_key(inside_id)
+                                        && !already_replaced_macro_names.contains(inside_id)
+                                    {
+                                        expand_macro(arg, &mut index, defines)?;
+                                    }
+                                }
+                                index += 1;
+                            }
+                        }
+                        already_replaced_macro_names
+                            .push(macros_to_replace.last().unwrap().name.clone());
                         {
                             let mut replacement_list_index = 0;
                             while replacement_list_index < replacement_list_copy.len() {
@@ -511,11 +526,11 @@ fn expand_macro(
                                                     replacement_list_copy.get(removal_index)
                                                 {
                                                     if *remove_id == id_name_clone {
-                                                        replacement_list_copy.remove(0);
+                                                        replacement_list_copy.remove(removal_index);
                                                         break;
                                                     }
                                                 }
-                                                replacement_list_copy.remove(0);
+                                                replacement_list_copy.remove(removal_index);
                                             }
                                             let mut string_literal_token =
                                                 lexer::Token::StringLiteral {
@@ -536,7 +551,6 @@ fn expand_macro(
                                             }
                                             replacement_list_copy
                                                 .insert(removal_index, string_literal_token);
-                                            replacement_list_index = removal_index + 1;
                                             continue;
                                         } else {
                                             replacement_list_copy.remove(replacement_list_index);
@@ -571,9 +585,7 @@ fn expand_macro(
                                                     replacement_list_index_copy,
                                                     lexer::Token::PLACEMARKER,
                                                 );
-                                                replacement_list_index_copy += 1;
                                             }
-                                            replacement_list_index = replacement_list_index_copy;
                                             continue;
                                         }
                                     }
@@ -639,12 +651,33 @@ fn expand_macro(
                     }
                     punct_hash_hash_index += 1;
                 }
+
+                {
+                    let mut stringified_tokens = String::new();
+                    let mut concat_ident_index = 0;
+                    while concat_ident_index < replacement_list_copy.len() {
+                        while let Some(lexer::Token::IDENT(concat_id)) =
+                            replacement_list_copy.get(concat_ident_index)
+                        {
+                            stringified_tokens.push_str(&concat_id);
+                            replacement_list_copy.remove(concat_ident_index);
+                        }
+                        if stringified_tokens.len() > 0 {
+                            let new_ident_token = lexer::Token::IDENT(stringified_tokens.clone());
+                            replacement_list_copy.insert(concat_ident_index, new_ident_token);
+                            stringified_tokens.clear();
+                        }
+                        concat_ident_index += 1;
+                    }
+                }
+
                 let mut insert_index = macros_to_replace.last().unwrap().start;
                 for t in replacement_list_copy {
                     tokens.insert(insert_index, t);
                     macros_to_replace.last_mut().unwrap().end += 1;
                     insert_index += 1;
                 }
+
                 let top_macro_interval = macros_to_replace.pop().unwrap();
                 let beginning = top_macro_interval.start;
                 let end = top_macro_interval.end;
@@ -1186,10 +1219,9 @@ INVOKE(FOO,BAR)"##;
                 lexer::Token::WHITESPACE,
                 lexer::Token::StringLiteral {
                     prefix: None,
-                    sequence: "BOO".to_string()
+                    sequence: "BAR".to_string()
                 },
                 lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::PUNCT_SEMI_COLON,
             ],
             tokens
         );
