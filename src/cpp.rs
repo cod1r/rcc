@@ -582,44 +582,6 @@ fn expand_macro(
                             }
                         }
 
-                        let mut punct_hash_hash_index = 0;
-                        while punct_hash_hash_index < replacement_list_copy.len() {
-                            if let Some(lexer::Token::PUNCT_HASH_HASH) =
-                                replacement_list_copy.get(punct_hash_hash_index)
-                            {
-                                let mut start_removal = punct_hash_hash_index - 1;
-                                if !matches!(
-                                    replacement_list_copy.get(start_removal),
-                                    Some(lexer::Token::WHITESPACE)
-                                ) {
-                                    start_removal += 1;
-                                }
-                                while matches!(
-                                    replacement_list_copy.get(start_removal),
-                                    Some(lexer::Token::WHITESPACE)
-                                        | Some(lexer::Token::PUNCT_HASH_HASH)
-                                ) {
-                                    replacement_list_copy.remove(start_removal);
-                                }
-                                match replacement_list_copy
-                                    .get(start_removal - 1..start_removal + 1)
-                                {
-                                    Some(
-                                        [lexer::Token::PLACEMARKER, lexer::Token::PLACEMARKER],
-                                    )
-                                    | Some([_, lexer::Token::PLACEMARKER]) => {
-                                        replacement_list_copy.remove(start_removal);
-                                    }
-                                    Some([lexer::Token::PLACEMARKER, _]) => {
-                                        replacement_list_copy.remove(start_removal - 1);
-                                    }
-                                    _ => {}
-                                }
-                                continue;
-                            }
-                            punct_hash_hash_index += 1;
-                        }
-
                         let mut length = macros_to_replace.last().unwrap().end
                             - macros_to_replace.last().unwrap().start;
                         while length > 0 {
@@ -641,51 +603,50 @@ fn expand_macro(
                         macros_to_replace.last_mut().unwrap().end -= 1;
                         length -= 1;
                     }
-                    /*
-                        For both object-like and function-like macro invocations,
-                        before the replacement list is reexamined for more macro names to replace,
-                        each instance of a ## preprocessing token in the replacement list
-                        not from an argument) is deleted and the preceding preprocessing token is concatenated with the
-                        following preprocessing token. Placemarker preprocessing tokens are handled specially: concatena-
-                        tion of two placemarkers results in a single placemarker preprocessing token, and concatenation
-                        of a placemarker with a non-placemarker preprocessing token results in the non-placemarker pre-
-                        processing token. If the result is not a valid preprocessing token, the behavior is undefined. The
-                        resulting token is available for further macro replacement. The order of evaluation of ## operators is
-                        unspecified.
-                    */
-                    let mut punct_hash_hash_index = 0;
-                    while punct_hash_hash_index < replacement_list_copy.len() {
-                        if let Some(lexer::Token::PUNCT_HASH_HASH) =
-                            replacement_list_copy.get(punct_hash_hash_index)
-                        {
-                            let mut start_removal = punct_hash_hash_index - 1;
-                            if !matches!(
-                                replacement_list_copy.get(start_removal),
-                                Some(lexer::Token::WHITESPACE)
-                            ) {
-                                start_removal += 1;
-                            }
-                            while matches!(
-                                replacement_list_copy.get(start_removal),
-                                Some(lexer::Token::WHITESPACE)
-                                    | Some(lexer::Token::PUNCT_HASH_HASH)
-                            ) {
+                }
+                /*
+                    For both object-like and function-like macro invocations,
+                    before the replacement list is reexamined for more macro names to replace,
+                    each instance of a ## preprocessing token in the replacement list
+                    not from an argument) is deleted and the preceding preprocessing token is concatenated with the
+                    following preprocessing token. Placemarker preprocessing tokens are handled specially: concatena-
+                    tion of two placemarkers results in a single placemarker preprocessing token, and concatenation
+                    of a placemarker with a non-placemarker preprocessing token results in the non-placemarker pre-
+                    processing token. If the result is not a valid preprocessing token, the behavior is undefined. The
+                    resulting token is available for further macro replacement. The order of evaluation of ## operators is
+                    unspecified.
+                */
+                let mut punct_hash_hash_index = 0;
+                while punct_hash_hash_index < replacement_list_copy.len() {
+                    if let Some(lexer::Token::PUNCT_HASH_HASH) =
+                        replacement_list_copy.get(punct_hash_hash_index)
+                    {
+                        let mut start_removal = punct_hash_hash_index - 1;
+                        if !matches!(
+                            replacement_list_copy.get(start_removal),
+                            Some(lexer::Token::WHITESPACE)
+                        ) {
+                            start_removal += 1;
+                        }
+                        while matches!(
+                            replacement_list_copy.get(start_removal),
+                            Some(lexer::Token::WHITESPACE) | Some(lexer::Token::PUNCT_HASH_HASH)
+                        ) {
+                            replacement_list_copy.remove(start_removal);
+                        }
+                        match replacement_list_copy.get(start_removal - 1..start_removal + 1) {
+                            Some([lexer::Token::PLACEMARKER, lexer::Token::PLACEMARKER])
+                            | Some([_, lexer::Token::PLACEMARKER]) => {
                                 replacement_list_copy.remove(start_removal);
                             }
-                            match replacement_list_copy.get(start_removal - 1..start_removal + 1) {
-                                Some([lexer::Token::PLACEMARKER, lexer::Token::PLACEMARKER])
-                                | Some([_, lexer::Token::PLACEMARKER]) => {
-                                    replacement_list_copy.remove(start_removal);
-                                }
-                                Some([lexer::Token::PLACEMARKER, _]) => {
-                                    replacement_list_copy.remove(start_removal - 1);
-                                }
-                                _ => {}
+                            Some([lexer::Token::PLACEMARKER, _]) => {
+                                replacement_list_copy.remove(start_removal - 1);
                             }
-                            continue;
+                            _ => {}
                         }
-                        punct_hash_hash_index += 1;
+                        continue;
                     }
+                    punct_hash_hash_index += 1;
                 }
                 let mut insert_index = macros_to_replace.last().unwrap().start;
                 for t in replacement_list_copy {
