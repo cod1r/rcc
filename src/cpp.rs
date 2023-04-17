@@ -320,7 +320,6 @@ fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> R
 fn undef_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
-    end: usize,
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     let index_of_identifier = index + 2;
@@ -697,11 +696,16 @@ fn expand_macro(
                         }
                     }
                 }
+                
+                if macros_to_replace.len() == 0 {
+                    where_index_should_be_after_we_are_done = end + 1;
+                }
             } else {
                 break;
             }
         }
     }
+    *index = where_index_should_be_after_we_are_done;
     Ok(())
 }
 fn preprocessing_directives(
@@ -723,7 +727,7 @@ fn preprocessing_directives(
         match &tokens[index] {
             lexer::Token::PUNCT_HASH => {
                 let mut newline = index + 2;
-                while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE)) {
+                while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE)) && newline < tokens.len() {
                     newline += 1;
                 }
                 if let Some(lexer::Token::NEWLINE) = tokens.get(newline) {
@@ -742,28 +746,25 @@ fn preprocessing_directives(
                             }
                             "defined" => todo!(),
                             "undef" => {
-                                undef_directive(tokens, index, newline, &mut defines)?;
+                                undef_directive(tokens, index, &mut defines)?;
                             }
-                            "error" => {}
-                            "line" => {}
-                            "pragma" => {}
-                            _ => {
-                                index = newline + 1;
-                            }
+                            "error" => todo!(),
+                            "line" => todo!(),
+                            "pragma" => todo!(),
+                            _ => {}
                         }
                     }
+                    continue;
                 } else {
                     return Err(format!("no newline at the end of preprocessing directive"));
                 }
             }
             lexer::Token::IDENT(_) => {
                 expand_macro(tokens, &mut index, &defines)?;
-                todo!()
             }
-            _ => {
-                index += 1;
-            }
+            _ => {}
         }
+        index += 1;
     }
     if index >= tokens.len() {
         return Ok(());
@@ -847,7 +848,7 @@ hi;
 }"##;
         let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
         preprocessing_directives(&mut tokens, &["./test_c_files"])?;
-        let assert_tokens = [
+        let assert_tokens = vec![
             lexer::Token::IDENT(String::from("int")),
             lexer::Token::WHITESPACE,
             lexer::Token::IDENT(String::from("main")),
@@ -864,23 +865,7 @@ hi;
             lexer::Token::NEWLINE,
             lexer::Token::PUNCT_CLOSE_CURLY,
         ];
-        assert_eq!(tokens, assert_tokens);
-        Ok(())
-    }
-    #[test]
-    fn preprocess_test_defines() -> Result<(), String> {
-        let src = r##"#define hash_hash # ## #
-#define mkstr(a) # a
-#define in_between(a) mkstr(a)
-#define join(c, d) in_between(c hash_hash d)
-char p[] = join(x, y); // equivalent to
-// char p[] = "x ## y";"##;
-        let bytes = src.as_bytes();
-        let changed_bytes = comments(bytes);
-        let mut tokens = lexer::lexer(changed_bytes.to_vec(), true)?;
-        preprocessing_directives(&mut tokens, &["./test_c_files"])?;
-        let assert_tokens = [];
-        assert_eq!(tokens, assert_tokens);
+        assert_eq!(assert_tokens, tokens);
         Ok(())
     }
     #[test]
