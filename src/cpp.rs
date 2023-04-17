@@ -223,6 +223,9 @@ fn define_directive(
             if let Some(lexer::Token::IDENT(arg)) = tokens.get(fn_like_macro_index) {
                 if let Some(ref mut v) = def_data.parameters {
                     if !v.contains(arg) {
+                        if arg == "__VA_ARGS__" {
+                            return Err(format!("__VA_ARGS__ cannot be used as a parameter name"));
+                        }
                         v.push(arg.to_string());
                     } else {
                         return Err(format!("duplicate argument name found in define directive"));
@@ -442,9 +445,6 @@ fn expand_macro(
                                             beginning_of_current_argument = argument_temp_index + 1;
                                         }
                                     }
-                                    lexer::Token::PUNCT_ELLIPSIS => {
-                                        todo!("have to write code for __VA_ARGS__")
-                                    }
                                     _ => {}
                                 }
                                 argument_temp_index += 1;
@@ -452,7 +452,7 @@ fn expand_macro(
                         }
 
                         if seen_args.len() < args.len()
-                            || (seen_args.len() != args.len() && !def_data.var_arg)
+                            || (seen_args.len() == args.len() && def_data.var_arg)
                         {
                             return Err(
                                 format!(
@@ -472,6 +472,16 @@ fn expand_macro(
                                     if defines.contains_key(inside_id)
                                         && !already_replaced_macro_names.contains(inside_id)
                                     {
+                                        //TODO: we use recursion here because if we did it
+                                        //iteratively, the macros would be expanded but in some
+                                        //cases where the macro would expand into punctuators, it
+                                        //would be hard to distinguish where each argument/slice of
+                                        //tokens began and ended.
+                                        //
+                                        //Ideally, we would want to remove recursion completely
+                                        //One solution would be to insert some implementation
+                                        //defined token to distinguish where arguments are
+                                        //separated but that also seems scuffed as fuck.
                                         expand_macro(arg, &mut index, defines)?;
                                     }
                                 }
@@ -587,6 +597,28 @@ fn expand_macro(
                                             }
                                             continue;
                                         }
+                                    } else if id_name == "__VA_ARGS__" {
+                                        replacement_list_copy.remove(replacement_list_index);
+                                        assert!(args.len() < seen_args.len());
+                                        let mut replacement_list_index_incremented =
+                                            replacement_list_index;
+                                        for seen_arg_index in args.len()..seen_args.len() {
+                                            let argument_slice = &seen_args[seen_arg_index];
+                                            for t in argument_slice {
+                                                replacement_list_copy.insert(
+                                                    replacement_list_index_incremented,
+                                                    t.clone(),
+                                                );
+                                                replacement_list_index_incremented += 1;
+                                            }
+                                            if seen_arg_index < seen_args.len() - 1 {
+                                                replacement_list_copy.insert(
+                                                    replacement_list_index_incremented,
+                                                    lexer::Token::PUNCT_COMMA,
+                                                );
+                                            }
+                                            replacement_list_index_incremented += 1;
+                                        }
                                     }
                                 }
                                 replacement_list_index += 1;
@@ -696,7 +728,7 @@ fn expand_macro(
                         }
                     }
                 }
-                
+
                 if macros_to_replace.len() == 0 {
                     where_index_should_be_after_we_are_done = end + 1;
                 }
@@ -727,7 +759,9 @@ fn preprocessing_directives(
         match &tokens[index] {
             lexer::Token::PUNCT_HASH => {
                 let mut newline = index + 2;
-                while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE)) && newline < tokens.len() {
+                while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE))
+                    && newline < tokens.len()
+                {
                     newline += 1;
                 }
                 if let Some(lexer::Token::NEWLINE) = tokens.get(newline) {
@@ -1207,6 +1241,41 @@ INVOKE(FOO,BAR)"##;
                     sequence: "BAR".to_string()
                 },
                 lexer::Token::PUNCT_CLOSE_PAR,
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn __va_args___test() -> Result<(), String> {
+        let src = r##"#define CHICKEN(...) __VA_ARGS__
+CHICKEN(1 2,3 4)"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        define_directive(&mut tokens, 0, &mut defines)?;
+        expand_macro(&mut tokens, &mut 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 1.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 2.to_string(),
+                    suffix: None
+                },
+                lexer::Token::PUNCT_COMMA,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 3.to_string(),
+                    suffix: None
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: 4.to_string(),
+                    suffix: None
+                },
             ],
             tokens
         );
