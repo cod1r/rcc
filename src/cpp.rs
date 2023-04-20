@@ -374,7 +374,7 @@ fn expand_macro(
         end: index_copy + 1,
     });
     let mut where_index_should_be_after_we_are_done = index_copy;
-    'outer: loop {
+    loop {
         if macros_to_replace.is_empty() {
             break;
         }
