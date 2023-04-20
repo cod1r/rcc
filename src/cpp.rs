@@ -16,7 +16,7 @@ struct MacroInterval {
     end: usize,
 }
 
-fn comments(bytes: &[u8]) -> Vec<u8> {
+fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut byte_index = 0;
     let mut within_quotes = false;
     let mut comments_removed = Vec::new();
@@ -28,21 +28,40 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
             byte_index += 1;
             while byte_index < bytes.len() && bytes[byte_index] != start {
                 comments_removed.push(bytes[byte_index]);
+                if byte_index + 1 < bytes.len() && bytes[byte_index] == b'\\' {
+                    comments_removed.push(bytes[byte_index + 1]);
+                    byte_index += 1;
+                }
                 byte_index += 1;
             }
             if byte_index < bytes.len() && bytes[byte_index] == start {
                 within_quotes = false;
                 comments_removed.push(bytes[byte_index]);
                 byte_index += 1;
+            } else {
+                return Err(format!("no matching ending quote"));
             }
-        } else if byte_index + 1 < bytes.len()
-            && bytes[byte_index] == b'/'
-            && bytes[byte_index + 1] == b'/'
-            && !within_quotes
-        {
-            comments_removed.push(b' ');
-            while byte_index < bytes.len() && bytes[byte_index] != b'\n' {
-                byte_index += 1;
+        } else if byte_index + 1 < bytes.len() && !within_quotes {
+            if bytes[byte_index] == b'/' && bytes[byte_index + 1] == b'/' {
+                comments_removed.push(b' ');
+                while byte_index < bytes.len() && bytes[byte_index] != b'\n' {
+                    byte_index += 1;
+                }
+            } else if bytes[byte_index] == b'/' && bytes[byte_index + 1] == b'*' {
+                comments_removed.push(b' ');
+                while byte_index + 1 < bytes.len()
+                    && (bytes[byte_index] != b'*' || bytes[byte_index + 1] != b'/')
+                {
+                    byte_index += 1;
+                }
+                if byte_index + 1 < bytes.len()
+                    && bytes[byte_index] == b'*'
+                    && bytes[byte_index + 1] == b'/'
+                {
+                    byte_index += 2;
+                } else {
+                    return Err(format!("no ending */ for block comment"));
+                }
             }
         }
         if byte_index < bytes.len() {
@@ -50,7 +69,7 @@ fn comments(bytes: &[u8]) -> Vec<u8> {
         }
         byte_index += 1;
     }
-    comments_removed
+    Ok(comments_removed)
 }
 fn get_header_name_from_tokens(tokens: &[lexer::Token]) -> Option<String> {
     if let (Some(lexer::Token::PUNCT_LESS_THAN), Some(lexer::Token::PUNCT_GREATER_THAN)) =
@@ -808,14 +827,14 @@ fn preprocessing_directives(
     Err(String::from("unable to preprocess"))
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
-pub fn cpp(program_str: Vec<u8>) -> Vec<lexer::Token> {
+pub fn cpp(program_str: Vec<u8>) -> Result<Vec<lexer::Token>, String> {
     let backslash_newline_spliced = program_str
         .iter()
         .map(|b| *b as char)
         .collect::<String>()
         .replace("\\\n", "");
     let backslash_newline_spliced = backslash_newline_spliced.as_bytes();
-    let comments_removed = comments(backslash_newline_spliced);
+    let comments_removed = comments(backslash_newline_spliced)?;
     let lexed_tokens = lexer::lexer(comments_removed, true);
     todo!()
 }
@@ -831,28 +850,42 @@ mod tests {
         Define,
     };
     #[test]
-    fn comments_removal_outside_quotes() {
+    fn comments_removal_outside_quotes() -> Result<(), String> {
         let src = "int main() {\n\"hi\"; // this is me\n}\n";
         let src_bytes = src.as_bytes();
-        let removed = comments(src_bytes);
-        let stringed = String::from_utf8_lossy(&removed);
+        let removed = comments(src_bytes)?;
+        let stringed = String::from_utf8_lossy(&removed).to_string();
         assert_eq!(stringed, "int main() {\n\"hi\";  \n}\n");
+        Ok(())
     }
     #[test]
-    fn comments_removal_inside_single_quotes() {
+    fn comments_removal_inside_single_quotes() -> Result<(), String> {
         let src = "int main() {\n\"hi\"; '// this is me';\n}\n";
         let src_bytes = src.as_bytes();
-        let removed = comments(src_bytes);
-        let stringed = String::from_utf8_lossy(&removed);
+        let removed = comments(src_bytes)?;
+        let stringed = String::from_utf8_lossy(&removed).to_string();
         assert_eq!(stringed, "int main() {\n\"hi\"; '// this is me';\n}\n");
+        Ok(())
     }
     #[test]
-    fn comments_removal_inside_double_quotes() {
+    fn comments_removal_inside_double_quotes() -> Result<(), String> {
         let src = "int main() {\n\"hi\"; \"// this is me\";\n}\n";
         let src_bytes = src.as_bytes();
-        let removed = comments(src_bytes);
-        let stringed = String::from_utf8_lossy(&removed);
+        let removed = comments(src_bytes)?;
+        let stringed = String::from_utf8_lossy(&removed).to_string();
         assert_eq!(stringed, "int main() {\n\"hi\"; \"// this is me\";\n}\n");
+        Ok(())
+    }
+    #[test]
+    fn block_comment_removal() -> Result<(), String> {
+        let src = r##"/*
+        HI THIS IS JASON HAR HAR HAR
+            */"##;
+        let src_bytes = src.as_bytes();
+        let removed = comments(src_bytes)?;
+        let stringed = String::from_utf8_lossy(&removed).to_string();
+        assert_eq!(stringed, " ");
+        Ok(())
     }
     #[test]
     fn include_test() -> Result<(), String> {
