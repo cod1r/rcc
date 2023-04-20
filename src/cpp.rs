@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::lexer::{self, lexer};
+use crate::lexer::{self};
 
 #[derive(PartialEq, Debug, Clone)]
 struct Define {
@@ -78,9 +78,11 @@ fn include_directive(
     while index_header_file < tokens.len() {
         if matches!(
             tokens.get(index_header_file),
-            Some(lexer::Token::PUNCT_LESS_THAN)
-                | Some(lexer::Token::IDENT(_))
-                | Some(lexer::Token::StringLiteral { .. })
+            Some(
+                lexer::Token::PUNCT_LESS_THAN
+                    | lexer::Token::IDENT(_)
+                    | lexer::Token::StringLiteral { .. }
+            )
         ) {
             break;
         }
