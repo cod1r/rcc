@@ -1282,6 +1282,7 @@ INVOKE(FOO,BAR)"##;
         Ok(())
     }
     #[test]
+    #[allow(non_snake_case)]
     fn __va_args___test() -> Result<(), String> {
         let src = r##"#define CHICKEN(...) __VA_ARGS__
 CHICKEN(1 2,3 4)"##;
