@@ -183,8 +183,31 @@ fn include_directive(
     }
     Err(String::from("file not found"))
 }
+
+//Notes:
+//The expression that controls conditional inclusion shall be an integer constant expression
+//Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
+//All macro identifiers are evaluated as defined or not defined.
 fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
-    todo!()
+    if tokens.iter().any(|t| {
+        matches!(
+            t,
+            lexer::Token::PUNCT_ASSIGNMENT
+                | lexer::Token::PUNCT_INCREMENT
+                | lexer::Token::PUNCT_DECREMENT
+                | lexer::Token::CONSTANT_DEC_FLOAT { .. }
+                | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
+                | lexer::Token::PUNCT_COMMA
+        )
+    }) {
+        return Err(format!(
+            "'=', '++', '--', ',' operators are not allowed and non integer types are not allowed"
+        ));
+    }
+    let mut index = 0;
+    while index < tokens.len() {
+
+    }
 }
 fn if_directive(
     tokens: &mut Vec<lexer::Token>,
@@ -285,6 +308,9 @@ fn define_directive(
         matches_one_of_conditions = true;
     }
     if matches_one_of_conditions {
+        if identifier_of_macro == "defined" {
+            return Err(format!("cannot define 'defined' as it is a cpp keyword"));
+        }
         if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro) {
             if dd.parameters.is_some() {
                 for t_index in 0..dd.replacement_list.len() {

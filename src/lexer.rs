@@ -105,6 +105,7 @@ pub enum Token {
     KEYWORD__STATIC_ASSERT,
     KEYWORD__THREAD_LOCAL,
     TYPE,
+    CONSTANT_ENUM(String),
     CONSTANT_OCTAL_INT {
         value: String,
         suffix: Option<String>,
