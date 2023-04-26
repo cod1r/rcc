@@ -1,12 +1,12 @@
 use crate::lexer::{self};
 
-enum PrimaryInner {
+pub enum PrimaryInner {
     Token(lexer::Token),
     Expr(Box<Expr>),
 }
 
 impl PrimaryInner {
-    fn new_p_token(t: lexer::Token) -> Result<Self, String> {
+    pub fn new_p_token(t: lexer::Token) -> Result<Self, String> {
         if matches!(
             t,
             lexer::Token::IDENT(_)
@@ -23,79 +23,79 @@ impl PrimaryInner {
         }
         Err(format!("not allowed token passed in"))
     }
-    fn new_p_expr(e: Expr) -> Self {
+    pub fn new_p_expr(e: Expr) -> Self {
         Self::Expr(Box::new(e))
     }
 }
 
-enum Type {
+pub enum Type {
     Void,
 }
 
-struct Conditional {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
-    third: Option<Box<Expr>>,
+pub struct Conditional {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
+    pub third: Option<Box<Expr>>,
 }
 
 
-struct LogicalOR {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct LogicalOR {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct LogicalAND {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct LogicalAND {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct BitOR {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct BitOR {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct BitXOR {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct BitXOR {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct BitAND {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct BitAND {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct Equality {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct Equality {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-enum OpType {
+pub enum OpType {
     GreaterThan,
     LessThan,
     LessThanEq,
     GreaterThanEq,
 }
 
-struct Relational {
-    op: OpType,
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct Relational {
+    pub op: OpType,
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct BitShift {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct BitShift {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
 
-struct Additive {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct Additive {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
-struct Multiplicative {
-    first: Option<Box<Expr>>,
-    second: Option<Box<Expr>>,
+pub struct Multiplicative {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
 }
-enum UnaryOp {
+pub enum UnaryOp {
     Ampersand,
     Mult,
     Add,
@@ -103,14 +103,14 @@ enum UnaryOp {
     BitNOT,
     LogicalNOT,
 }
-struct Unary {
-    op: UnaryOp,
-    first: Option<Box<Expr>>,
+pub struct Unary {
+    pub op: UnaryOp,
+    pub first: Option<Box<Expr>>,
 }
-struct Cast {}
-struct PostFix {}
+pub struct Cast {}
+pub struct PostFix {}
 
-enum Expr {
+pub enum Expr {
     Conditional(Conditional),
     LogicalOR(LogicalOR),
     LogicalAND(LogicalAND),
@@ -128,4 +128,26 @@ enum Expr {
     Primary(PrimaryInner),
 }
 
-fn parser() {}
+impl Expr {
+    fn priority(&self) -> u8 {
+        match self {
+            Expr::Primary(_) => u8::MAX,
+            Expr::PostFix(_) => u8::MAX - 1,
+            Expr::Unary(_) => u8::MAX - 2,
+            Expr::Cast(_) => u8::MAX - 3,
+            Expr::Multiplicative(_) => u8::MAX - 4,
+            Expr::Additive(_) => u8::MAX - 5,
+            Expr::BitShift(_) => u8::MAX - 6,
+            Expr::Relational(_) => u8::MAX - 7,
+            Expr::Equality(_) => u8::MAX - 8,
+            Expr::BitAND(_) => u8::MAX - 9,
+            Expr::BitXOR(_) => u8::MAX - 10,
+            Expr::BitOR(_) => u8::MAX - 11,
+            Expr::LogicalAND(_) => u8::MAX - 12,
+            Expr::LogicalOR(_) => u8::MAX - 13,
+            Expr::Conditional(_) => u8::MAX - 14,
+        }
+    }
+}
+
+pub fn parser() {}

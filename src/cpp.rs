@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::lexer::{self};
+use crate::parser::{self};
 
 #[derive(PartialEq, Debug, Clone)]
 struct Define {
@@ -198,16 +199,80 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 | lexer::Token::CONSTANT_DEC_FLOAT { .. }
                 | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
                 | lexer::Token::PUNCT_COMMA
+                | lexer::Token::StringLiteral { .. }
         )
     }) {
         return Err(format!(
             "'=', '++', '--', ',' operators are not allowed and non integer types are not allowed"
         ));
     }
+    let mut stack = Vec::<parser::Expr>::new();
+    let mut curr_expr: Option<parser::Expr> = None;
     let mut index = 0;
     while index < tokens.len() {
-
+        match &tokens[index] {
+            lexer::Token::PUNCT_XOR_BIT => {}
+            lexer::Token::PUNCT_PLUS => {}
+            lexer::Token::PUNCT_OR_BOOL => {}
+            lexer::Token::PUNCT_AND_BOOL => {}
+            lexer::Token::PUNCT_OPEN_PAR => {
+            }
+            lexer::Token::IDENT(_) => {
+                let inner_primary = parser::PrimaryInner::new_p_token(tokens[index].clone())?;
+                if curr_expr.is_none() {
+                    curr_expr = Some(parser::Expr::Primary(inner_primary));
+                } else {
+                    match &mut curr_expr {
+                        Some(parser::Expr::Conditional(Conditional)) => {
+                            if Conditional.first.is_none() {
+                                Conditional.first =
+                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
+                            } else if Conditional.second.is_none() {
+                                Conditional.second =
+                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
+                            } else if Conditional.third.is_none() {
+                                Conditional.third =
+                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
+                            } else {
+                                // if our current expression is 'complete' as in it has all it
+                                // needs to be defined as whatever type of expression it is, we
+                                // need to look at our expression stack to see if any expression
+                                // uses this curr_expr as a sub-expression.
+                                // There should be no cases where we have an expression on the
+                                // stack that is complete and curr_expr also being complete.
+                                //
+                                // In the case where curr_expr would use an expression on the stack
+                                // as a sub expression, we would pop off the expression on the
+                                // stack and put it as a sub expression in the curr_expr.
+                                //
+                                // curr_expr would be the end result of constructing the expression
+                                // tree
+                            }
+                        }
+                        Some(parser::Expr::LogicalOR(LogicalOR)) => {}
+                        Some(parser::Expr::LogicalAND(LogicalAND)) => {}
+                        Some(parser::Expr::BitOR(BitOR)) => {}
+                        Some(parser::Expr::BitXOR(BitXOR)) => {}
+                        Some(parser::Expr::BitAND(BitAND)) => {}
+                        Some(parser::Expr::Equality(Equality)) => {}
+                        Some(parser::Expr::Relational(Relational)) => {}
+                        Some(parser::Expr::BitShift(BitShift)) => {}
+                        Some(parser::Expr::Additive(Additive)) => {}
+                        Some(parser::Expr::Multiplicative(Multiplicative)) => {}
+                        Some(parser::Expr::Unary(Unary)) => {}
+                        Some(parser::Expr::Cast(Cast)) => {}
+                        Some(parser::Expr::PostFix(PostFix)) => {}
+                        Some(parser::Expr::Primary(PrimaryInner)) => {}
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            lexer::Token::WHITESPACE => {}
+            _ => unreachable!(),
+        }
+        todo!()
     }
+    Ok(true)
 }
 fn if_directive(
     tokens: &mut Vec<lexer::Token>,
@@ -1341,6 +1406,16 @@ CHICKEN(1 2,3 4)"##;
             ],
             tokens
         );
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_not_defined() -> Result<(), String> {
+        let src = r##"HI"##;
+        let src_bytes = src.as_bytes();
+        let mut tokens = lexer::lexer(src_bytes.to_vec(), true)?;
+        let mut defines = HashMap::new();
+        expand_macro(&mut tokens, &mut 0, &mut defines)?;
+        assert_eq!(vec![lexer::Token::IDENT("HI".to_string()),], tokens);
         Ok(())
     }
 }
