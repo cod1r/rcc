@@ -1,5 +1,6 @@
 use crate::lexer::{self};
 
+#[derive(Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
     Expr(Box<Expr>),
@@ -32,6 +33,7 @@ pub enum Type {
     Void,
 }
 
+#[derive(Clone)]
 pub struct Conditional {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
@@ -39,36 +41,44 @@ pub struct Conditional {
 }
 
 
+#[derive(Clone)]
 pub struct LogicalOR {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct LogicalAND {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct BitOR {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct BitXOR {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct BitAND {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct Equality {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+
+#[derive(Clone)]
 pub enum OpType {
     GreaterThan,
     LessThan,
@@ -76,25 +86,30 @@ pub enum OpType {
     GreaterThanEq,
 }
 
+#[derive(Clone)]
 pub struct Relational {
     pub op: OpType,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct BitShift {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
+#[derive(Clone)]
 pub struct Additive {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
+#[derive(Clone)]
 pub struct Multiplicative {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
+#[derive(Clone)]
 pub enum UnaryOp {
     Ampersand,
     Mult,
@@ -103,13 +118,17 @@ pub enum UnaryOp {
     BitNOT,
     LogicalNOT,
 }
+#[derive(Clone)]
 pub struct Unary {
     pub op: UnaryOp,
     pub first: Option<Box<Expr>>,
 }
+#[derive(Clone)]
 pub struct Cast {}
+#[derive(Clone)]
 pub struct PostFix {}
 
+#[derive(Clone)]
 pub enum Expr {
     Conditional(Conditional),
     LogicalOR(LogicalOR),
@@ -125,11 +144,11 @@ pub enum Expr {
     Unary(Unary),
     Cast(Cast),
     PostFix(PostFix),
-    Primary(PrimaryInner),
+    Primary(Option<PrimaryInner>),
 }
 
 impl Expr {
-    fn priority(&self) -> u8 {
+    pub fn priority(&self) -> u8 {
         match self {
             Expr::Primary(_) => u8::MAX,
             Expr::PostFix(_) => u8::MAX - 1,

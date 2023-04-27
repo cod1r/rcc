@@ -207,62 +207,168 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
         ));
     }
     let mut stack = Vec::<parser::Expr>::new();
+    // if our current expression is 'complete' as in it has all it
+    // needs to be defined as whatever type of expression it is, we
+    // need to look at our expression stack to see if any expression
+    // uses this curr_expr as a sub-expression.
+    // There should be no cases where we have an expression on the
+    // stack that is complete and curr_expr also being complete.
+    //
+    // In the case where curr_expr would use an expression on the stack
+    // as a sub expression, we would pop off the expression on the
+    // stack and put it as a sub expression in the curr_expr.
+    //
+    // curr_expr would be the end result of constructing the expression
+    // tree
     let mut curr_expr: Option<parser::Expr> = None;
     let mut index = 0;
     while index < tokens.len() {
         match &tokens[index] {
-            lexer::Token::PUNCT_XOR_BIT => {}
-            lexer::Token::PUNCT_PLUS => {}
-            lexer::Token::PUNCT_OR_BOOL => {}
-            lexer::Token::PUNCT_AND_BOOL => {}
+            // we unwrap for some operators because there should always be a left operand before.
+            lexer::Token::PUNCT_XOR_BIT => {
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::BitXOR(parser::BitXOR {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    let parser::Expr::BitXOR(bitxor) = &mut new_expression else { unreachable!() };
+                    bitxor.first = Some(Box::new(expression_unwrapped));
+                    curr_expr = Some(new_expression);
+                } else {
+                    let parser::Expr::BitXOR(bitxor) = &mut new_expression else { unreachable!() };
+                    match &mut expression_unwrapped {
+                        parser::Expr::BitXOR(bo) => {
+                            assert!(bo.first.is_some());
+                            bitxor.first = bo.second.clone();
+                            bo.second = Some(Box::new(new_expression));
+                        }
+                        parser::Expr::LogicalOR(lo) => {
+                            assert!(lo.first.is_some());
+                            bitxor.first = lo.second.clone();
+                            lo.second = Some(Box::new(new_expression));
+                        }
+                        parser::Expr::LogicalAND(la) => {
+                            assert!(la.first.is_some());
+                            bitxor.first = la.second.clone();
+                            la.second = Some(Box::new(new_expression));
+                        }
+                        parser::Expr::Conditional(c) => {
+                            assert!(c.first.is_some());
+                            bitxor.first = c.third.clone();
+                            c.third = Some(Box::new(new_expression));
+                        }
+                        _ => unreachable!(),
+                    }
+                    curr_expr = Some(expression_unwrapped);
+                }
+            }
+            lexer::Token::PUNCT_CLOSE_PAR => {
+                assert!(matches!(stack.last(), Some(parser::Expr::Primary(None))));
+                let mut stack_expr = stack.pop().unwrap();
+                let parser::Expr::Primary(p) = &mut stack_expr else { unreachable!() };
+                *p = Some(parser::PrimaryInner::new_p_expr(curr_expr.unwrap()));
+                curr_expr = Some(stack_expr);
+
+
+                while let Some(e) = stack.pop() {
+                    match e {
+                        parser::Expr::Primary(p) => {}
+                        parser::Expr::PostFix(pf) => {}
+                        parser::Expr::Unary(u) => {}
+                        parser::Expr::Multiplicative(_) => {}
+                        parser::Expr::Additive(_) => {}
+                        parser::Expr::BitShift(_) => {}
+                        parser::Expr::Relational(_) => {}
+                        parser::Expr::Equality(_) => {}
+                        parser::Expr::BitAND(_) => {}
+                        parser::Expr::BitXOR(_) => {}
+                        parser::Expr::BitOR(_) => {}
+                        parser::Expr::LogicalAND(_) => {}
+                        parser::Expr::LogicalOR(_) => {}
+                        parser::Expr::Conditional(_) => {}
+                        _ => unreachable!()
+                    }
+                }
+            }
+            lexer::Token::PUNCT_PLUS => {
+                let expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::Additive(parser::Additive {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    let parser::Expr::Additive(add) = &mut new_expression else { unreachable!() };
+                    add.first = Some(Box::new(expression_unwrapped));
+                    curr_expr = Some(new_expression);
+                } else {
+                }
+            }
+            lexer::Token::PUNCT_OR_BOOL => {
+                let expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::LogicalOR(parser::LogicalOR {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    let parser::Expr::LogicalOR(logor) = &mut new_expression else { unreachable!() };
+                    logor.first = Some(Box::new(expression_unwrapped));
+                    curr_expr = Some(new_expression);
+                } else {
+                }
+            }
+            lexer::Token::PUNCT_AND_BOOL => {
+                let expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::LogicalAND(parser::LogicalAND {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    let parser::Expr::LogicalAND(logand) = &mut new_expression else { unreachable!() };
+                    logand.first = Some(Box::new(expression_unwrapped));
+                    curr_expr = Some(new_expression);
+                } else {
+                }
+            }
+            lexer::Token::PUNCT_MULT => {}
             lexer::Token::PUNCT_OPEN_PAR => {
+                stack.push(parser::Expr::Primary(None));
+                curr_expr = None;
             }
             lexer::Token::IDENT(_) => {
                 let inner_primary = parser::PrimaryInner::new_p_token(tokens[index].clone())?;
                 if curr_expr.is_none() {
-                    curr_expr = Some(parser::Expr::Primary(inner_primary));
+                    curr_expr = Some(parser::Expr::Primary(Some(inner_primary)));
                 } else {
                     match &mut curr_expr {
-                        Some(parser::Expr::Conditional(Conditional)) => {
-                            if Conditional.first.is_none() {
-                                Conditional.first =
-                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
-                            } else if Conditional.second.is_none() {
-                                Conditional.second =
-                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
-                            } else if Conditional.third.is_none() {
-                                Conditional.third =
-                                    Some(Box::new(parser::Expr::Primary(inner_primary)));
+                        Some(parser::Expr::Conditional(conditional)) => {
+                            if conditional.first.is_none() {
+                                conditional.first =
+                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
+                            } else if conditional.second.is_none() {
+                                conditional.second =
+                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
+                            } else if conditional.third.is_none() {
+                                conditional.third =
+                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
                             } else {
-                                // if our current expression is 'complete' as in it has all it
-                                // needs to be defined as whatever type of expression it is, we
-                                // need to look at our expression stack to see if any expression
-                                // uses this curr_expr as a sub-expression.
-                                // There should be no cases where we have an expression on the
-                                // stack that is complete and curr_expr also being complete.
-                                //
-                                // In the case where curr_expr would use an expression on the stack
-                                // as a sub expression, we would pop off the expression on the
-                                // stack and put it as a sub expression in the curr_expr.
-                                //
-                                // curr_expr would be the end result of constructing the expression
-                                // tree
                             }
                         }
-                        Some(parser::Expr::LogicalOR(LogicalOR)) => {}
-                        Some(parser::Expr::LogicalAND(LogicalAND)) => {}
-                        Some(parser::Expr::BitOR(BitOR)) => {}
-                        Some(parser::Expr::BitXOR(BitXOR)) => {}
-                        Some(parser::Expr::BitAND(BitAND)) => {}
-                        Some(parser::Expr::Equality(Equality)) => {}
-                        Some(parser::Expr::Relational(Relational)) => {}
-                        Some(parser::Expr::BitShift(BitShift)) => {}
-                        Some(parser::Expr::Additive(Additive)) => {}
-                        Some(parser::Expr::Multiplicative(Multiplicative)) => {}
-                        Some(parser::Expr::Unary(Unary)) => {}
-                        Some(parser::Expr::Cast(Cast)) => {}
-                        Some(parser::Expr::PostFix(PostFix)) => {}
-                        Some(parser::Expr::Primary(PrimaryInner)) => {}
+                        Some(parser::Expr::LogicalOR(logicalor)) => {
+                        }
+                        Some(parser::Expr::LogicalAND(logicaland)) => {}
+                        Some(parser::Expr::BitOR(bitor)) => {}
+                        Some(parser::Expr::BitXOR(bitxor)) => {}
+                        Some(parser::Expr::BitAND(bitand)) => {}
+                        Some(parser::Expr::Equality(equality)) => {}
+                        Some(parser::Expr::Relational(relational)) => {}
+                        Some(parser::Expr::BitShift(bitshift)) => {}
+                        Some(parser::Expr::Additive(additive)) => {}
+                        Some(parser::Expr::Multiplicative(multiplicative)) => {}
+                        Some(parser::Expr::Unary(unary)) => {}
+                        Some(parser::Expr::Cast(cast)) => {}
+                        Some(parser::Expr::PostFix(postfix)) => {}
+                        Some(parser::Expr::Primary(primaryinner)) => {}
                         _ => unreachable!(),
                     }
                 }
