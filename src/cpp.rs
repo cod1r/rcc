@@ -186,21 +186,21 @@ fn include_directive(
 }
 
 /*
-   Expr::Primary(_) => u8::MAX,
-   Expr::PostFix(_) => u8::MAX - 1,
-   Expr::Unary(_) => u8::MAX - 2,
-   Expr::Cast(_) => u8::MAX - 3,
-   Expr::Multiplicative(_) => u8::MAX - 4,
-   Expr::Additive(_) => u8::MAX - 5,
-   Expr::BitShift(_) => u8::MAX - 6,
-   Expr::Relational(_) => u8::MAX - 7,
-   Expr::Equality(_) => u8::MAX - 8,
-   Expr::BitAND(_) => u8::MAX - 9,
-   Expr::BitXOR(_) => u8::MAX - 10,
-   Expr::BitOR(_) => u8::MAX - 11,
-   Expr::LogicalAND(_) => u8::MAX - 12,
-   Expr::LogicalOR(_) => u8::MAX - 13,
-   Expr::Conditional(_) => u8::MAX - 14,
+   Expr::Primary
+   Expr::PostFix
+   Expr::Unary
+   Expr::Cast
+   Expr::Multiplicative
+   Expr::Additive
+   Expr::BitShift
+   Expr::Relational
+   Expr::Equality
+   Expr::BitAND
+   Expr::BitXOR
+   Expr::BitOR
+   Expr::LogicalAND
+   Expr::LogicalOR
+   Expr::Conditional
 */
 fn right_has_higher_priority(left: &mut parser::Expr, right: &mut parser::Expr) {
     assert!(right.priority() > left.priority());
@@ -549,18 +549,41 @@ fn right_has_higher_priority(left: &mut parser::Expr, right: &mut parser::Expr) 
 
 fn left_has_higher_eq_priority(left: &mut parser::Expr, right: &mut parser::Expr) {
     assert!(left.priority() >= right.priority());
+    let boxed = Some(Box::new(left.clone()));
     match right {
-        parser::Expr::Multiplicative(m) => {}
-        parser::Expr::Additive(a) => {}
-        parser::Expr::BitShift(bs) => {}
-        parser::Expr::Relational(r) => {}
-        parser::Expr::Equality(e) => {}
-        parser::Expr::BitAND(ba) => {}
-        parser::Expr::BitXOR(bx) => {}
-        parser::Expr::BitOR(bo) => {}
-        parser::Expr::LogicalAND(la) => {}
-        parser::Expr::LogicalOR(lo) => {}
-        parser::Expr::Conditional(c) => {}
+        parser::Expr::Multiplicative(m) => {
+            m.first = boxed;
+        }
+        parser::Expr::Additive(a) => {
+            a.first = boxed;
+        }
+        parser::Expr::BitShift(bs) => {
+            bs.first = boxed;
+        }
+        parser::Expr::Relational(r) => {
+            r.first = boxed;
+        }
+        parser::Expr::Equality(e) => {
+            e.first = boxed;
+        }
+        parser::Expr::BitAND(ba) => {
+            ba.first = boxed;
+        }
+        parser::Expr::BitXOR(bx) => {
+            bx.first = boxed;
+        }
+        parser::Expr::BitOR(bo) => {
+            bo.first = boxed;
+        }
+        parser::Expr::LogicalAND(la) => {
+            la.first = boxed;
+        }
+        parser::Expr::LogicalOR(lo) => {
+            lo.first = boxed;
+        }
+        parser::Expr::Conditional(c) => {
+            todo!()
+        }
         _ => unreachable!(),
     }
 }
@@ -643,8 +666,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
         match &tokens[index] {
             // we unwrap for some operators because there should always be a left operand before.
             lexer::Token::PUNCT_QUESTION_MARK => {
-                if let Some(_) = curr_expr {
-                    let mut cond = parser::Conditional {
+                if curr_expr.is_some() {
+                    let cond = parser::Conditional {
                         first: Some(Box::new(curr_expr.unwrap())),
                         second: None,
                         third: None,
@@ -690,6 +713,26 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     return Err(String::from("not allowed token after operator"));
                 }
             }
+            lexer::Token::PUNCT_OPEN_PAR => {
+                stack.push(parser::Expr::Primary(None));
+                curr_expr = None;
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::PUNCT_MINUS
+                            | lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                    )
+                ) {
+                    todo!()
+                }
+            }
             lexer::Token::PUNCT_CLOSE_PAR => {
                 assert!(matches!(stack.last(), Some(parser::Expr::Primary(None))));
                 let mut stack_expr = stack.pop().unwrap();
@@ -699,11 +742,12 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
 
                 // we have a primary expression in curr_expr which means everything else on the
                 // stack has equal or lower priority for the first iteration
+                todo!();
                 while let Some(mut e) = stack.pop() {
                     if let Some(ref mut expr_in_curr) = curr_expr {
                         if e.priority() > expr_in_curr.priority() {
                             left_has_higher_eq_priority(&mut e, expr_in_curr);
-                            curr_expr = Some(expr_in_curr);
+                            curr_expr = Some(expr_in_curr.clone());
                         } else {
                             right_has_higher_priority(&mut e, expr_in_curr);
                             curr_expr = Some(e);
@@ -725,14 +769,21 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     return Err(String::from("not allowed token after operator"));
                 }
             }
+            lexer::Token::PUNCT_MINUS => {
+                todo!("unary op");
+            }
             lexer::Token::PUNCT_PLUS => {
-                let expression_unwrapped = curr_expr.unwrap();
+                let mut expression_unwrapped = curr_expr.unwrap();
                 let mut new_expression = parser::Expr::Additive(parser::Additive {
                     first: None,
                     second: None,
                 });
                 if expression_unwrapped.priority() > new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(new_expression);
                 } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
                 }
                 loop {
                     index += 1;
@@ -740,88 +791,255 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         break;
                     }
                 }
-                if matches!(
+                if !matches!(
                     tokens.get(index),
-                    Some(lexer::Token::IDENT(_) | lexer::Token::PUNCT_OPEN_PAR)
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                    )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator: {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_OR_BOOL => {
-                let expression_unwrapped = curr_expr.unwrap();
+                let mut expression_unwrapped = curr_expr.unwrap();
                 let mut new_expression = parser::Expr::LogicalOR(parser::LogicalOR {
                     first: None,
                     second: None,
                 });
                 if expression_unwrapped.priority() > new_expression.priority() {
-                } else {
-                }
-            }
-            lexer::Token::PUNCT_AND_BOOL => {
-                let expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::LogicalAND(parser::LogicalAND {
-                    first: None,
-                    second: None,
-                });
-                if expression_unwrapped.priority() > new_expression.priority() {
-                    let parser::Expr::LogicalAND(logand) = &mut new_expression else { unreachable!() };
-                    logand.first = Some(Box::new(expression_unwrapped));
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                     curr_expr = Some(new_expression);
                 } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
                 }
-            }
-            lexer::Token::PUNCT_MULT => {}
-            lexer::Token::PUNCT_OPEN_PAR => {
-                stack.push(parser::Expr::Primary(None));
-                curr_expr = None;
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
                         break;
                     }
                 }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(String::from("not allowed token after operator"));
+                }
             }
-            lexer::Token::IDENT(_) => {
-                let inner_primary = parser::PrimaryInner::new_p_token(tokens[index].clone())?;
+            lexer::Token::PUNCT_AND_BOOL => {
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::LogicalAND(parser::LogicalAND {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(new_expression);
+                } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(String::from("not allowed token after operator"));
+                }
+            }
+            lexer::Token::PUNCT_MULT => {
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::Multiplicative(parser::Multiplicative {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() > new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(new_expression);
+                } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(String::from("not allowed token after operator"));
+                }
+            }
+            lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. } => {
+                let primary = parser::Expr::Primary(Some(parser::PrimaryInner::new_p_token(
+                    tokens[index].clone(),
+                )?));
                 if curr_expr.is_none() {
-                    curr_expr = Some(parser::Expr::Primary(Some(inner_primary)));
+                    curr_expr = Some(primary);
                 } else {
                     match &mut curr_expr {
-                        Some(parser::Expr::Conditional(conditional)) => {
-                            if conditional.first.is_none() {
-                                conditional.first =
-                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
-                            } else if conditional.second.is_none() {
-                                conditional.second =
-                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
-                            } else if conditional.third.is_none() {
-                                conditional.third =
-                                    Some(Box::new(parser::Expr::Primary(Some(inner_primary))));
-                            } else {
+                        Some(parser::Expr::Conditional(c)) => {
+                            if c.first.is_none() {
+                                c.first = Some(Box::new(primary));
+                            } else if c.second.is_none() {
+                                c.second = Some(Box::new(primary));
+                            } else if c.third.is_none() {
+                                c.third = Some(Box::new(primary));
                             }
                         }
-                        Some(parser::Expr::LogicalOR(logicalor)) => {}
-                        Some(parser::Expr::LogicalAND(logicaland)) => {}
-                        Some(parser::Expr::BitOR(bitor)) => {}
-                        Some(parser::Expr::BitXOR(bitxor)) => {}
-                        Some(parser::Expr::BitAND(bitand)) => {}
-                        Some(parser::Expr::Equality(equality)) => {}
-                        Some(parser::Expr::Relational(relational)) => {}
-                        Some(parser::Expr::BitShift(bitshift)) => {}
-                        Some(parser::Expr::Additive(additive)) => {}
-                        Some(parser::Expr::Multiplicative(multiplicative)) => {}
-                        Some(parser::Expr::Unary(unary)) => {}
-                        Some(parser::Expr::Primary(primaryinner)) => {}
-                        _ => unreachable!(),
+                        Some(parser::Expr::LogicalOR(lo)) => {
+                            assert!(lo.first.is_some());
+                            lo.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::LogicalAND(la)) => {
+                            assert!(la.first.is_some());
+                            la.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::BitOR(bo)) => {
+                            assert!(bo.first.is_some());
+                            bo.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::BitXOR(bx)) => {
+                            assert!(bx.first.is_some());
+                            bx.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::BitAND(ba)) => {
+                            assert!(ba.first.is_some());
+                            ba.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::Equality(e)) => {
+                            assert!(e.first.is_some());
+                            e.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::Relational(r)) => {
+                            assert!(r.first.is_some());
+                            r.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::BitShift(bs)) => {
+                            assert!(bs.first.is_some());
+                            bs.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::Additive(a)) => {
+                            assert!(a.first.is_some());
+                            a.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::Multiplicative(m)) => {
+                            assert!(m.first.is_some());
+                            m.second = Some(Box::new(primary));
+                        }
+                        Some(parser::Expr::Unary(u)) => {
+                            assert!(u.first.is_none());
+                            u.first = Some(Box::new(primary));
+                        }
+                        _ => return Err(format!("err at index: {}", index)),
                     }
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                //TODO: we need to check if the next token is an operator or not...
+                //too lazy to put all of them so it's just the '+' operator for now.
+                if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_PLUS) | None) {
+                    return Err(String::from("HEHE"));
                 }
             }
             lexer::Token::WHITESPACE => {}
-            _ => unreachable!(),
+            _ => return Err(format!("unknown token: {:?}", tokens[index])),
         }
-        todo!()
     }
-    Ok(false)
+    let mut eval_stack = Vec::<parser::Expr>::new();
+    let mut primary_stack = Vec::<lexer::Token>::new();
+    let mut final_val = false;
+    if curr_expr.is_some() {
+        eval_stack.push(curr_expr.unwrap());
+        let mut top_expr = eval_stack.pop().unwrap();
+        loop {
+            match top_expr {
+                parser::Expr::Additive(ref mut a) => {
+                    if let Some(left) = &mut a.first {
+                        let left_clone = *left.clone();
+                        a.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut a.second {
+                        let right_clone = *right.clone();
+                        a.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        let right_val = match right {
+                            lexer::Token::CONSTANT_DEC_INT { value, suffix } => {
+                                value.parse::<i32>().unwrap()
+                            }
+                            _ => unreachable!(),
+                        };
+                        let left_val = match left {
+                            lexer::Token::CONSTANT_DEC_INT { value, suffix } => {
+                                value.parse::<i32>().unwrap()
+                            }
+                            _ => unreachable!(),
+                        };
+                        if right_val + left_val > 0 {
+                            final_val = true;
+                        } else {
+                            final_val = false;
+                        }
+                    }
+                    if !eval_stack.is_empty() {
+                    top_expr = eval_stack.pop().unwrap();
+                    } else {
+                        break;
+                    }
+                }
+                parser::Expr::Primary(ref mut p) => {
+                    match p.clone().unwrap() {
+                        parser::PrimaryInner::Expr(e) => {
+                            eval_stack.push(*e);
+                        }
+                        parser::PrimaryInner::Token(t) => {
+                            assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+                            primary_stack.push(t);
+                        }
+                    }
+                    top_expr = eval_stack.pop().unwrap();
+                }
+                _ => todo!(),
+            }
+        }
+    }
+    Ok(final_val)
 }
 fn if_directive(
     tokens: &mut Vec<lexer::Token>,
@@ -1486,8 +1704,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, define_directive, expand_macro, include_directive, preprocessing_directives,
-        Define,
+        comments, define_directive, eval_constant_expression, expand_macro, include_directive,
+        preprocessing_directives, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -1965,6 +2183,14 @@ CHICKEN(1 2,3 4)"##;
         let mut defines = HashMap::new();
         expand_macro(&mut tokens, &mut 0, &mut defines)?;
         assert_eq!(vec![lexer::Token::IDENT("HI".to_string()),], tokens);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test() -> Result<(), String> {
+        let src = r##"1 + 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
         Ok(())
     }
 }
