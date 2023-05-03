@@ -1482,6 +1482,25 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         primary_stack.push(if (left & right) != 0 { 1 } else { 0 });
                     }
                 }
+                parser::Expr::BitXOR(ref mut bx) => {
+                    if let Some(left) = &mut bx.first {
+                        let left_clone = *left.clone();
+                        bx.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bx.second {
+                        let right_clone = *right.clone();
+                        bx.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        final_val = if (left ^ right) != 0 { true } else { false };
+                        primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
+                    }
+                }
                 parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
                     parser::PrimaryInner::Expr(e) => {
                         eval_stack.push(*e);
