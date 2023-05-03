@@ -600,6 +600,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
             lexer::Token::PUNCT_CLOSE_PAR => {
                 if let Some(lexer::Token::PUNCT_OPEN_PAR) = parenth_balance.last() {
                     parenth_balance.pop();
+                } else {
+                    return Err(String::from("parentheses in expression not balanced"));
                 }
             }
             _ => {}
@@ -732,6 +734,9 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_OPEN_PAR => {
+                if let Some(expr) = curr_expr {
+                    stack.push(expr);
+                }
                 stack.push(parser::Expr::Primary(None));
                 curr_expr = None;
                 loop {
@@ -756,12 +761,6 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
-                assert!(matches!(stack.last(), Some(parser::Expr::Primary(None))));
-                let mut stack_expr = stack.pop().unwrap();
-                let parser::Expr::Primary(p) = &mut stack_expr else { unreachable!() };
-                *p = Some(parser::PrimaryInner::new_p_expr(curr_expr.unwrap()));
-                curr_expr = Some(stack_expr);
-
                 // thought process here is that we want to pop until we hit the opening parenthesis
                 // that created the primary expression.
                 // if we do not encounter the primary expression, we treat other expressions as
@@ -2758,6 +2757,40 @@ CHICKEN(1 2,3 4)"##;
         let mut defines = HashMap::new();
         expand_macro(&mut tokens, &mut 0, &mut defines)?;
         assert_eq!(vec![lexer::Token::IDENT("HI".to_string()),], tokens);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_primary() -> Result<(), String> {
+        let src = r##"(1 + 1) * 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false, "(1 + 1) * 0");
+        let src = r##"1 + (1 * 0)"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true, "1 + (1 * 0)");
+        let src = r##"((1 + 1) * 0)"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false, "((1 + 1) * 0)");
+        let src = r##"((((1))))"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false, "((1 + 1) * 0)");
+        let src = r##"((((1)))))"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens);
+        match res {
+            Err(_) => {}
+            Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+        }
+        let src = r##"(((((1))))"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens);
+        match res {
+            Err(_) => {}
+            Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+        }
         Ok(())
     }
     #[test]
