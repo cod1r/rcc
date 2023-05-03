@@ -2992,6 +2992,11 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"defined HI "##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
         Ok(())
     }
 }
