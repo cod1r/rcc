@@ -141,6 +141,8 @@ pub struct Multiplicative {
 pub enum UnaryOp {
     Ampersand,
     Sub,
+    Add,
+    Deref,
     BitNOT,
     LogicalNOT,
 }

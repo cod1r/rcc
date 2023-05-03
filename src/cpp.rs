@@ -838,8 +838,17 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     ));
                 }
             }
-            lexer::Token::PUNCT_PLUS | lexer::Token::PUNCT_MINUS => {
+            lexer::Token::PUNCT_PLUS
+            | lexer::Token::PUNCT_MINUS
+            | lexer::Token::PUNCT_NOT_BOOL
+            | lexer::Token::PUNCT_TILDE => {
                 if curr_expr.is_some() {
+                    match tokens[index] {
+                        lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                            return Err(format!("unexpected {:?} token", tokens[index]));
+                        }
+                        _ => {}
+                    }
                     let mut expression_unwrapped = curr_expr.unwrap();
                     let mut new_expression = parser::Expr::Additive(parser::Additive {
                         op: match tokens[index] {
@@ -857,59 +866,37 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         stack.push(expression_unwrapped);
                     }
                     curr_expr = Some(new_expression);
-                    loop {
-                        index += 1;
-                        if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                            break;
-                        }
-                    }
-                    if !matches!(
-                        tokens.get(index),
-                        Some(
-                            lexer::Token::IDENT(_)
-                                | lexer::Token::PUNCT_OPEN_PAR
-                                | lexer::Token::PUNCT_MINUS
-                                | lexer::Token::CONSTANT_DEC_INT { .. }
-                        )
-                    ) {
-                        return Err(format!(
-                            "not allowed token after operator '+': {:?}",
-                            tokens[index]
-                        ));
-                    }
                 } else {
-                    match tokens[index] {
-                        lexer::Token::PUNCT_PLUS => {
-                            return Err(String::from("unexpected '+' operator"))
-                        }
-                        lexer::Token::PUNCT_MINUS => {
-                            curr_expr = Some(parser::Expr::Unary(parser::Unary {
-                                op: parser::UnaryOp::Sub,
-                                first: None,
-                            }));
-                        }
-                        _ => unreachable!(),
+                    curr_expr = Some(parser::Expr::Unary(parser::Unary {
+                        op: match tokens[index] {
+                            lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
+                            lexer::Token::PUNCT_MINUS => parser::UnaryOp::Sub,
+                            lexer::Token::PUNCT_NOT_BOOL => parser::UnaryOp::LogicalNOT,
+                            lexer::Token::PUNCT_TILDE => parser::UnaryOp::BitNOT,
+                            _ => unreachable!(),
+                        },
+                        first: None,
+                    }));
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
                     }
-                    loop {
-                        index += 1;
-                        if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                            break;
-                        }
-                    }
-                    if !matches!(
-                        tokens.get(index),
-                        Some(
-                            lexer::Token::IDENT(_)
-                                | lexer::Token::PUNCT_OPEN_PAR
-                                | lexer::Token::PUNCT_MINUS
-                                | lexer::Token::CONSTANT_DEC_INT { .. }
-                        )
-                    ) {
-                        return Err(format!(
-                            "not allowed token after operators '-': {:?}",
-                            tokens[index]
-                        ));
-                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operators '+', '-', '!', '~': {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
@@ -1245,6 +1232,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_QUESTION_MARK => {
+                todo!();
                 if curr_expr.is_some() {
                     let cond = parser::Conditional {
                         first: Some(Box::new(curr_expr.unwrap())),
@@ -1326,6 +1314,13 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         assert!(!primary_stack.is_empty());
                         let one = primary_stack.pop().unwrap();
                         match u.op {
+                            parser::UnaryOp::Add => {
+                                if one != 0 {
+                                    final_val = true;
+                                } else {
+                                    final_val = false;
+                                }
+                            }
                             parser::UnaryOp::Sub => {
                                 if -one != 0 {
                                     final_val = true;
@@ -1334,20 +1329,20 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                                 }
                             }
                             parser::UnaryOp::BitNOT => {
-                                if one == 0 {
-                                    final_val = true;
-                                } else {
-                                    final_val = false;
-                                }
-                            }
-                            parser::UnaryOp::LogicalNOT => {
                                 if !one == 0 {
                                     final_val = false;
                                 } else {
                                     final_val = true;
                                 }
                             }
-                            _ => unreachable!(),
+                            parser::UnaryOp::LogicalNOT => {
+                                if one == 0 {
+                                    final_val = true;
+                                } else {
+                                    final_val = false;
+                                }
+                            }
+                            parser::UnaryOp::Ampersand | parser::UnaryOp::Deref => unreachable!()
                         }
                     }
                 }
@@ -1562,6 +1557,47 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         final_val = if (left | right) != 0 { true } else { false };
                         primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
                     }
+                }
+                parser::Expr::LogicalAND(ref mut la) => {
+                    if let Some(left) = &mut la.first {
+                        let left_clone = *left.clone();
+                        la.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut la.second {
+                        let right_clone = *right.clone();
+                        la.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        final_val = if left != 0 && right != 0 { true } else { false };
+                        primary_stack.push(if left != 0 && right != 0 { 1 } else { 0 });
+                    }
+                }
+                parser::Expr::LogicalOR(ref mut lo) => {
+                    if let Some(left) = &mut lo.first {
+                        let left_clone = *left.clone();
+                        lo.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut lo.second {
+                        let right_clone = *right.clone();
+                        lo.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        final_val = if left != 0 || right != 0 { true } else { false };
+                        primary_stack.push(if left != 0 || right != 0 { 1 } else { 0 });
+                    }
+                }
+                parser::Expr::Conditional(ref mut c) => {
+                    todo!()
                 }
                 parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
                     parser::PrimaryInner::Expr(e) => {
@@ -2725,6 +2761,22 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
+    fn eval_expression_test_unary() -> Result<(), String> {
+        let src = r##"!1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false, "!1");
+        let src = r##"!0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true, "!0");
+        let src = r##"~0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true, "~0");
+        Ok(())
+    }
+    #[test]
     fn eval_expression_test_additive() -> Result<(), String> {
         let src = r##"1 + 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
@@ -2764,7 +2816,7 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
-    fn eval_expression_test_bit_and_equality() -> Result<(), String> {
+    fn eval_expression_test_bit_and() -> Result<(), String> {
         let src = r##"1 & 0 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
@@ -2784,11 +2836,19 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
-    fn eval_expression_test_bit_or_equality() -> Result<(), String> {
+    fn eval_expression_test_bit_or() -> Result<(), String> {
         let src = r##"1 | 0 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, true);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_bit_xor() -> Result<(), String> {
+        let src = r##"1 ^ 0 == 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
         Ok(())
     }
 }
