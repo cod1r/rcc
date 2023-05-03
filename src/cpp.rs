@@ -1318,6 +1318,68 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         }
                     }
                 }
+                parser::Expr::Relational(ref mut r) => {
+                    if let Some(left) = &mut r.first {
+                        let left_clone = *left.clone();
+                        r.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut r.second {
+                        let right_clone = *right.clone();
+                        r.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match r.op {
+                            parser::RelationalOp::LessThan => {
+                                final_val = if left < right { true } else { false };
+                                primary_stack.push(if left < right { 1 } else { 0 });
+                            }
+                            parser::RelationalOp::LessThanEq => {
+                                final_val = if left <= right { true } else { false };
+                                primary_stack.push(if left <= right { 1 } else { 0 });
+                            }
+                            parser::RelationalOp::GreaterThan => {
+                                final_val = if left > right { true } else { false };
+                                primary_stack.push(if left > right { 1 } else { 0 });
+                            }
+                            parser::RelationalOp::GreaterThanEq => {
+                                final_val = if left >= right { true } else { false };
+                                primary_stack.push(if left >= right { 1 } else { 0 });
+                            }
+                        }
+                    }
+                }
+                parser::Expr::Equality(ref mut e) => {
+                    if let Some(left) = &mut e.first {
+                        let left_clone = *left.clone();
+                        e.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut e.second {
+                        let right_clone = *right.clone();
+                        e.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match e.op {
+                            parser::EqualityOp::Equal => {
+                                final_val = if left == right { true } else { false };
+                                primary_stack.push(if left == right { 1 } else { 0 });
+                            }
+                            parser::EqualityOp::NotEqual => {
+                                final_val = if left != right { true } else { false };
+                                primary_stack.push(if left != right { 1 } else { 0 });
+                            }
+                        }
+                    }
+                }
                 parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
                     parser::PrimaryInner::Expr(e) => {
                         eval_stack.push(*e);
@@ -2521,6 +2583,14 @@ CHICKEN(1 2,3 4)"##;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, true);
         let src = r##"(1 + 1) * 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"1 < 1 == 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 <= 1 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, false);
