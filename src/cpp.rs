@@ -559,7 +559,10 @@ fn left_has_higher_eq_priority(left: &mut parser::Expr, right: &mut parser::Expr
 //The expression that controls conditional inclusion shall be an integer constant expression
 //Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
 //All macro identifiers are evaluated as defined or not defined.
-fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
+fn eval_constant_expression(
+    tokens: &[lexer::Token],
+    defines: &HashMap<String, Vec<lexer::Token>>,
+) -> Result<bool, String> {
     if tokens.iter().any(|t| {
         matches!(
             t,
@@ -636,9 +639,43 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
     while index < tokens.len() {
         match &tokens[index] {
             lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. } => {
-                let primary = parser::Expr::Primary(Some(parser::PrimaryInner::new_p_token(
-                    tokens[index].clone(),
-                )?));
+                let mut token_within = tokens[index].clone();
+                if let lexer::Token::IDENT(ident) = &tokens[index] {
+                    if ident == "defined" {
+                        let mut defined_index = index + 1;
+                        if let Some(lexer::Token::WHITESPACE | lexer::Token::PUNCT_OPEN_PAR) =
+                            tokens.get(defined_index)
+                        {
+                            defined_index += 1;
+                            if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
+                                defined_index += 1;
+                            }
+                            if let Some(lexer::Token::IDENT(identifier_name)) =
+                                tokens.get(defined_index)
+                            {
+                                if defines.contains_key(identifier_name) {
+                                    token_within = lexer::Token::CONSTANT_DEC_INT {
+                                        value: "1".to_string(),
+                                        suffix: None,
+                                    };
+                                    index = defined_index;
+                                } else {
+                                    token_within = lexer::Token::CONSTANT_DEC_INT {
+                                        value: "0".to_string(),
+                                        suffix: None,
+                                    };
+                                    index = defined_index;
+                                }
+                            } else {
+                                return Err(format!("unexpected token: {:?}", tokens[index]));
+                            }
+                        } else {
+                            return Err(format!("unexpected token: {:?}", tokens[index]));
+                        }
+                    }
+                }
+                let primary =
+                    parser::Expr::Primary(Some(parser::PrimaryInner::new_p_token(token_within)?));
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
                 } else {
@@ -2707,31 +2744,32 @@ CHICKEN(1 2,3 4)"##;
     #[test]
     fn eval_expression_test_primary() -> Result<(), String> {
         let src = r##"(1 + 1) * 0"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false, "(1 + 1) * 0");
         let src = r##"1 + (1 * 0)"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "1 + (1 * 0)");
         let src = r##"((1 + 1) * 0)"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false, "((1 + 1) * 0)");
         let src = r##"((((1))))"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false, "((1 + 1) * 0)");
         let src = r##"((((1)))))"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens);
+        let res = eval_constant_expression(&tokens, &defines);
         match res {
             Err(_) => {}
             Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
         }
         let src = r##"(((((1))))"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens);
+        let res = eval_constant_expression(&tokens, &defines);
         match res {
             Err(_) => {}
             Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -2741,24 +2779,25 @@ CHICKEN(1 2,3 4)"##;
     #[test]
     fn eval_expression_test_unary() -> Result<(), String> {
         let src = r##"!1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false, "!1");
         let src = r##"!0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "!0");
         let src = r##"~0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "~0");
         let src = r##"~~~~~~~~~~~0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "~~~~~~~~~~~0");
         let src = r##"--------------1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens);
+        let res = eval_constant_expression(&tokens, &defines);
         match res {
             Err(_) => {}
             Ok(_) => {
@@ -2772,167 +2811,186 @@ CHICKEN(1 2,3 4)"##;
     #[test]
     fn eval_expression_test_multiplicative() -> Result<(), String> {
         let src = r##"1 * 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 / 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 / 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens);
+        let res = eval_constant_expression(&tokens, &defines);
         match res {
             Err(_) => {}
             Ok(_) => return Err("division by zero not caught".to_string()),
         }
         let src = r##"1 + 1 * 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"0 * 1 + 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_additive() -> Result<(), String> {
         let src = r##"1 + 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 - 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_bitshift() -> Result<(), String> {
         let src = r##"1 << 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 >> 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_relational() -> Result<(), String> {
         let src = r##"1 < 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         let src = r##"1 < 2"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 <= 2"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"2 <= 2"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 > 2"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         let src = r##"1 > 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 >= 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 >= 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         Ok(())
     }
     #[test]
     fn eval_expression_test_equality() -> Result<(), String> {
         let src = r##"1 == 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 != 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         let src = r##"1 != 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         Ok(())
     }
     #[test]
     fn eval_expression_test_bit_and() -> Result<(), String> {
         let src = r##"1 & 0 == 0"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 & 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         let src = r##"1 & 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"1 == 0 & 1 == 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_bit_xor() -> Result<(), String> {
         let src = r##"1 ^ 0 == 0"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_bit_or() -> Result<(), String> {
         let src = r##"1 | 0 == 0"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         Ok(())
     }
     #[test]
     fn eval_expression_test_logical_and() -> Result<(), String> {
         let src = r##"1 && 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"0 && 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_logical_or() -> Result<(), String> {
         let src = r##"1 || 1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"0 || 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"0 || 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_defined() -> Result<(), String> {
+        let src = r##"defined(HI)"##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
         Ok(())
     }
