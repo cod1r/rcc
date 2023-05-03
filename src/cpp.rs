@@ -2777,18 +2777,6 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
-    fn eval_expression_test_additive() -> Result<(), String> {
-        let src = r##"1 + 1"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
-        assert_eq!(res, true);
-        let src = r##"1 - 1"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens)?;
-        assert_eq!(res, false);
-        Ok(())
-    }
-    #[test]
     fn eval_expression_test_multiplicative() -> Result<(), String> {
         let src = r##"1 * 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
@@ -2816,6 +2804,82 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
+    fn eval_expression_test_additive() -> Result<(), String> {
+        let src = r##"1 + 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 - 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_bitshift() -> Result<(), String> {
+        let src = r##"1 << 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 >> 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_relational() -> Result<(), String> {
+        let src = r##"1 < 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"1 < 2"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 <= 2"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"2 <= 2"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 > 2"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"1 > 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 >= 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 >= 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_equality() -> Result<(), String> {
+        let src = r##"1 == 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 != 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"1 != 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        Ok(())
+    }
+    #[test]
     fn eval_expression_test_bit_and() -> Result<(), String> {
         let src = r##"1 & 0 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
@@ -2836,6 +2900,14 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
+    fn eval_expression_test_bit_xor() -> Result<(), String> {
+        let src = r##"1 ^ 0 == 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
     fn eval_expression_test_bit_or() -> Result<(), String> {
         let src = r##"1 | 0 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
@@ -2844,8 +2916,28 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
-    fn eval_expression_test_bit_xor() -> Result<(), String> {
-        let src = r##"1 ^ 0 == 0"##.as_bytes();
+    fn eval_expression_test_logical_and() -> Result<(), String> {
+        let src = r##"1 && 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"0 && 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_logical_or() -> Result<(), String> {
+        let src = r##"1 || 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"0 || 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"0 || 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, false);
