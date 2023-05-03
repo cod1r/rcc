@@ -736,7 +736,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     }
                 }
                 //TODO: we need to check if the next token is an operator or not...
-                //too lazy to put all of them so it's just the '+' operator for now.
+                //TODO: add edge case for 'defined <identifier>' and 'defined (identifier)'
                 if !matches!(
                     tokens.get(index),
                     Some(
@@ -747,9 +747,21 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                             | lexer::Token::PUNCT_MODULO
                             | lexer::Token::PUNCT_BITSHFT_LEFT
                             | lexer::Token::PUNCT_BITSHFT_RIGHT
+                            | lexer::Token::PUNCT_LESS_THAN
+                            | lexer::Token::PUNCT_LESS_THAN_EQ
+                            | lexer::Token::PUNCT_GREATER_THAN
+                            | lexer::Token::PUNCT_GREATER_THAN_EQ
+                            | lexer::Token::PUNCT_EQ_BOOL
+                            | lexer::Token::PUNCT_NOT_EQ_BOOL
+                            | lexer::Token::PUNCT_AND_BIT
+                            | lexer::Token::PUNCT_XOR_BIT
+                            | lexer::Token::PUNCT_OR_BIT
+                            | lexer::Token::PUNCT_AND_BOOL
+                            | lexer::Token::PUNCT_OR_BOOL
+                            | lexer::Token::PUNCT_CLOSE_PAR
                     ) | None
                 ) {
-                    return Err(String::from("HEHE"));
+                    return Err(format!("unexpected operator: {:?}", tokens[index]));
                 }
             }
             lexer::Token::PUNCT_OPEN_PAR => {
@@ -766,10 +778,14 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     Some(
                         lexer::Token::PUNCT_MINUS
                             | lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
                     )
                 ) {
-                    todo!()
+                    return Err(format!(
+                        "expected '-', '(', or an identifier/integer constant: {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
@@ -781,10 +797,10 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
 
                 // we have a primary expression in curr_expr which means everything else on the
                 // stack has equal or lower priority for the first iteration
-                todo!();
+
                 while let Some(mut e) = stack.pop() {
                     if let Some(ref mut expr_in_curr) = curr_expr {
-                        if e.priority() > expr_in_curr.priority() {
+                        if e.priority() >= expr_in_curr.priority() {
                             left_has_higher_eq_priority(&mut e, expr_in_curr);
                             curr_expr = Some(expr_in_curr.clone());
                         } else {
@@ -803,9 +819,16 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
                 if matches!(
                     tokens.get(index),
-                    Some(lexer::Token::IDENT(_) | lexer::Token::PUNCT_OPEN_PAR)
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::PUNCT_OPEN_PAR
+                    )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator ')': {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_PLUS | lexer::Token::PUNCT_MINUS => {
@@ -820,7 +843,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         first: None,
                         second: None,
                     });
-                    if expression_unwrapped.priority() > new_expression.priority() {
+                    if expression_unwrapped.priority() >= new_expression.priority() {
                         left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                         curr_expr = Some(new_expression);
                     } else {
@@ -894,7 +917,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     first: None,
                     second: None,
                 });
-                if expression_unwrapped.priority() > new_expression.priority() {
+                if expression_unwrapped.priority() >= new_expression.priority() {
                     left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                     curr_expr = Some(new_expression);
                 } else {
@@ -933,7 +956,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     first: None,
                     second: None,
                 });
-                if expression_unwrapped.priority() > new_expression.priority() {
+                if expression_unwrapped.priority() >= new_expression.priority() {
                     left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                     curr_expr = Some(new_expression);
                 } else {
@@ -1004,7 +1027,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     first: None,
                     second: None,
                 });
-                if expression_unwrapped.priority() > new_expression.priority() {
+                if expression_unwrapped.priority() >= new_expression.priority() {
                     left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                     curr_expr = Some(new_expression);
                 } else {
@@ -1034,7 +1057,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     first: None,
                     second: None,
                 });
-                if expression_unwrapped.priority() > new_expression.priority() {
+                if expression_unwrapped.priority() >= new_expression.priority() {
                     left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
                     curr_expr = Some(new_expression);
                 } else {
@@ -1081,6 +1104,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
         }
     }
     // where we start evaluating the expression tree
+    // TODO: remove duplicate structure of code.
     let mut eval_stack = Vec::<parser::Expr>::new();
     let mut primary_stack = Vec::<i32>::new();
     let mut final_val = false;
@@ -1185,6 +1209,33 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                             parser::AdditiveOps::Sub => {
                                 final_val = if left - right != 0 { true } else { false };
                                 primary_stack.push(left - right);
+                            }
+                        }
+                    }
+                }
+                parser::Expr::BitShift(ref mut bs) => {
+                    if let Some(left) = &mut bs.first {
+                        let left_clone = *left.clone();
+                        bs.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bs.second {
+                        let right_clone = *right.clone();
+                        bs.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match bs.op {
+                            parser::BitShiftOp::Left => {
+                                final_val = if left << right != 0 { true } else { false };
+                                primary_stack.push(left << right);
+                            }
+                            parser::BitShiftOp::Right => {
+                                final_val = if left >> right != 0 { true } else { false };
+                                primary_stack.push(left >> right);
                             }
                         }
                     }
@@ -2380,6 +2431,18 @@ CHICKEN(1 2,3 4)"##;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, true);
         let src = r##"0 * 1 + 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"-1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 << 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"(1 + 1) * 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, false);
