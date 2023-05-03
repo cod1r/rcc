@@ -1131,11 +1131,15 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     tokens.get(index),
                     Some(
                         lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_MINUS
                     )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_OR_BIT => {
@@ -1161,13 +1165,16 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     tokens.get(index),
                     Some(
                         lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_MINUS
                     )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
                 }
-
             }
             lexer::Token::PUNCT_AND_BOOL => {
                 let mut expression_unwrapped = curr_expr.unwrap();
@@ -1192,11 +1199,15 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     tokens.get(index),
                     Some(
                         lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_MINUS
                     )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_OR_BOOL => {
@@ -1222,11 +1233,15 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     tokens.get(index),
                     Some(
                         lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_MINUS
                     )
                 ) {
-                    return Err(String::from("not allowed token after operator"));
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
                 }
             }
             lexer::Token::PUNCT_QUESTION_MARK => {
@@ -2749,8 +2764,28 @@ CHICKEN(1 2,3 4)"##;
         Ok(())
     }
     #[test]
-    fn eval_expression_test_bitAND_equality() -> Result<(), String> {
+    fn eval_expression_test_bit_and_equality() -> Result<(), String> {
         let src = r##"1 & 0 == 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 & 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        let src = r##"1 & 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true);
+        let src = r##"1 == 0 & 1 == 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_bit_or_equality() -> Result<(), String> {
+        let src = r##"1 | 0 == 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, true);
