@@ -630,10 +630,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
     // (postfix_expr -) isn't an expression that we would construct as we would just construct a
     // additive expression anyways
     let mut curr_expr: Option<parser::Expr> = None;
+    let mut left_expression: Option<parser::Expr> = None;
+    let mut right_expression: Option<parser::Expr> = None;
     let mut index = 0;
     while index < tokens.len() {
         match &tokens[index] {
-            // we unwrap for some operators because there should always be a left operand before.
             lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. } => {
                 let primary = parser::Expr::Primary(Some(parser::PrimaryInner::new_p_token(
                     tokens[index].clone(),
@@ -704,7 +705,6 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         break;
                     }
                 }
-                //TODO: we need to check if the next token is an operator or not...
                 //TODO: add edge case for 'defined <identifier>' and 'defined (identifier)'
                 if !matches!(
                     tokens.get(index),
@@ -848,8 +848,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         }
                         _ => {}
                     }
-                    let mut expression_unwrapped = curr_expr.unwrap();
-                    let mut new_expression = parser::Expr::Additive(parser::Additive {
+                    left_expression = curr_expr.clone();
+                    right_expression = Some(parser::Expr::Additive(parser::Additive {
                         op: match tokens[index] {
                             lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
                             lexer::Token::PUNCT_MINUS => parser::AdditiveOps::Sub,
@@ -857,14 +857,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         },
                         first: None,
                         second: None,
-                    });
-                    if expression_unwrapped.priority() >= new_expression.priority() {
-                        left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                    } else {
-                        right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                        stack.push(expression_unwrapped);
-                    }
-                    curr_expr = Some(new_expression);
+                    }));
                 } else {
                     curr_expr = Some(parser::Expr::Unary(parser::Unary {
                         op: match tokens[index] {
@@ -899,8 +892,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::Multiplicative(parser::Multiplicative {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::Multiplicative(parser::Multiplicative {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_MULT => parser::MultiplicativeOps::Mult,
                         lexer::Token::PUNCT_DIV => parser::MultiplicativeOps::Div,
@@ -909,14 +902,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     },
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -939,8 +925,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_BITSHFT_RIGHT | lexer::Token::PUNCT_BITSHFT_LEFT => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::BitShift(parser::BitShift {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::BitShift(parser::BitShift {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_BITSHFT_LEFT => parser::BitShiftOp::Left,
                         lexer::Token::PUNCT_BITSHFT_RIGHT => parser::BitShiftOp::Right,
@@ -948,14 +934,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     },
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -981,8 +960,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
             | lexer::Token::PUNCT_LESS_THAN_EQ
             | lexer::Token::PUNCT_GREATER_THAN
             | lexer::Token::PUNCT_GREATER_THAN_EQ => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::Relational(parser::Relational {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::Relational(parser::Relational {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_LESS_THAN => parser::RelationalOp::LessThan,
                         lexer::Token::PUNCT_LESS_THAN_EQ => parser::RelationalOp::LessThanEq,
@@ -992,14 +971,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     },
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1022,8 +994,8 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::Equality(parser::Equality {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::Equality(parser::Equality {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_EQ_BOOL => parser::EqualityOp::Equal,
                         lexer::Token::PUNCT_NOT_EQ_BOOL => parser::EqualityOp::NotEqual,
@@ -1031,14 +1003,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     },
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1061,18 +1026,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_AND_BIT => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::BitAND(parser::BitAND {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::BitAND(parser::BitAND {
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1095,18 +1053,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_XOR_BIT => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::BitXOR(parser::BitXOR {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::BitXOR(parser::BitXOR {
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1129,18 +1080,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_OR_BIT => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::BitOR(parser::BitOR {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::BitOR(parser::BitOR {
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1163,18 +1107,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_AND_BOOL => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::LogicalAND(parser::LogicalAND {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::LogicalAND(parser::LogicalAND {
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1197,18 +1134,11 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_OR_BOOL => {
-                let mut expression_unwrapped = curr_expr.unwrap();
-                let mut new_expression = parser::Expr::LogicalOR(parser::LogicalOR {
+                left_expression = curr_expr.clone();
+                right_expression = Some(parser::Expr::LogicalOR(parser::LogicalOR {
                     first: None,
                     second: None,
-                });
-                if expression_unwrapped.priority() >= new_expression.priority() {
-                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
-                } else {
-                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
-                    stack.push(expression_unwrapped);
-                }
-                curr_expr = Some(new_expression);
+                }));
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1251,6 +1181,19 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
             }
             lexer::Token::WHITESPACE => {}
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
+        }
+        if left_expression.is_some() && right_expression.is_some() {
+            let mut left = left_expression.unwrap();
+            let mut right = right_expression.unwrap();
+            if left.priority() >= right.priority() {
+                left_has_higher_eq_priority(&mut left, &mut right);
+            } else {
+                right_has_higher_priority(&mut left, &mut right);
+                stack.push(left.clone());
+            }
+            curr_expr = Some(right);
+            left_expression = None;
+            right_expression = None;
         }
     }
     while let Some(mut expr) = stack.pop() {
