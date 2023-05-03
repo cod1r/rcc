@@ -80,9 +80,9 @@ pub struct Equality {
 
 #[derive(Clone)]
 pub enum OpType {
-    GreaterThan,
     LessThan,
     LessThanEq,
+    GreaterThan,
     GreaterThanEq,
 }
 
@@ -94,26 +94,45 @@ pub struct Relational {
 }
 
 #[derive(Clone)]
+pub enum BitShiftOp {
+    Left,
+    Right,
+}
+
+#[derive(Clone)]
 pub struct BitShift {
+    pub op: BitShiftOp,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
 #[derive(Clone)]
+pub enum AdditiveOps {
+    Add,
+    Sub,
+}
+
+#[derive(Clone)]
 pub struct Additive {
+    pub op: AdditiveOps,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 #[derive(Clone)]
+pub enum MultiplicativeOps {
+    Mult,
+    Div,
+    Mod,
+}
+#[derive(Clone)]
 pub struct Multiplicative {
+    pub op: MultiplicativeOps,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 #[derive(Clone)]
 pub enum UnaryOp {
     Ampersand,
-    Mult,
-    Add,
     Sub,
     BitNOT,
     LogicalNOT,
