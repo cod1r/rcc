@@ -1139,7 +1139,35 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                 }
             }
             lexer::Token::PUNCT_OR_BIT => {
-                todo!()
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::BitOR(parser::BitOR {
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() >= new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    stack.push(expression_unwrapped);
+                }
+                curr_expr = Some(new_expression);
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(String::from("not allowed token after operator"));
+                }
+
             }
             lexer::Token::PUNCT_AND_BOOL => {
                 let mut expression_unwrapped = curr_expr.unwrap();
@@ -1499,6 +1527,25 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                         let left = primary_stack.pop().unwrap();
                         final_val = if (left ^ right) != 0 { true } else { false };
                         primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
+                    }
+                }
+                parser::Expr::BitOR(ref mut bo) => {
+                    if let Some(left) = &mut bo.first {
+                        let left_clone = *left.clone();
+                        bo.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bo.second {
+                        let right_clone = *right.clone();
+                        bo.second = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        final_val = if (left | right) != 0 { true } else { false };
+                        primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
                     }
                 }
                 parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
