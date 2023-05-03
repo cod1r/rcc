@@ -72,14 +72,21 @@ pub struct BitAND {
 }
 
 #[derive(Clone)]
+pub enum EqualityOp {
+    Equal,
+    NotEqual,
+}
+
+#[derive(Clone)]
 pub struct Equality {
+    pub op: EqualityOp,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
 
 
 #[derive(Clone)]
-pub enum OpType {
+pub enum RelationalOp {
     LessThan,
     LessThanEq,
     GreaterThan,
@@ -88,7 +95,7 @@ pub enum OpType {
 
 #[derive(Clone)]
 pub struct Relational {
-    pub op: OpType,
+    pub op: RelationalOp,
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }

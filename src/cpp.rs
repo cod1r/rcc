@@ -987,8 +987,86 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
             lexer::Token::PUNCT_LESS_THAN
             | lexer::Token::PUNCT_LESS_THAN_EQ
             | lexer::Token::PUNCT_GREATER_THAN
-            | lexer::Token::PUNCT_GREATER_THAN_EQ => {}
-            lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {}
+            | lexer::Token::PUNCT_GREATER_THAN_EQ => {
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::Relational(parser::Relational {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_LESS_THAN => parser::RelationalOp::LessThan,
+                        lexer::Token::PUNCT_LESS_THAN_EQ => parser::RelationalOp::LessThanEq,
+                        lexer::Token::PUNCT_GREATER_THAN => parser::RelationalOp::GreaterThan,
+                        lexer::Token::PUNCT_GREATER_THAN_EQ => parser::RelationalOp::GreaterThanEq,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() >= new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(new_expression);
+                } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
+                let mut expression_unwrapped = curr_expr.unwrap();
+                let mut new_expression = parser::Expr::Equality(parser::Equality {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_EQ_BOOL => parser::EqualityOp::Equal,
+                        lexer::Token::PUNCT_NOT_EQ_BOOL => parser::EqualityOp::NotEqual,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                });
+                if expression_unwrapped.priority() >= new_expression.priority() {
+                    left_has_higher_eq_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(new_expression);
+                } else {
+                    right_has_higher_priority(&mut expression_unwrapped, &mut new_expression);
+                    curr_expr = Some(expression_unwrapped);
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_MINUS
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
             lexer::Token::PUNCT_AND_BIT => {}
             lexer::Token::PUNCT_XOR_BIT => {
                 let mut expression_unwrapped = curr_expr.unwrap();
@@ -1843,8 +1921,8 @@ fn preprocessing_directives(
     //
     // if <condition>; the condition is an integer constant expression except that all identifiers
     // are treated like they are either macro names or not.
-    // Right now, I'm confused as to where in the spec does it talk about what punctuators are
-    // allowed in the expressions following #if preprocessor directives
+    // The punctuators that are allowed in the condition expression are the ones under the
+    // expression section in the C spec.
     // The constant-expression section in the c17 spec sort of states why...i guess.
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
