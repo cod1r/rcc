@@ -841,7 +841,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                if curr_expr.is_some() {
+                if curr_expr.is_some() && matches!(curr_expr, Some(parser::Expr::Primary(_))) {
                     match tokens[index] {
                         lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
                             return Err(format!("unexpected {:?} token", tokens[index]));
@@ -881,7 +881,10 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                     )
                 ) {
@@ -1284,7 +1287,7 @@ fn eval_constant_expression(tokens: &[lexer::Token]) -> Result<bool, String> {
                                     final_val = false;
                                 }
                             }
-                            parser::UnaryOp::Ampersand | parser::UnaryOp::Deref => unreachable!()
+                            parser::UnaryOp::Ampersand | parser::UnaryOp::Deref => unreachable!(),
                         }
                     }
                 }
@@ -2174,7 +2177,6 @@ fn preprocessing_directives(
                             "define" => {
                                 define_directive(tokens, index, &mut defines)?;
                             }
-                            "defined" => todo!(),
                             "undef" => {
                                 undef_directive(tokens, index, &mut defines)?;
                             }
@@ -2750,6 +2752,21 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens)?;
         assert_eq!(res, true, "~0");
+        let src = r##"~~~~~~~~~~~0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens)?;
+        assert_eq!(res, true, "~~~~~~~~~~~0");
+        let src = r##"--------------1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens);
+        match res {
+            Err(_) => {}
+            Ok(_) => {
+                return Err(String::from(
+                    "'--' operator not caught in cpp constant expression",
+                ))
+            }
+        }
         Ok(())
     }
     #[test]
