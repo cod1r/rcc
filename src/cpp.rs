@@ -493,20 +493,56 @@ fn right_has_higher_priority(left: &mut parser::Expr, right: &mut parser::Expr) 
             _ => unreachable!(),
         },
         parser::Expr::Conditional(c) => {
-            todo!("we gotta see how we construct conditional expressions first");
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
             match right {
-                parser::Expr::Primary(_) => {}
-                parser::Expr::Unary(_) => {}
-                parser::Expr::Multiplicative(_) => {}
-                parser::Expr::Additive(_) => {}
-                parser::Expr::BitShift(_) => {}
-                parser::Expr::Relational(_) => {}
-                parser::Expr::Equality(_) => {}
-                parser::Expr::BitAND(_) => {}
-                parser::Expr::BitXOR(_) => {}
-                parser::Expr::BitOR(_) => {}
-                parser::Expr::LogicalAND(_) => {}
-                parser::Expr::LogicalOR(_) => {}
+                parser::Expr::Primary(p) => {
+                    assert!(p.is_some());
+                    assert!(c.third.is_none());
+                }
+                parser::Expr::Unary(u) => {
+                    assert!(c.third.is_none());
+                }
+                parser::Expr::Multiplicative(m) => {
+                    assert!(m.first.is_none());
+                    m.first = c.third.clone();
+                }
+                parser::Expr::Additive(a) => {
+                    assert!(a.first.is_none());
+                    a.first = c.third.clone();
+                }
+                parser::Expr::BitShift(bs) => {
+                    assert!(bs.first.is_none());
+                    bs.first = c.third.clone();
+                }
+                parser::Expr::Relational(r) => {
+                    assert!(r.first.is_none());
+                    r.first = c.third.clone();
+                }
+                parser::Expr::Equality(e) => {
+                    assert!(e.first.is_none());
+                    e.first = c.third.clone();
+                }
+                parser::Expr::BitAND(ba) => {
+                    assert!(ba.first.is_none());
+                    ba.first = c.third.clone();
+                }
+                parser::Expr::BitXOR(bx) => {
+                    assert!(bx.first.is_none());
+                    bx.first = c.third.clone();
+                }
+                parser::Expr::BitOR(bo) => {
+                    assert!(bo.first.is_none());
+                    bo.first = c.third.clone();
+                }
+                parser::Expr::LogicalAND(la) => {
+                    assert!(la.first.is_none());
+                    la.first = c.third.clone();
+                }
+                parser::Expr::LogicalOR(lo) => {
+                    assert!(lo.first.is_none());
+                    lo.first = c.third.clone();
+                }
                 _ => unreachable!(),
             }
         }
@@ -549,7 +585,7 @@ fn left_has_higher_eq_priority(left: &mut parser::Expr, right: &mut parser::Expr
             lo.first = boxed;
         }
         parser::Expr::Conditional(c) => {
-            todo!()
+            unreachable!()
         }
         _ => unreachable!(),
     }
@@ -764,6 +800,8 @@ fn eval_constant_expression(
                             | lexer::Token::PUNCT_AND_BOOL
                             | lexer::Token::PUNCT_OR_BOOL
                             | lexer::Token::PUNCT_CLOSE_PAR
+                            | lexer::Token::PUNCT_QUESTION_MARK
+                            | lexer::Token::PUNCT_COLON
                     ) | None
                 ) {
                     return Err(format!("unexpected operator: {:?}", tokens[index]));
@@ -803,6 +841,9 @@ fn eval_constant_expression(
                 // having a lower priority (it has to be because that's the only reason our 'stack'
                 // exists) which means that we set curr_expr to that expression with that
                 // expression having the old curr_expr as a child in the expression tree
+                if stack.is_empty() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 while let Some(mut e) = stack.pop() {
                     match e {
                         parser::Expr::Primary(ref mut p) => {
@@ -847,6 +888,9 @@ fn eval_constant_expression(
                                 parser::Expr::LogicalOR(ref mut lo) => {
                                     lo.second = unwrapped;
                                 }
+                                parser::Expr::Conditional(ref mut c) => {
+                                    c.third = unwrapped;
+                                }
                                 _ => unreachable!(),
                             }
                             curr_expr = Some(e);
@@ -877,7 +921,12 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                if curr_expr.is_some() && !matches!(curr_expr, Some(parser::Expr::Unary(parser::Unary { op: _, first: None }))) {
+                if curr_expr.is_some()
+                    && !matches!(
+                        curr_expr,
+                        Some(parser::Expr::Unary(parser::Unary { op: _, first: None }))
+                    )
+                {
                     // if a '~' or '!' follow a primary expression, that is not allowed.
                     match tokens[index] {
                         lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
@@ -937,6 +986,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::Multiplicative(parser::Multiplicative {
                     op: match tokens[index] {
@@ -970,6 +1022,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_BITSHFT_RIGHT | lexer::Token::PUNCT_BITSHFT_LEFT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::BitShift(parser::BitShift {
                     op: match tokens[index] {
@@ -1005,6 +1060,9 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_LESS_THAN_EQ
             | lexer::Token::PUNCT_GREATER_THAN
             | lexer::Token::PUNCT_GREATER_THAN_EQ => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::Relational(parser::Relational {
                     op: match tokens[index] {
@@ -1039,6 +1097,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::Equality(parser::Equality {
                     op: match tokens[index] {
@@ -1071,6 +1132,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_AND_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::BitAND(parser::BitAND {
                     first: None,
@@ -1098,6 +1162,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_XOR_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::BitXOR(parser::BitXOR {
                     first: None,
@@ -1125,6 +1192,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_OR_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::BitOR(parser::BitOR {
                     first: None,
@@ -1152,6 +1222,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_AND_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::LogicalAND(parser::LogicalAND {
                     first: None,
@@ -1179,6 +1252,9 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_OR_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
                 left_expression = curr_expr.clone();
                 right_expression = Some(parser::Expr::LogicalOR(parser::LogicalOR {
                     first: None,
@@ -1206,23 +1282,86 @@ fn eval_constant_expression(
                 }
             }
             lexer::Token::PUNCT_QUESTION_MARK => {
-                todo!();
-                if curr_expr.is_some() {
-                    let cond = parser::Conditional {
-                        first: Some(Box::new(curr_expr.unwrap())),
+                if let Some(expr) = curr_expr {
+                    let expr_cond = parser::Expr::Conditional(parser::Conditional {
+                        first: Some(Box::new(expr)),
                         second: None,
                         third: None,
-                    };
-                    let expr_cond = parser::Expr::Conditional(cond);
-                    curr_expr = Some(expr_cond);
+                    });
+                    stack.push(expr_cond);
+                    curr_expr = None;
                 } else {
                     return Err(String::from(
                         "missing first operator for conditional expression",
                     ));
                 }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
             }
             lexer::Token::PUNCT_COLON => {
-                assert!(matches!(stack.last(), Some(parser::Expr::Conditional(_))));
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                while let Some(mut expr) = stack.pop() {
+                    let unwrapped = Some(Box::new(curr_expr.unwrap()));
+                    match expr {
+                        parser::Expr::Unary(ref mut u) => {
+                            u.first = unwrapped;
+                        }
+                        parser::Expr::Multiplicative(ref mut m) => {
+                            m.second = unwrapped;
+                        }
+                        parser::Expr::Additive(ref mut a) => {
+                            a.second = unwrapped;
+                        }
+                        parser::Expr::BitShift(ref mut bs) => {
+                            bs.second = unwrapped;
+                        }
+                        parser::Expr::Relational(ref mut r) => {
+                            r.second = unwrapped;
+                        }
+                        parser::Expr::Equality(ref mut e) => {
+                            e.second = unwrapped;
+                        }
+                        parser::Expr::BitAND(ref mut ba) => {
+                            ba.second = unwrapped;
+                        }
+                        parser::Expr::BitXOR(ref mut bx) => {
+                            bx.second = unwrapped;
+                        }
+                        parser::Expr::BitOR(ref mut bo) => {
+                            bo.second = unwrapped;
+                        }
+                        parser::Expr::LogicalAND(ref mut la) => {
+                            la.second = unwrapped;
+                        }
+                        parser::Expr::LogicalOR(ref mut lo) => {
+                            lo.second = unwrapped;
+                        }
+                        parser::Expr::Conditional(ref mut c) => {
+                            c.second = unwrapped;
+                            curr_expr = Some(expr);
+                            break;
+                        }
+                        _ => unreachable!(),
+                    }
+                    curr_expr = Some(expr);
+                }
+                if !matches!(curr_expr, Some(parser::Expr::Conditional(_))) {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                stack.push(curr_expr.unwrap());
+                curr_expr = None;
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
             }
             lexer::Token::WHITESPACE => {}
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
@@ -1278,6 +1417,10 @@ fn eval_constant_expression(
             parser::Expr::LogicalOR(ref mut lo) => {
                 lo.second = unwrapped;
             }
+            parser::Expr::Conditional(ref mut c) => {
+                assert!(c.first.is_some() && c.second.is_some());
+                c.third = unwrapped;
+            }
             _ => unreachable!(),
         }
         curr_expr = Some(expr);
@@ -1287,7 +1430,6 @@ fn eval_constant_expression(
     // TODO: account for the different integer constant types (U, LL, etc)
     let mut eval_stack = Vec::<parser::Expr>::new();
     let mut primary_stack = Vec::<i32>::new();
-    let mut final_val = false;
     if curr_expr.is_some() {
         eval_stack.push(curr_expr.unwrap());
         while let Some(mut top_expr) = eval_stack.pop() {
@@ -1314,35 +1456,15 @@ fn eval_constant_expression(
                         let one = primary_stack.pop().unwrap();
                         match u.op {
                             parser::UnaryOp::Add => {
-                                if one != 0 {
-                                    final_val = true;
-                                } else {
-                                    final_val = false;
-                                }
                                 primary_stack.push(one);
                             }
                             parser::UnaryOp::Sub => {
-                                if -one != 0 {
-                                    final_val = true;
-                                } else {
-                                    final_val = false;
-                                }
                                 primary_stack.push(-one);
                             }
                             parser::UnaryOp::BitNOT => {
-                                if !one == 0 {
-                                    final_val = false;
-                                } else {
-                                    final_val = true;
-                                }
                                 primary_stack.push(!one);
                             }
                             parser::UnaryOp::LogicalNOT => {
-                                if one == 0 {
-                                    final_val = true;
-                                } else {
-                                    final_val = false;
-                                }
                                 primary_stack.push(if one == 0 { 1 } else { 0 });
                             }
                             parser::UnaryOp::Ampersand | parser::UnaryOp::Deref => unreachable!(),
@@ -1366,7 +1488,6 @@ fn eval_constant_expression(
                         let left = primary_stack.pop().unwrap();
                         match m.op {
                             parser::MultiplicativeOps::Mult => {
-                                final_val = if left * right != 0 { true } else { false };
                                 primary_stack.push(left * right);
                             }
                             parser::MultiplicativeOps::Div | parser::MultiplicativeOps::Mod => {
@@ -1375,11 +1496,9 @@ fn eval_constant_expression(
                                 }
                                 match m.op {
                                     parser::MultiplicativeOps::Div => {
-                                        final_val = if left / right != 0 { true } else { false };
                                         primary_stack.push(left / right);
                                     }
                                     parser::MultiplicativeOps::Mod => {
-                                        final_val = if left % right != 0 { true } else { false };
                                         primary_stack.push(left % right);
                                     }
                                     _ => unreachable!(),
@@ -1405,11 +1524,9 @@ fn eval_constant_expression(
                         let left = primary_stack.pop().unwrap();
                         match a.op {
                             parser::AdditiveOps::Add => {
-                                final_val = if left + right != 0 { true } else { false };
                                 primary_stack.push(left + right);
                             }
                             parser::AdditiveOps::Sub => {
-                                final_val = if left - right != 0 { true } else { false };
                                 primary_stack.push(left - right);
                             }
                         }
@@ -1432,11 +1549,9 @@ fn eval_constant_expression(
                         let left = primary_stack.pop().unwrap();
                         match bs.op {
                             parser::BitShiftOp::Left => {
-                                final_val = if left << right != 0 { true } else { false };
                                 primary_stack.push(left << right);
                             }
                             parser::BitShiftOp::Right => {
-                                final_val = if left >> right != 0 { true } else { false };
                                 primary_stack.push(left >> right);
                             }
                         }
@@ -1459,19 +1574,15 @@ fn eval_constant_expression(
                         let left = primary_stack.pop().unwrap();
                         match r.op {
                             parser::RelationalOp::LessThan => {
-                                final_val = if left < right { true } else { false };
                                 primary_stack.push(if left < right { 1 } else { 0 });
                             }
                             parser::RelationalOp::LessThanEq => {
-                                final_val = if left <= right { true } else { false };
                                 primary_stack.push(if left <= right { 1 } else { 0 });
                             }
                             parser::RelationalOp::GreaterThan => {
-                                final_val = if left > right { true } else { false };
                                 primary_stack.push(if left > right { 1 } else { 0 });
                             }
                             parser::RelationalOp::GreaterThanEq => {
-                                final_val = if left >= right { true } else { false };
                                 primary_stack.push(if left >= right { 1 } else { 0 });
                             }
                         }
@@ -1494,11 +1605,9 @@ fn eval_constant_expression(
                         let left = primary_stack.pop().unwrap();
                         match e.op {
                             parser::EqualityOp::Equal => {
-                                final_val = if left == right { true } else { false };
                                 primary_stack.push(if left == right { 1 } else { 0 });
                             }
                             parser::EqualityOp::NotEqual => {
-                                final_val = if left != right { true } else { false };
                                 primary_stack.push(if left != right { 1 } else { 0 });
                             }
                         }
@@ -1519,7 +1628,6 @@ fn eval_constant_expression(
                         assert!(primary_stack.len() >= 2);
                         let right = primary_stack.pop().unwrap();
                         let left = primary_stack.pop().unwrap();
-                        final_val = if (left & right) != 0 { true } else { false };
                         primary_stack.push(if (left & right) != 0 { 1 } else { 0 });
                     }
                 }
@@ -1538,7 +1646,6 @@ fn eval_constant_expression(
                         assert!(primary_stack.len() >= 2);
                         let right = primary_stack.pop().unwrap();
                         let left = primary_stack.pop().unwrap();
-                        final_val = if (left ^ right) != 0 { true } else { false };
                         primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
                     }
                 }
@@ -1557,7 +1664,6 @@ fn eval_constant_expression(
                         assert!(primary_stack.len() >= 2);
                         let right = primary_stack.pop().unwrap();
                         let left = primary_stack.pop().unwrap();
-                        final_val = if (left | right) != 0 { true } else { false };
                         primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
                     }
                 }
@@ -1576,7 +1682,6 @@ fn eval_constant_expression(
                         assert!(primary_stack.len() >= 2);
                         let right = primary_stack.pop().unwrap();
                         let left = primary_stack.pop().unwrap();
-                        final_val = if left != 0 && right != 0 { true } else { false };
                         primary_stack.push(if left != 0 && right != 0 { 1 } else { 0 });
                     }
                 }
@@ -1595,18 +1700,30 @@ fn eval_constant_expression(
                         assert!(primary_stack.len() >= 2);
                         let right = primary_stack.pop().unwrap();
                         let left = primary_stack.pop().unwrap();
-                        final_val = if left != 0 || right != 0 { true } else { false };
                         primary_stack.push(if left != 0 || right != 0 { 1 } else { 0 });
                     }
                 }
                 parser::Expr::Conditional(ref mut c) => {
-                    todo!()
+                    if let Some(first) = &mut c.first {
+                        let first_clone = *first.clone();
+                        c.first = None;
+                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(first_clone);
+                    } else {
+                        assert!(!primary_stack.is_empty());
+                        let top = primary_stack.pop().unwrap();
+                        if top != 0 {
+                            eval_stack.push(*c.second.clone().unwrap());
+                        } else {
+                            eval_stack.push(*c.third.clone().unwrap());
+                        }
+                    }
                 }
-                _ => todo!(),
+                _ => unreachable!(),
             }
         }
     }
-    Ok(final_val)
+    Ok(*primary_stack.last().unwrap() != 0)
 }
 fn if_directive(
     tokens: &mut Vec<lexer::Token>,
@@ -3005,6 +3122,27 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn eval_expression_test_conditional() -> Result<(), String> {
+        let src = r##"1 ? 1 : 0"##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
+        let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
+        let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
+        let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
         Ok(())
     }
     #[test]
