@@ -841,9 +841,6 @@ fn eval_constant_expression(
                 // having a lower priority (it has to be because that's the only reason our 'stack'
                 // exists) which means that we set curr_expr to that expression with that
                 // expression having the old curr_expr as a child in the expression tree
-                if stack.is_empty() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
                 while let Some(mut e) = stack.pop() {
                     match e {
                         parser::Expr::Primary(ref mut p) => {
@@ -1723,6 +1720,7 @@ fn eval_constant_expression(
             }
         }
     }
+    assert!(primary_stack.len() == 1);
     Ok(*primary_stack.last().unwrap() != 0)
 }
 fn if_directive(
@@ -2886,7 +2884,7 @@ CHICKEN(1 2,3 4)"##;
         let src = r##"((((1))))"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, false, "((1 + 1) * 0)");
+        assert_eq!(res, true, "((((1))))");
         let src = r##"((((1)))))"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines);
