@@ -742,7 +742,6 @@ fn eval_constant_expression(
                         break;
                     }
                 }
-                //TODO: add edge case for 'defined <identifier>' and 'defined (identifier)'
                 if !matches!(
                     tokens.get(index),
                     Some(
@@ -878,9 +877,12 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                if curr_expr.is_some() && matches!(curr_expr, Some(parser::Expr::Primary(_))) {
+                if curr_expr.is_some() && !matches!(curr_expr, Some(parser::Expr::Unary(parser::Unary { op: _, first: None }))) {
+                    // if a '~' or '!' follow a primary expression, that is not allowed.
                     match tokens[index] {
-                        lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                        lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
+                            if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                        {
                             return Err(format!("unexpected {:?} token", tokens[index]));
                         }
                         _ => {}
@@ -896,6 +898,9 @@ fn eval_constant_expression(
                         second: None,
                     }));
                 } else {
+                    if let Some(expr) = curr_expr {
+                        stack.push(expr);
+                    }
                     curr_expr = Some(parser::Expr::Unary(parser::Unary {
                         op: match tokens[index] {
                             lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
@@ -1279,6 +1284,7 @@ fn eval_constant_expression(
     }
     // where we start evaluating the expression tree
     // TODO: remove duplicate structure of code.
+    // TODO: account for the different integer constant types (U, LL, etc)
     let mut eval_stack = Vec::<parser::Expr>::new();
     let mut primary_stack = Vec::<i32>::new();
     let mut final_val = false;
@@ -1286,6 +1292,17 @@ fn eval_constant_expression(
         eval_stack.push(curr_expr.unwrap());
         while let Some(mut top_expr) = eval_stack.pop() {
             match top_expr {
+                parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
+                    parser::PrimaryInner::Expr(e) => {
+                        eval_stack.push(*e);
+                    }
+                    parser::PrimaryInner::Token(t) => {
+                        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+                        if let lexer::Token::CONSTANT_DEC_INT { value, suffix } = t {
+                            primary_stack.push(value.parse::<i32>().unwrap());
+                        }
+                    }
+                },
                 parser::Expr::Unary(ref mut u) => {
                     if let Some(first) = &mut u.first {
                         let first_clone = *first.clone();
@@ -1302,6 +1319,7 @@ fn eval_constant_expression(
                                 } else {
                                     final_val = false;
                                 }
+                                primary_stack.push(one);
                             }
                             parser::UnaryOp::Sub => {
                                 if -one != 0 {
@@ -1309,6 +1327,7 @@ fn eval_constant_expression(
                                 } else {
                                     final_val = false;
                                 }
+                                primary_stack.push(-one);
                             }
                             parser::UnaryOp::BitNOT => {
                                 if !one == 0 {
@@ -1316,6 +1335,7 @@ fn eval_constant_expression(
                                 } else {
                                     final_val = true;
                                 }
+                                primary_stack.push(!one);
                             }
                             parser::UnaryOp::LogicalNOT => {
                                 if one == 0 {
@@ -1323,6 +1343,7 @@ fn eval_constant_expression(
                                 } else {
                                     final_val = false;
                                 }
+                                primary_stack.push(if one == 0 { 1 } else { 0 });
                             }
                             parser::UnaryOp::Ampersand | parser::UnaryOp::Deref => unreachable!(),
                         }
@@ -1581,17 +1602,6 @@ fn eval_constant_expression(
                 parser::Expr::Conditional(ref mut c) => {
                     todo!()
                 }
-                parser::Expr::Primary(ref mut p) => match p.clone().unwrap() {
-                    parser::PrimaryInner::Expr(e) => {
-                        eval_stack.push(*e);
-                    }
-                    parser::PrimaryInner::Token(t) => {
-                        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-                        if let lexer::Token::CONSTANT_DEC_INT { value, suffix } = t {
-                            primary_stack.push(value.parse::<i32>().unwrap());
-                        }
-                    }
-                },
                 _ => todo!(),
             }
         }
@@ -2774,6 +2784,10 @@ CHICKEN(1 2,3 4)"##;
             Err(_) => {}
             Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
         }
+        let src = r##"0 - (1 + 1)"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true, "0 - (1 + 1)");
         Ok(())
     }
     #[test]
@@ -2791,10 +2805,14 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "~0");
-        let src = r##"~~~~~~~~~~~0"##.as_bytes();
+        let src = r##"~~~0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, true, "~~~~~~~~~~~0");
+        assert_eq!(res, true, "~~~0");
+        let src = r##"~~~~0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false, "~~~~0");
         let src = r##"--------------1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines);
@@ -2847,6 +2865,10 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"0 - 1 + 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false, "0 - 1 + 1");
         Ok(())
     }
     #[test]
