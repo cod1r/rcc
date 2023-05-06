@@ -31,6 +31,15 @@ impl PrimaryInner {
 
 pub enum Type {
     Void,
+    SignedChar,
+    UnsignedChar,
+    ShortInt,
+    UnsignedShortInt,
+    Int,
+    UnsignedInt,
+    LongInt,
+    LongLongInt,
+    UnsignedLongLongInt,
 }
 
 #[derive(Clone)]
@@ -39,7 +48,6 @@ pub struct Conditional {
     pub second: Option<Box<Expr>>,
     pub third: Option<Box<Expr>>,
 }
-
 
 #[derive(Clone)]
 pub struct LogicalOR {
@@ -83,7 +91,6 @@ pub struct Equality {
     pub first: Option<Box<Expr>>,
     pub second: Option<Box<Expr>>,
 }
-
 
 #[derive(Clone)]
 pub enum RelationalOp {
