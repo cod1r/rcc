@@ -2239,24 +2239,32 @@ fn expand_macro(
                                         }
                                     }
                                     lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_CLOSE_PAR => {
-                                        if let Some(slice) = tokens
-                                            .get(beginning_of_current_argument..argument_temp_index)
+                                        if seen_args.len() < args.len()
+                                            || matches!(
+                                                tokens[argument_temp_index],
+                                                lexer::Token::PUNCT_CLOSE_PAR
+                                            )
                                         {
-                                            let mut slice_vec = slice.to_vec();
-                                            while matches!(
-                                                slice_vec.first(),
-                                                Some(lexer::Token::WHITESPACE)
+                                            if let Some(slice) = tokens.get(
+                                                beginning_of_current_argument..argument_temp_index,
                                             ) {
-                                                slice_vec.remove(0);
+                                                let mut slice_vec = slice.to_vec();
+                                                while matches!(
+                                                    slice_vec.first(),
+                                                    Some(lexer::Token::WHITESPACE)
+                                                ) {
+                                                    slice_vec.remove(0);
+                                                }
+                                                while matches!(
+                                                    slice_vec.last(),
+                                                    Some(lexer::Token::WHITESPACE)
+                                                ) {
+                                                    slice_vec.pop();
+                                                }
+                                                seen_args.push(slice_vec);
+                                                beginning_of_current_argument =
+                                                    argument_temp_index + 1;
                                             }
-                                            while matches!(
-                                                slice_vec.last(),
-                                                Some(lexer::Token::WHITESPACE)
-                                            ) {
-                                                slice_vec.pop();
-                                            }
-                                            seen_args.push(slice_vec);
-                                            beginning_of_current_argument = argument_temp_index + 1;
                                         }
                                     }
                                     _ => {}
@@ -2279,29 +2287,6 @@ fn expand_macro(
                                 ));
                         }
 
-                        for arg in &mut seen_args {
-                            let mut index = 0;
-                            while index < arg.len() {
-                                if let lexer::Token::IDENT(inside_id) = &arg[index] {
-                                    if defines.contains_key(inside_id)
-                                        && !already_replaced_macro_names.contains(inside_id)
-                                    {
-                                        //TODO: we use recursion here because if we did it
-                                        //iteratively, the macros would be expanded but in some
-                                        //cases where the macro would expand into punctuators, it
-                                        //would be hard to distinguish where each argument/slice of
-                                        //tokens began and ended.
-                                        //
-                                        //Ideally, we would want to remove recursion completely
-                                        //One solution would be to insert some implementation
-                                        //defined token to distinguish where arguments are
-                                        //separated but that also seems scuffed as fuck.
-                                        expand_macro(arg, &mut index, defines)?;
-                                    }
-                                }
-                                index += 1;
-                            }
-                        }
                         already_replaced_macro_names
                             .push(macros_to_replace.last().unwrap().name.clone());
                         {
@@ -2384,46 +2369,73 @@ fn expand_macro(
                                                     );
                                                     replacement_list_index_copy += 1;
                                                 }
-                                            } else if (replacement_list_index > 0
-                                                && matches!(
-                                                    replacement_list_copy
-                                                        .get(replacement_list_index - 1),
-                                                    Some(lexer::Token::PUNCT_HASH_HASH)
-                                                ))
-                                                || (matches!(
-                                                    replacement_list_copy
-                                                        .get(replacement_list_index + 1),
-                                                    Some(lexer::Token::PUNCT_HASH_HASH)
-                                                ))
-                                            {
+                                            } else if has_hash_or_hash_hash_before_or_after {
                                                 replacement_list_copy.insert(
                                                     replacement_list_index_copy,
                                                     lexer::Token::PLACEMARKER,
                                                 );
                                             }
+                                            replacement_list_index = replacement_list_index_copy;
                                             continue;
                                         }
                                     } else if id_name == "__VA_ARGS__" {
-                                        replacement_list_copy.remove(replacement_list_index);
-                                        assert!(args.len() < seen_args.len());
-                                        let mut replacement_list_index_incremented =
-                                            replacement_list_index;
-                                        for seen_arg_index in args.len()..seen_args.len() {
-                                            let argument_slice = &seen_args[seen_arg_index];
-                                            for t in argument_slice {
+                                        let va_args_slice = seen_args[args.len()].clone();
+                                        let condition_one = replacement_list_index > 0
+                                            && matches!(
+                                                replacement_list_copy
+                                                    .get(replacement_list_index - 1),
+                                                Some(lexer::Token::PUNCT_HASH)
+                                            );
+                                        let condition_two = replacement_list_index >= 2
+                                            && matches!(
+                                                replacement_list_copy.get(
+                                                    replacement_list_index - 2
+                                                        ..replacement_list_index
+                                                ),
+                                                Some([
+                                                    lexer::Token::PUNCT_HASH,
+                                                    lexer::Token::WHITESPACE
+                                                ])
+                                            );
+                                        if condition_one || condition_two {
+                                            let mut punct_hash_index = replacement_list_index;
+                                            while !matches!(
+                                                replacement_list_copy.get(punct_hash_index),
+                                                Some(lexer::Token::PUNCT_HASH)
+                                            ) {
+                                                punct_hash_index -= 1;
+                                            }
+                                            for _ in punct_hash_index..replacement_list_index + 1 {
+                                                replacement_list_copy.remove(punct_hash_index);
+                                            }
+                                            let mut string_literal_token =
+                                                lexer::Token::StringLiteral {
+                                                    prefix: None,
+                                                    sequence: String::new(),
+                                                };
+                                            let lexer::Token::StringLiteral { prefix: _, sequence } =
+                                        &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
+                                            for t in va_args_slice {
+                                                if let Some(t_str) = t.to_string() {
+                                                    sequence.push_str(&t_str);
+                                                } else {
+                                                    return Err(format!("tried to stringify token that cannot be stringified"));
+                                                }
+                                            }
+                                            replacement_list_copy
+                                                .insert(punct_hash_index, string_literal_token);
+                                        } else {
+                                            assert!(args.len() < seen_args.len());
+                                            replacement_list_copy.remove(replacement_list_index);
+                                            let mut replacement_list_index_incremented =
+                                                replacement_list_index;
+                                            for t in va_args_slice {
                                                 replacement_list_copy.insert(
                                                     replacement_list_index_incremented,
                                                     t.clone(),
                                                 );
                                                 replacement_list_index_incremented += 1;
                                             }
-                                            if seen_arg_index < seen_args.len() - 1 {
-                                                replacement_list_copy.insert(
-                                                    replacement_list_index_incremented,
-                                                    lexer::Token::PUNCT_COMMA,
-                                                );
-                                            }
-                                            replacement_list_index_incremented += 1;
                                         }
                                     }
                                 }
