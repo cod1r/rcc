@@ -2351,16 +2351,85 @@ fn expand_macro(
                                             }
                                             replacement_list_copy
                                                 .insert(removal_index, string_literal_token);
+                                            replacement_list_index = removal_index + 1;
                                             continue;
                                         } else {
-                                            replacement_list_copy.remove(replacement_list_index);
-                                            let argument = &seen_args[seen_arg_index];
+                                            //A parameter in the replacement list, UNLESS PRECEDED BY A # OR ## PREPROCESSING TOKEN OR
+                                            //FOLLOWED BY A ## PREPROCESSING TOKEN (see below), is replaced by the corresponding argument
+                                            //after all macros contained therein have been expanded
+                                            let argument = &mut seen_args[seen_arg_index];
+                                            let mut has_hash_or_hash_hash_before_or_after = false;
+                                            if replacement_list_index > 0 {
+                                                let mut left_check_index =
+                                                    replacement_list_index - 1;
+                                                if matches!(
+                                                    replacement_list_copy.get(left_check_index),
+                                                    Some(lexer::Token::WHITESPACE)
+                                                ) {
+                                                    left_check_index -= 1;
+                                                }
+                                                if matches!(
+                                                    replacement_list_copy.get(left_check_index),
+                                                    Some(lexer::Token::PUNCT_HASH_HASH)
+                                                ) {
+                                                    has_hash_or_hash_hash_before_or_after = true;
+                                                }
+                                            }
+                                            let mut right_check_index = replacement_list_index + 1;
+                                            if matches!(
+                                                replacement_list_copy.get(right_check_index),
+                                                Some(lexer::Token::WHITESPACE)
+                                            ) {
+                                                right_check_index += 1;
+                                            }
+                                            if matches!(
+                                                replacement_list_copy.get(replacement_list_index),
+                                                Some(
+                                                    lexer::Token::PUNCT_HASH
+                                                        | lexer::Token::PUNCT_HASH_HASH
+                                                )
+                                            ) {
+                                                has_hash_or_hash_hash_before_or_after = true;
+                                            }
+                                            if !has_hash_or_hash_hash_before_or_after {
+                                                let mut argument_index = 0;
+                                                while argument_index < argument.len() {
+                                                    let t = argument[argument_index].clone();
+                                                    if let lexer::Token::IDENT(
+                                                        identifier_maybe_defined,
+                                                    ) = t
+                                                    {
+                                                        if defines.contains_key(
+                                                            identifier_maybe_defined.as_str(),
+                                                        ) {
+                                                            //TODO: we use recursion here because if we did it
+                                                            //iteratively, the macros would be expanded but in some
+                                                            //cases where the macro would expand into punctuators, it
+                                                            //would be hard to distinguish where each argument/slice of
+                                                            //tokens began and ended.
+                                                            //
+                                                            //Ideally, we would want to remove recursion completely
+                                                            //One solution would be to insert some implementation
+                                                            //defined token to distinguish where arguments are
+                                                            //separated but that also seems scuffed as fuck.
+                                                            expand_macro(
+                                                                argument,
+                                                                &mut argument_index,
+                                                                defines,
+                                                            )?;
+                                                            continue;
+                                                        }
+                                                    }
+                                                    argument_index += 1;
+                                                }
+                                            }
                                             let mut replacement_list_index_copy =
                                                 replacement_list_index;
                                             let count_of_non_whitespace_tokens = argument
                                                 .iter()
                                                 .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
                                                 .count();
+                                            replacement_list_copy.remove(replacement_list_index);
                                             if count_of_non_whitespace_tokens > 0 {
                                                 for t in argument {
                                                     replacement_list_copy.insert(
