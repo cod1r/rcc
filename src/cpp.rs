@@ -87,6 +87,8 @@ fn get_header_name_from_tokens(tokens: &[lexer::Token]) -> Option<String> {
     }
     None
 }
+
+// TODO: we need to not use vec.remove() because it is slow
 fn include_directive(
     tokens: &mut Vec<lexer::Token>,
     mut index: usize,
@@ -597,7 +599,7 @@ fn left_has_higher_eq_priority(left: &mut parser::Expr, right: &mut parser::Expr
 //All macro identifiers are evaluated as defined or not defined.
 fn eval_constant_expression(
     tokens: &[lexer::Token],
-    defines: &HashMap<String, Vec<lexer::Token>>,
+    defines: &HashMap<String, Define>,
 ) -> Result<bool, String> {
     if tokens.iter().any(|t| {
         matches!(
@@ -1360,7 +1362,9 @@ fn eval_constant_expression(
                     }
                 }
             }
-            lexer::Token::WHITESPACE => {}
+            lexer::Token::WHITESPACE => {
+                index += 1;
+            }
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
         }
         if left_expression.is_some() && right_expression.is_some() {
@@ -1438,6 +1442,9 @@ fn eval_constant_expression(
                     parser::PrimaryInner::Token(t) => {
                         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
                         if let lexer::Token::CONSTANT_DEC_INT { value, suffix } = t {
+                            // TODO: we need to implement some sort of way to get the proper
+                            // integer constant type is, depending on the value that is
+                            // represented.
                             primary_stack.push(value.parse::<i32>().unwrap());
                         }
                     }
@@ -1881,6 +1888,7 @@ fn error_directive(tokens: &mut Vec<lexer::Token>) {
 fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> Result<(), String> {
     todo!()
 }
+// TODO: we need to not use vec.remove() because it is slow
 fn undef_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
@@ -2318,7 +2326,9 @@ fn preprocessing_directives(
     let mut index: usize = 0;
     while index < tokens.len() {
         match &tokens[index] {
-            lexer::Token::PUNCT_HASH => {
+            lexer::Token::PUNCT_HASH
+                if index == 0 || matches!(tokens.get(index - 1), Some(lexer::Token::NEWLINE)) =>
+            {
                 let mut newline = index + 2;
                 while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE))
                     && newline < tokens.len()
@@ -2385,8 +2395,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, define_directive, eval_constant_expression, expand_macro, include_directive,
-        preprocessing_directives, Define,
+        comments, define_directive, eval_constant_expression, expand_macro, if_directive,
+        include_directive, preprocessing_directives, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -2903,6 +2913,10 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true, "0 - (1 + 1)");
+        let src = r##"1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true, "1");
         Ok(())
     }
     #[test]
