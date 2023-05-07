@@ -1733,10 +1733,252 @@ fn eval_constant_expression(
 fn if_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
-    defines: &HashMap<String, Vec<lexer::Token>>,
+    defines: &HashMap<String, Define>,
 ) -> Result<(), String> {
-    todo!()
+    let mut balance_index = index;
+    let mut if_endif_counter = 0;
+    while if_endif_counter > 0 {
+        match tokens.get(balance_index) {
+            Some(lexer::Token::PUNCT_HASH)
+                if balance_index == 0
+                    || matches!(tokens.get(balance_index - 1), Some(lexer::Token::NEWLINE)) =>
+            {
+                balance_index += 1;
+                if matches!(tokens.get(balance_index), Some(lexer::Token::WHITESPACE)) {
+                    balance_index += 1;
+                }
+                match tokens.get(balance_index) {
+                    Some(lexer::Token::IDENT(id)) => match id.as_str() {
+                        "endif" => loop {
+                            balance_index += 1;
+                            match tokens.get(balance_index) {
+                                Some(lexer::Token::NEWLINE) => {
+                                    if_endif_counter -= 1;
+                                    balance_index += 1;
+                                    break;
+                                }
+                                Some(lexer::Token::WHITESPACE) => {}
+                                Some(_) => {
+                                    return Err(format!(
+                                        "unexpected token after endif directive: {:?}",
+                                        tokens[balance_index]
+                                    ))
+                                }
+                                None => {
+                                    return Err(format!("missing newline after endif directive"))
+                                }
+                            }
+                        },
+                        "if" | "ifdef" | "ifndef" => loop {
+                            balance_index += 1;
+                            match tokens.get(balance_index) {
+                                Some(lexer::Token::NEWLINE) => {
+                                    if_endif_counter += 1;
+                                    balance_index += 1;
+                                    break;
+                                }
+                                None => {
+                                    return Err(format!(
+                                        "missing newline after if{{def, ndef}} directive"
+                                    ))
+                                }
+                                _ => {}
+                            }
+                        },
+                        _ => {}
+                    },
+                    None => break,
+                    _ => {}
+                }
+            }
+            Some(_) => {
+                balance_index += 1;
+            }
+            None => break,
+        }
+    }
+    if if_endif_counter > 0 {
+        return Err(String::from(
+            "missing endif directive for if{{def, ndef}} directive",
+        ));
+    }
+    let mut after_index = index
+        + if matches!(tokens[index + 1], lexer::Token::WHITESPACE) {
+            2
+        } else {
+            1
+        };
+    match tokens.get(after_index) {
+        Some(lexer::Token::IDENT(id)) => {
+            let mut end_index = after_index;
+            while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
+                end_index += 1;
+                if matches!(tokens.get(end_index), None) {
+                    return Err(String::from("missing newline for if directive"));
+                }
+            }
+            let mut eval_vec = tokens[after_index + 1..end_index].to_vec();
+            for eval_vec_index in 0..eval_vec.len() {
+                if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
+                    let mut eval_vec_index_copy = eval_vec_index;
+                    expand_macro(&mut eval_vec, &mut eval_vec_index_copy, defines)?;
+                }
+            }
+            match id.as_str() {
+                "if" => {}
+                "ifdef" => {
+                    if eval_vec
+                        .iter()
+                        .any(|t| !matches!(t, lexer::Token::IDENT(_) | lexer::Token::WHITESPACE))
+                    {
+                        return Err(format!(
+                            "non identifier within constant expression of ifdef"
+                        ));
+                    }
+                }
+                "ifndef" => {
+                    if eval_vec
+                        .iter()
+                        .any(|t| !matches!(t, lexer::Token::IDENT(_) | lexer::Token::WHITESPACE))
+                    {
+                        return Err(format!(
+                            "non identifier within constant expression of ifndef"
+                        ));
+                    }
+                }
+                _ => unreachable!(),
+            }
+            'outer: loop {
+                // deleting if/elif line
+                let mut length_delete = end_index - index + 1;
+                while length_delete > 0 {
+                    tokens.remove(index);
+                    length_delete -= 1;
+                }
+                let mut if_layer_counter = 1;
+                if eval_constant_expression(eval_vec.as_slice(), defines)? {
+                    // deleting everything from elif down to endif
+                    let mut after_index = index;
+                    let mut elif_index = None;
+                    loop {
+                        if matches!(tokens.get(after_index), Some(lexer::Token::NEWLINE)) {
+                            after_index += 1;
+                            if matches!(tokens.get(after_index), Some(lexer::Token::PUNCT_HASH)) {
+                                let hash_index = after_index;
+                                after_index += 1;
+                                if matches!(tokens.get(after_index), Some(lexer::Token::WHITESPACE))
+                                {
+                                    after_index += 1;
+                                }
+                                match tokens.get(after_index) {
+                                    Some(lexer::Token::IDENT(id)) => match id.as_str() {
+                                        "if" | "ifdef" | "ifndef" => {
+                                            if_layer_counter += 1;
+                                        }
+                                        "elif" if elif_index.is_none() => {
+                                            elif_index = Some(hash_index);
+                                        }
+                                        "endif" => {
+                                            if_layer_counter -= 1;
+                                            if if_layer_counter == 0 {
+                                                while !matches!(
+                                                    tokens.get(after_index),
+                                                    Some(lexer::Token::NEWLINE)
+                                                ) {
+                                                    after_index += 1;
+                                                }
+                                                let mut length_delete = after_index
+                                                    - if elif_index.is_some() {
+                                                        elif_index.unwrap()
+                                                    } else {
+                                                        hash_index
+                                                    }
+                                                    + 1;
+                                                while length_delete > 0 {
+                                                    tokens.remove(hash_index);
+                                                    length_delete -= 1;
+                                                }
+                                                break 'outer;
+                                            }
+                                        }
+                                        _ => {}
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        } else {
+                            after_index += 1;
+                        }
+                    }
+                } else {
+                    loop {
+                        tokens.remove(index);
+                        let mut curr_index = index;
+                        if matches!(tokens.get(curr_index), Some(lexer::Token::NEWLINE)) {
+                            curr_index += 1;
+                            if matches!(tokens.get(curr_index), Some(lexer::Token::PUNCT_HASH)) {
+                                curr_index += 1;
+                            }
+                            if matches!(tokens.get(curr_index), Some(lexer::Token::WHITESPACE)) {
+                                curr_index += 1;
+                            }
+                            match tokens.get(curr_index) {
+                                Some(lexer::Token::IDENT(id)) => {
+                                    let mut end_index = curr_index + 1;
+                                    while !matches!(
+                                        tokens.get(end_index),
+                                        Some(lexer::Token::NEWLINE)
+                                    ) {
+                                        end_index += 1;
+                                        if matches!(tokens.get(end_index), None) {
+                                            return Err(String::from(
+                                                "missing newline after directive",
+                                            ));
+                                            break;
+                                        }
+                                    }
+                                    match id.as_str() {
+                                        "if" | "ifdef" | "ifndef" => {
+                                            if_layer_counter += 1;
+                                        }
+                                        "endif" => {
+                                            if_layer_counter -= 1;
+                                            if if_layer_counter == 0 {
+                                                while !matches!(
+                                                    tokens.get(after_index),
+                                                    Some(lexer::Token::NEWLINE)
+                                                ) {
+                                                    after_index += 1;
+                                                }
+                                                let mut length_delete = after_index - index + 1;
+                                                while length_delete > 0 {
+                                                    tokens.remove(index);
+                                                    length_delete -= 1;
+                                                }
+                                                break 'outer;
+                                            }
+                                        }
+                                        "elif" => {
+                                            eval_vec = tokens[curr_index + 1..end_index].to_vec();
+                                            break;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Some(_) => {}
+                                None => unreachable!(),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None => unreachable!(),
+        _ => {}
+    }
+    Ok(())
 }
+// TODO: we need to not use vec.remove() because it is slow
 fn define_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
@@ -3169,6 +3411,37 @@ CHICKEN(1 2,3 4)"##;
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        Ok(())
+    }
+    #[test]
+    fn if_directive_test() -> Result<(), String> {
+        let src = r##"#if 1
+4
+#endif
+"##
+        .as_bytes();
+        let defines = HashMap::new();
+        let mut tokens = lexer::lexer(src.to_vec(), true)?;
+        if_directive(&mut tokens, 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: "4".to_string(),
+                    suffix: None
+                },
+                lexer::Token::NEWLINE,
+            ],
+            tokens
+        );
+        let src = r##"#if 0
+4
+#endif
+"##
+        .as_bytes();
+        let defines = HashMap::new();
+        let mut tokens = lexer::lexer(src.to_vec(), true)?;
+        if_directive(&mut tokens, 0, &defines)?;
+        assert_eq!(vec![] as Vec<lexer::Token>, tokens);
         Ok(())
     }
 }
