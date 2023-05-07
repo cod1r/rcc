@@ -4,7 +4,7 @@ use crate::lexer::{self};
 use crate::parser::{self};
 
 #[derive(PartialEq, Debug, Clone)]
-struct Define {
+pub struct Define {
     identifier: String,
     parameters: Option<Vec<String>>,
     var_arg: bool,
@@ -94,7 +94,7 @@ fn include_directive(
     mut index: usize,
     end: usize,
     include_paths: &[&str],
-    defines: &HashMap<String, Define>,
+    defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     let mut index_header_file = index + 2;
     while index_header_file < tokens.len() {
@@ -164,8 +164,10 @@ fn include_directive(
             for entry in ei.by_ref().flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name == file_name {
-                    if let Ok(file_contents) = std::fs::read(path.to_string() + "/" + &name) {
-                        if let Ok(tokens_from_file) = lexer::lexer(file_contents, true) {
+                    let read_path = path.to_string() + "/" + &name;
+                    match std::fs::read(read_path.as_str()) {
+                        Ok(file_contents) => {
+                            let tokens_from_file = cpp(file_contents, include_paths, defines)?;
                             loop {
                                 if let lexer::Token::NEWLINE = tokens[index] {
                                     tokens.remove(index);
@@ -178,6 +180,9 @@ fn include_directive(
                                 index += 1;
                             }
                             return Ok(());
+                        }
+                        Err(e) => {
+                            return Err(format!("fs::read failed for path: {}", read_path));
                         }
                     }
                 }
@@ -2023,9 +2028,7 @@ fn define_directive(
         let mut fn_like_macro_index = index_of_identifier + 2;
         while matches!(
             tokens.get(fn_like_macro_index),
-            Some(lexer::Token::IDENT(_))
-                | Some(lexer::Token::PUNCT_COMMA)
-                | Some(lexer::Token::WHITESPACE)
+            Some(lexer::Token::IDENT(_) | lexer::Token::PUNCT_COMMA | lexer::Token::WHITESPACE)
         ) {
             if let Some(lexer::Token::IDENT(arg)) = tokens.get(fn_like_macro_index) {
                 if let Some(ref mut v) = def_data.parameters {
@@ -2315,24 +2318,24 @@ fn expand_macro(
                                                 break;
                                             }
                                         }
-                                        if (replacement_list_index > 0
+                                        let condition_one = replacement_list_index > 0
                                             && matches!(
                                                 replacement_list_copy
                                                     .get(replacement_list_index - 1),
                                                 Some(lexer::Token::PUNCT_HASH)
-                                            ))
-                                            || (replacement_list_index > 1
-                                                && matches!(
-                                                    replacement_list_copy.get(
-                                                        replacement_list_index - 2
-                                                            ..replacement_list_index
-                                                    ),
-                                                    Some([
-                                                        lexer::Token::PUNCT_HASH,
-                                                        lexer::Token::WHITESPACE,
-                                                    ])
-                                                ))
-                                        {
+                                            );
+                                        let condition_two = replacement_list_index >= 2
+                                            && matches!(
+                                                replacement_list_copy.get(
+                                                    replacement_list_index - 2
+                                                        ..replacement_list_index
+                                                ),
+                                                Some([
+                                                    lexer::Token::PUNCT_HASH,
+                                                    lexer::Token::WHITESPACE
+                                                ])
+                                            );
+                                        if condition_one || condition_two {
                                             let mut removal_index = replacement_list_index;
                                             while !matches!(
                                                 replacement_list_copy.get(removal_index),
@@ -2341,15 +2344,7 @@ fn expand_macro(
                                                 removal_index -= 1;
                                             }
                                             let id_name_clone = id_name.clone();
-                                            loop {
-                                                if let Some(lexer::Token::IDENT(remove_id)) =
-                                                    replacement_list_copy.get(removal_index)
-                                                {
-                                                    if *remove_id == id_name_clone {
-                                                        replacement_list_copy.remove(removal_index);
-                                                        break;
-                                                    }
-                                                }
+                                            for _ in removal_index..replacement_list_index + 1 {
                                                 replacement_list_copy.remove(removal_index);
                                             }
                                             let mut string_literal_token =
@@ -2475,7 +2470,7 @@ fn expand_macro(
                         }
                         while matches!(
                             replacement_list_copy.get(start_removal),
-                            Some(lexer::Token::WHITESPACE) | Some(lexer::Token::PUNCT_HASH_HASH)
+                            Some(lexer::Token::WHITESPACE | lexer::Token::PUNCT_HASH_HASH)
                         ) {
                             replacement_list_copy.remove(start_removal);
                         }
@@ -2495,18 +2490,28 @@ fn expand_macro(
                 }
 
                 {
+                    // the only things that can be macro names are identifiers which only have
+                    // token types IDENT and CONSTANT_DEC_INT
+                    // So we only look for those to combine in order to rescan and replace.
                     let mut stringified_tokens = String::new();
                     let mut concat_ident_index = 0;
                     while concat_ident_index < replacement_list_copy.len() {
-                        while let Some(lexer::Token::IDENT(concat_id)) =
-                            replacement_list_copy.get(concat_ident_index)
+                        while let Some(
+                            lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. },
+                        ) = replacement_list_copy.get(concat_ident_index)
                         {
+                            let concat_id = replacement_list_copy[concat_ident_index]
+                                .to_string()
+                                .expect("a token that can be stringified");
                             stringified_tokens.push_str(&concat_id);
                             replacement_list_copy.remove(concat_ident_index);
                         }
                         if stringified_tokens.len() > 0 {
-                            let new_ident_token = lexer::Token::IDENT(stringified_tokens.clone());
-                            replacement_list_copy.insert(concat_ident_index, new_ident_token);
+                            let new_ident_token_vec =
+                                lexer::lexer(stringified_tokens.clone().as_bytes().to_vec(), true)?;
+                            assert!(new_ident_token_vec.len() == 1);
+                            replacement_list_copy
+                                .insert(concat_ident_index, new_ident_token_vec[0].clone());
                             stringified_tokens.clear();
                         }
                         concat_ident_index += 1;
@@ -2554,6 +2559,7 @@ fn expand_macro(
 fn preprocessing_directives(
     tokens: &mut Vec<lexer::Token>,
     include_paths: &[&str],
+    defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     // the C standard talks about "grouping" where the operands are grouped with the operators
     //
@@ -2564,7 +2570,6 @@ fn preprocessing_directives(
     // The constant-expression section in the c17 spec sort of states why...i guess.
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
-    let mut defines = HashMap::new();
     let mut index: usize = 0;
     while index < tokens.len() {
         match &tokens[index] {
@@ -2585,19 +2590,21 @@ fn preprocessing_directives(
                     if let Some(lexer::Token::IDENT(s)) = tokens.get(index_of_directive) {
                         match s.as_str() {
                             "include" => {
-                                include_directive(tokens, index, newline, include_paths, &defines)?;
+                                include_directive(tokens, index, newline, include_paths, defines)?;
                             }
                             "if" | "ifdef" | "ifndef" => todo!("if directives"),
                             "define" => {
-                                define_directive(tokens, index, &mut defines)?;
+                                define_directive(tokens, index, defines)?;
                             }
                             "undef" => {
-                                undef_directive(tokens, index, &mut defines)?;
+                                undef_directive(tokens, index, defines)?;
                             }
                             "error" => todo!(),
                             "line" => todo!(),
                             "pragma" => todo!(),
-                            _ => {}
+                            _ => {
+                                unreachable!()
+                            }
                         }
                     }
                     continue;
@@ -2618,16 +2625,24 @@ fn preprocessing_directives(
     Err(String::from("unable to preprocess"))
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
-pub fn cpp(program_str: Vec<u8>) -> Result<Vec<lexer::Token>, String> {
+pub fn cpp(
+    program_str: Vec<u8>,
+    include_paths: &[&str],
+    defines: &mut HashMap<String, Define>,
+) -> Result<Vec<lexer::Token>, String> {
+    // step 2 in the translation phase
     let backslash_newline_spliced = program_str
         .iter()
         .map(|b| *b as char)
         .collect::<String>()
         .replace("\\\n", "");
     let backslash_newline_spliced = backslash_newline_spliced.as_bytes();
+    // step 3 in the translation phase
     let comments_removed = comments(backslash_newline_spliced)?;
-    let lexed_tokens = lexer::lexer(comments_removed, true);
-    todo!()
+    let mut lexed_tokens = lexer::lexer(comments_removed, true)?;
+    // step 4 in the translation phase
+    preprocessing_directives(&mut lexed_tokens, include_paths, defines)?;
+    Ok(lexed_tokens)
 }
 
 #[cfg(test)]
@@ -2637,7 +2652,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, define_directive, eval_constant_expression, expand_macro, if_directive,
+        comments, cpp, define_directive, eval_constant_expression, expand_macro, if_directive,
         include_directive, preprocessing_directives, Define,
     };
     #[test]
@@ -2706,8 +2721,9 @@ int main() {
 int main() {
 hi;
 }"##;
+        let mut defines = HashMap::new();
         let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
-        preprocessing_directives(&mut tokens, &["./test_c_files"])?;
+        preprocessing_directives(&mut tokens, &["./test_c_files"], &mut defines)?;
         let assert_tokens = vec![
             lexer::Token::IDENT(String::from("int")),
             lexer::Token::WHITESPACE,
@@ -2789,6 +2805,28 @@ char p[] = join(x, y);"##;
                     sequence: "x ## y".to_string()
                 },
                 lexer::Token::PUNCT_SEMI_COLON
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
+    fn test_define_small() -> Result<(), String> {
+        let src = r##"#define PP_STRINGIZE_ALL(...) #__VA_ARGS__
+PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
+"##
+        .as_bytes()
+        .to_vec();
+        let mut defines = HashMap::new();
+        let mut tokens = cpp(src, &["./test_c_files"], &mut defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::StringLiteral {
+                    prefix: None,
+                    sequence: "hello world".to_string()
+                },
+                lexer::Token::WHITESPACE,
+                lexer::Token::NEWLINE
             ],
             tokens
         );
