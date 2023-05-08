@@ -2007,7 +2007,7 @@ fn if_directive(
                                             }
                                         }
                                         "elif" => {
-                                            if matches!(tokens.get(index), lexer::Token::NEWLINE) {
+                                            if matches!(tokens.get(index), Some(lexer::Token::NEWLINE)) {
                                                 tokens.remove(index);
                                             }
                                             eval_vec = tokens[curr_index + 1..end_index].to_vec();
