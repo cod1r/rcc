@@ -2074,8 +2074,16 @@ fn define_directive(
         matches_one_of_conditions = true;
     }
     if matches_one_of_conditions {
-        if identifier_of_macro == "defined" {
-            return Err(format!("cannot define 'defined' as it is a cpp keyword"));
+        if identifier_of_macro == "defined"
+            || identifier_of_macro == "__LINE__"
+            || identifier_of_macro == "__FILE__"
+            || identifier_of_macro == "__DATE__"
+            || identifier_of_macro == "__STDC__"
+            || identifier_of_macro == "__STDC_HOSTED__"
+            || identifier_of_macro == "__STDC_VERSION__"
+            || identifier_of_macro == "__TIME__"
+        {
+            return Err(format!("cannot define '{}' as it is a cpp keyword", identifier_of_macro));
         }
         if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro) {
             if dd.parameters.is_some() {
@@ -2670,7 +2678,9 @@ fn preprocessing_directives(
                             "include" => {
                                 include_directive(tokens, index, newline, include_paths, defines)?;
                             }
-                            "if" | "ifdef" | "ifndef" => todo!("if directives"),
+                            "if" | "ifdef" | "ifndef" => {
+                                if_directive(tokens, index, defines)?;
+                            },
                             "define" => {
                                 define_directive(tokens, index, defines)?;
                             }
@@ -2680,9 +2690,10 @@ fn preprocessing_directives(
                             "error" => todo!(),
                             "line" => todo!(),
                             "pragma" => todo!(),
-                            _ => {
-                                unreachable!()
+                            "\n" => {
+                                index += 1;
                             }
+                            _ => return Err(format!("unknown preprocessing directive: {}", s)),
                         }
                     }
                     continue;
