@@ -2592,6 +2592,16 @@ fn expand_macro(
                             let concat_id = replacement_list_copy[concat_ident_index]
                                 .to_string()
                                 .expect("a token that can be stringified");
+                            if stringified_tokens.is_empty()
+                                && matches!(
+                                    replacement_list_copy.get(concat_ident_index),
+                                    Some(lexer::Token::CONSTANT_DEC_INT { .. })
+                                )
+                            {
+                                stringified_tokens.push_str(&concat_id);
+                                replacement_list_copy.remove(concat_ident_index);
+                                break;
+                            }
                             stringified_tokens.push_str(&concat_id);
                             replacement_list_copy.remove(concat_ident_index);
                         }

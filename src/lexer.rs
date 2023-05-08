@@ -1072,7 +1072,7 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
                 tokens.push(t);
             } else {
                 return Err(format!(
-                    "unhandled token: '{}' at index: {}",
+                    "unexpected token: '{}' at index: {}",
                     program_str_bytes[index] as char, index
                 ));
             }
