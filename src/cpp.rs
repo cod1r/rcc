@@ -2063,7 +2063,6 @@ fn define_directive(
         var_arg: false,
         replacement_list: Vec::new(),
     };
-    let mut matches_one_of_conditions = false;
     let mut identifier_of_macro = String::new();
     if let Some([lexer::Token::IDENT(id), lexer::Token::PUNCT_OPEN_PAR]) =
         tokens.get(index_of_identifier..index_of_identifier + 2)
@@ -2098,7 +2097,6 @@ fn define_directive(
                 .replacement_list
                 .extend_from_slice(&tokens[fn_like_macro_index + 1..end]);
             defines.insert(def_data.identifier.clone(), def_data);
-            matches_one_of_conditions = true;
         } else if matches!(
             tokens.get(fn_like_macro_index..fn_like_macro_index + 2),
             Some([lexer::Token::PUNCT_ELLIPSIS, lexer::Token::PUNCT_CLOSE_PAR])
@@ -2108,7 +2106,6 @@ fn define_directive(
                 .replacement_list
                 .extend_from_slice(&tokens[fn_like_macro_index + 2..end]);
             defines.insert(def_data.identifier.clone(), def_data);
-            matches_one_of_conditions = true;
         }
     } else if let Some(lexer::Token::IDENT(id)) = tokens.get(index_of_identifier) {
         identifier_of_macro = id.to_string();
@@ -2117,9 +2114,8 @@ fn define_directive(
             .replacement_list
             .extend_from_slice(&tokens[index_of_identifier + 1..end]);
         defines.insert(def_data.identifier.clone(), def_data);
-        matches_one_of_conditions = true;
     }
-    if matches_one_of_conditions {
+    if defines.contains_key(identifier_of_macro.as_str()) {
         if identifier_of_macro == "defined"
             || identifier_of_macro == "__LINE__"
             || identifier_of_macro == "__FILE__"
