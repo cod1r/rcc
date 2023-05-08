@@ -606,6 +606,14 @@ fn eval_constant_expression(
     tokens: &[lexer::Token],
     defines: &HashMap<String, Define>,
 ) -> Result<bool, String> {
+    if tokens
+        .iter()
+        .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
+        .count()
+        == 0
+    {
+        return Err(format!("empty expression given"));
+    }
     if tokens.iter().any(|t| {
         matches!(
             t,
