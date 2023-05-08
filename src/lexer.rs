@@ -168,7 +168,7 @@ impl Token {
                 if let Some(pre) = prefix {
                     Some(pre.clone() + sequence)
                 } else {
-                    Some(sequence.to_string())
+                    Some("\"".to_string() + &sequence + "\"")
                 }
             }
             Token::CONSTANT_DEC_INT { value, suffix } => {
