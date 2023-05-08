@@ -2083,7 +2083,10 @@ fn define_directive(
             || identifier_of_macro == "__STDC_VERSION__"
             || identifier_of_macro == "__TIME__"
         {
-            return Err(format!("cannot define '{}' as it is a cpp keyword", identifier_of_macro));
+            return Err(format!(
+                "cannot define '{}' as it is a cpp keyword",
+                identifier_of_macro
+            ));
         }
         if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro) {
             if dd.parameters.is_some() {
@@ -2680,7 +2683,7 @@ fn preprocessing_directives(
                             }
                             "if" | "ifdef" | "ifndef" => {
                                 if_directive(tokens, index, defines)?;
-                            },
+                            }
                             "define" => {
                                 define_directive(tokens, index, defines)?;
                             }
@@ -2691,7 +2694,9 @@ fn preprocessing_directives(
                             "line" => todo!(),
                             "pragma" => todo!(),
                             "\n" => {
-                                index += 1;
+                                for _ in index..index_of_directive + 1 {
+                                    tokens.remove(index);
+                                }
                             }
                             _ => return Err(format!("unknown preprocessing directive: {}", s)),
                         }
