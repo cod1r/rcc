@@ -2601,8 +2601,7 @@ fn expand_macro(
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                             for t in va_args_slice {
                                                 if let Some(mut t_str) = t.to_string() {
-                                                    if t_str.contains("\"")
-                                                        || t_str.contains("\\")
+                                                    if t_str.contains("\"") || t_str.contains("\\")
                                                     {
                                                         let mut escaped_string = String::new();
                                                         for c in t_str.chars() {
