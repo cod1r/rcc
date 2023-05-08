@@ -2444,9 +2444,24 @@ fn expand_macro(
                                             let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                             for argument_index in 0..argument.len() {
-                                                if let Some(stringified_token) =
+                                                if let Some(mut stringified_token) =
                                                     argument[argument_index].to_string()
                                                 {
+                                                    if stringified_token.contains("\"")
+                                                        || stringified_token.contains("\\")
+                                                    {
+                                                        let mut escaped_string = String::new();
+                                                        for c in stringified_token.chars() {
+                                                            match c {
+                                                                '\"' | '\\' => {
+                                                                    escaped_string.push('\\')
+                                                                }
+                                                                _ => {}
+                                                            }
+                                                            escaped_string.push(c);
+                                                        }
+                                                        stringified_token = escaped_string;
+                                                    }
                                                     sequence.push_str(&stringified_token);
                                                 } else {
                                                     return Err(format!("tried to stringify token that cannot be stringified"));
@@ -2585,7 +2600,22 @@ fn expand_macro(
                                             let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                             for t in va_args_slice {
-                                                if let Some(t_str) = t.to_string() {
+                                                if let Some(mut t_str) = t.to_string() {
+                                                    if t_str.contains("\"")
+                                                        || t_str.contains("\\")
+                                                    {
+                                                        let mut escaped_string = String::new();
+                                                        for c in t_str.chars() {
+                                                            match c {
+                                                                '\"' | '\\' => {
+                                                                    escaped_string.push('\\')
+                                                                }
+                                                                _ => {}
+                                                            }
+                                                            escaped_string.push(c);
+                                                        }
+                                                        t_str = escaped_string;
+                                                    }
                                                     sequence.push_str(&t_str);
                                                 } else {
                                                     return Err(format!("tried to stringify token that cannot be stringified"));
