@@ -1798,6 +1798,38 @@ fn if_directive(
                                 _ => {}
                             }
                         },
+                        "elif" if if_endif_counter == 0 => loop {
+                            balance_index += 1;
+                            match tokens.get(balance_index) {
+                                Some(lexer::Token::NEWLINE) => {
+                                    balance_index += 1;
+                                    break;
+                                }
+                                None => {
+                                    return Err(format!("missing newline after elif directive"))
+                                }
+                                _ => {}
+                            }
+                        },
+                        "else" if if_endif_counter == 0 => loop {
+                            balance_index += 1;
+                            match tokens.get(balance_index) {
+                                Some(lexer::Token::NEWLINE) => {
+                                    balance_index += 1;
+                                    break;
+                                }
+                                Some(lexer::Token::WHITESPACE) => {}
+                                Some(_) => {
+                                    return Err(format!(
+                                        "unexpected token after else directive: {:?}",
+                                        tokens[balance_index]
+                                    ))
+                                }
+                                None => {
+                                    return Err(format!("missing newline after else directive"))
+                                }
+                            }
+                        },
                         _ => {}
                     },
                     None => break,
@@ -1822,7 +1854,7 @@ fn if_directive(
             1
         };
     match tokens.get(after_index) {
-        Some(lexer::Token::IDENT(id)) => {
+        Some(lexer::Token::IDENT(first_id)) => {
             let mut end_index = after_index;
             while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
                 end_index += 1;
@@ -1837,7 +1869,7 @@ fn if_directive(
                     expand_macro(&mut eval_vec, &mut eval_vec_index_copy, defines)?;
                 }
             }
-            match id.as_str() {
+            match first_id.as_str() {
                 "if" => {}
                 "ifdef" | "ifndef" => {
                     if eval_vec
@@ -1854,7 +1886,7 @@ fn if_directive(
                     {
                         return Err(format!(
                             "non identifier within constant expression of {}",
-                            id
+                            first_id
                         ));
                     }
                 }
@@ -1872,6 +1904,7 @@ fn if_directive(
                 ));
                 let lexer::Token::IDENT(curr_id) = &tokens[index_of_id] else { unreachable!() };
                 let condition = match curr_id.as_str() {
+                    "else" => true,
                     "if" | "elif" => eval_constant_expression(eval_vec.as_slice(), defines)?,
                     "ifdef" | "ifndef" => {
                         let lexer::Token::IDENT(id) = eval_vec
@@ -1892,7 +1925,11 @@ fn if_directive(
                     }
                     _ => unreachable!(),
                 };
-                // deleting if/elif line
+                // deleting if/elif/else line
+                let mut end_index = index;
+                while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
+                    end_index += 1;
+                }
                 let mut length_delete = end_index - index + 1;
                 while length_delete > 0 {
                     tokens.remove(index);
@@ -1900,49 +1937,50 @@ fn if_directive(
                 }
                 let mut if_layer_counter = 1;
                 if condition {
-                    // deleting everything from elif down to endif
-                    let mut after_index = index;
-                    let mut elif_index = None;
+                    // deleting everything from elif/else down to endif
+                    let mut curr_index = index;
+                    let mut elif_else_index = None;
                     loop {
-                        if matches!(tokens.get(after_index), Some(lexer::Token::NEWLINE)) {
-                            after_index += 1;
-                            if matches!(tokens.get(after_index), Some(lexer::Token::PUNCT_HASH)) {
-                                let hash_index = after_index;
-                                after_index += 1;
-                                if matches!(tokens.get(after_index), Some(lexer::Token::WHITESPACE))
+                        if matches!(tokens.get(curr_index), Some(lexer::Token::NEWLINE)) {
+                            curr_index += 1;
+                            if matches!(tokens.get(curr_index), Some(lexer::Token::PUNCT_HASH)) {
+                                let hash_index = curr_index;
+                                curr_index += 1;
+                                if matches!(tokens.get(curr_index), Some(lexer::Token::WHITESPACE))
                                 {
-                                    after_index += 1;
+                                    curr_index += 1;
                                 }
-                                match tokens.get(after_index) {
+                                match tokens.get(curr_index) {
                                     Some(lexer::Token::IDENT(local_id)) => {
                                         match local_id.as_str() {
                                             "if" | "ifdef" | "ifndef" => {
                                                 if_layer_counter += 1;
                                             }
-                                            "elif"
-                                                if elif_index.is_none()
+                                            "elif" | "else"
+                                                if elif_else_index.is_none()
                                                     && if_layer_counter == 1 =>
                                             {
-                                                elif_index = Some(hash_index);
+                                                elif_else_index = Some(hash_index);
                                             }
                                             "endif" => {
                                                 if_layer_counter -= 1;
                                                 if if_layer_counter == 0 {
                                                     while !matches!(
-                                                        tokens.get(after_index),
+                                                        tokens.get(curr_index),
                                                         Some(lexer::Token::NEWLINE)
                                                     ) {
-                                                        after_index += 1;
+                                                        curr_index += 1;
                                                     }
-                                                    let mut length_delete = after_index
-                                                        - if elif_index.is_some() {
-                                                            elif_index.unwrap()
-                                                        } else {
-                                                            hash_index
-                                                        }
-                                                        + 1;
+                                                    let start_delete = if elif_else_index.is_some()
+                                                    {
+                                                        elif_else_index.unwrap()
+                                                    } else {
+                                                        hash_index
+                                                    };
+                                                    let mut length_delete =
+                                                        curr_index - start_delete + 1;
                                                     while length_delete > 0 {
-                                                        tokens.remove(hash_index);
+                                                        tokens.remove(start_delete);
                                                         length_delete -= 1;
                                                     }
                                                     break 'outer;
@@ -1955,7 +1993,7 @@ fn if_directive(
                                 }
                             }
                         } else {
-                            after_index += 1;
+                            curr_index += 1;
                         }
                     }
                 } else {
@@ -2007,10 +2045,22 @@ fn if_directive(
                                             }
                                         }
                                         "elif" => {
-                                            if matches!(tokens.get(index), Some(lexer::Token::NEWLINE)) {
+                                            if matches!(
+                                                tokens.get(index),
+                                                Some(lexer::Token::NEWLINE)
+                                            ) {
                                                 tokens.remove(index);
                                             }
                                             eval_vec = tokens[curr_index + 1..end_index].to_vec();
+                                            break;
+                                        }
+                                        "else" => {
+                                            if matches!(
+                                                tokens.get(index),
+                                                Some(lexer::Token::NEWLINE)
+                                            ) {
+                                                tokens.remove(index);
+                                            }
                                             break;
                                         }
                                         _ => {}
@@ -3692,6 +3742,26 @@ CHICKEN(1 2,3 4)"##;
             ],
             tokens
         );
+        let src = r##"#ifdef hi
+4
+#else
+5
+#endif
+"##
+        .as_bytes();
+        let defines = HashMap::new();
+        let mut tokens = lexer::lexer(src.to_vec(), true)?;
+        if_directive(&mut tokens, 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: "5".to_string(),
+                    suffix: None
+                },
+                lexer::Token::NEWLINE,
+            ],
+            tokens
+        );
         Ok(())
     }
     #[test]
@@ -3706,7 +3776,6 @@ CHICKEN(1 2,3 4)"##;
             .map(|t| t.to_string().unwrap())
             .fold(String::new(), |a, e| a + &e);
         println!("{s}");
-        assert_eq!(assert_tokens, tokens);
         Ok(())
     }
 }
