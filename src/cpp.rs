@@ -2384,10 +2384,7 @@ fn expand_macro(
                                             }
                                             if matches!(
                                                 replacement_list_copy.get(replacement_list_index),
-                                                Some(
-                                                    lexer::Token::PUNCT_HASH
-                                                        | lexer::Token::PUNCT_HASH_HASH
-                                                )
+                                                Some(lexer::Token::PUNCT_HASH_HASH)
                                             ) {
                                                 has_hash_or_hash_hash_before_or_after = true;
                                             }
@@ -2704,6 +2701,15 @@ fn preprocessing_directives(
         return Ok(());
     }
     Err(String::from("unable to preprocess"))
+}
+pub fn output_tokens_stdout(tokens: &Vec<lexer::Token>) {
+    println!(
+        "{}",
+        tokens
+            .iter()
+            .map(|t| t.to_string().unwrap())
+            .fold(String::new(), |a, e| a + &e)
+    );
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
 pub fn cpp(
@@ -3561,6 +3567,48 @@ CHICKEN(1 2,3 4)"##;
         let mut tokens = lexer::lexer(src.to_vec(), true)?;
         if_directive(&mut tokens, 0, &defines)?;
         assert_eq!(vec![] as Vec<lexer::Token>, tokens);
+        let src = r##"#if 1 + 1 > 0
+4
+#endif
+"##
+        .as_bytes();
+        let defines = HashMap::new();
+        let mut tokens = lexer::lexer(src.to_vec(), true)?;
+        if_directive(&mut tokens, 0, &defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::CONSTANT_DEC_INT {
+                    value: "4".to_string(),
+                    suffix: None
+                },
+                lexer::Token::NEWLINE,
+            ],
+            tokens
+        );
+        let src = r##"#if 1 + 1 > 2
+4
+#endif
+"##
+        .as_bytes();
+        let defines = HashMap::new();
+        let mut tokens = lexer::lexer(src.to_vec(), true)?;
+        if_directive(&mut tokens, 0, &defines)?;
+        assert_eq!(vec![] as Vec<lexer::Token>, tokens);
+        Ok(())
+    }
+    #[test]
+    fn cpp_test_with_complicated_header() -> Result<(), String> {
+        let src = r##"#include "pp-acid-test.h"
+"##;
+        let mut defines = HashMap::new();
+        let tokens = cpp(src.as_bytes().to_vec(), &["./test_c_files"], &mut defines)?;
+        let assert_tokens: Vec<lexer::Token> = vec![];
+        let s = tokens
+            .iter()
+            .map(|t| t.to_string().unwrap())
+            .fold(String::new(), |a, e| a + &e);
+        println!("{s}");
+        assert_eq!(assert_tokens, tokens);
         Ok(())
     }
 }
