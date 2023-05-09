@@ -1077,7 +1077,7 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
                 ));
             }
         } else {
-            while matches!(program_str_bytes.get(index), Some(b' ')) {
+            while matches!(program_str_bytes.get(index), Some(b' ' | b'\t')) {
                 index += 1;
             }
             tokens.push(Token::WHITESPACE);
