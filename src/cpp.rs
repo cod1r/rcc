@@ -1473,7 +1473,14 @@ fn eval_constant_expression(
                             // We just 'cheat' by using i128 integer types. That way, regardless
                             // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
                             // compare and not have to do any weird casts.
-                            primary_stack.push(value.parse::<i128>().unwrap());
+                            match value.parse::<i128>() {
+                                Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
+                                    primary_stack.push(v);
+                                }
+                                _ => {
+                                    return Err(format!("{} cannot be represented as i64 or u64", value));
+                                }
+                            }
                         }
                     }
                 },
