@@ -1863,12 +1863,6 @@ fn if_directive(
                 }
             }
             let mut eval_vec = tokens[after_index + 1..end_index].to_vec();
-            for eval_vec_index in 0..eval_vec.len() {
-                if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
-                    let mut eval_vec_index_copy = eval_vec_index;
-                    expand_macro(&mut eval_vec, &mut eval_vec_index_copy, defines)?;
-                }
-            }
             match first_id.as_str() {
                 "if" => {}
                 "ifdef" | "ifndef" => {
@@ -1905,7 +1899,20 @@ fn if_directive(
                 let lexer::Token::IDENT(curr_id) = &tokens[index_of_id] else { unreachable!() };
                 let condition = match curr_id.as_str() {
                     "else" => true,
-                    "if" | "elif" => eval_constant_expression(eval_vec.as_slice(), defines)?,
+                    "if" | "elif" => {
+                        let mut eval_vec_index = 0;
+                        while eval_vec_index < eval_vec.len() {
+                            if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
+                                let mut eval_vec_index_copy = eval_vec_index;
+                                expand_macro(&mut eval_vec, &mut eval_vec_index_copy, defines)?;
+                                if eval_vec_index_copy != eval_vec_index {
+                                    continue;
+                                }
+                            }
+                            eval_vec_index += 1;
+                        }
+                        eval_constant_expression(eval_vec.as_slice(), defines)?
+                    }
                     "ifdef" | "ifndef" => {
                         let lexer::Token::IDENT(id) = eval_vec
                             .iter()
@@ -2244,6 +2251,10 @@ fn undef_directive(
     }
     Err(format!("unknown token in undef directive"))
 }
+// TODO: we might need to reconsider the having the 'index' as an mutable reference
+// because it's not entirely clear whether or not the 'index' might change.
+// If we make the 'index' a returned value, the scope of the caller is encouraged to check its value to
+// see if it changed.
 fn expand_macro(
     tokens: &mut Vec<lexer::Token>,
     index: &mut usize,
