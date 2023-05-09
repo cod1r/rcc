@@ -2757,7 +2757,7 @@ fn expand_macro(
             }
 
             if macros_to_replace.is_empty() {
-                where_index_should_be_after_we_are_done = end + 1;
+                where_index_should_be_after_we_are_done = end;
             }
         }
     }
@@ -2825,8 +2825,11 @@ fn preprocessing_directives(
                     return Err(format!("no newline at the end of preprocessing directive"));
                 }
             }
-            lexer::Token::IDENT(_) => {
-                expand_macro(tokens, &mut index, &defines)?;
+            lexer::Token::IDENT(ident) => {
+                if defines.contains_key(ident.as_str()) {
+                    expand_macro(tokens, &mut index, &defines)?;
+                    continue;
+                }
             }
             _ => {}
         }
@@ -3377,6 +3380,26 @@ CHICKEN(1 2,3 4)"##;
         let mut defines = HashMap::new();
         expand_macro(&mut tokens, &mut 0, &mut defines)?;
         assert_eq!(vec![lexer::Token::IDENT("HI".to_string()),], tokens);
+        Ok(())
+    }
+    #[test]
+    fn expand_macro_side_by_side() -> Result<(), String> {
+        let src = r##"#define PP(a, b) a ## b
+#define PP2(a, b) a/**/b
+PP(/,*)PP2(*,/)"##
+            .as_bytes();
+        let mut defines = HashMap::new();
+        let tokens = cpp(src.to_vec(), &[""], &mut defines)?;
+        assert_eq!(
+            vec![
+                lexer::Token::PUNCT_DIV,
+                lexer::Token::PUNCT_MULT,
+                lexer::Token::PUNCT_MULT,
+                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_DIV
+            ],
+            tokens
+        );
         Ok(())
     }
     #[test]
