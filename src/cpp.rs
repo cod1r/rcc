@@ -2450,9 +2450,7 @@ fn expand_macro(
                                             let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                             for t in argument {
-                                                if let Some(mut stringified_token) =
-                                                    t.to_string()
-                                                {
+                                                if let Some(mut stringified_token) = t.to_string() {
                                                     if stringified_token.contains('\"')
                                                         || stringified_token.contains('\\')
                                                     {
