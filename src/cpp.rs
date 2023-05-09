@@ -3701,98 +3701,141 @@ CHICKEN(1 2,3 4)"##;
     }
     #[test]
     fn if_directive_test() -> Result<(), String> {
-        let src = r##"#if 1
+        {
+            let src = r##"#if 1
 4
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(
-            vec![
-                lexer::Token::CONSTANT_DEC_INT {
-                    value: "4".to_string(),
-                    suffix: None
-                },
-                lexer::Token::NEWLINE,
-            ],
-            tokens
-        );
-        let src = r##"#if 0
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "4".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed for 1 inner test"
+            );
+        }
+        {
+            let src = r##"#if 0
 4
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(vec![] as Vec<lexer::Token>, tokens);
-        let src = r##"#if 1 + 1 > 0
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(vec![] as Vec<lexer::Token>, tokens, "failed for 2 inner test");
+        }
+        {
+            let src = r##"#if 1 + 1 > 0
 4
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(
-            vec![
-                lexer::Token::CONSTANT_DEC_INT {
-                    value: "4".to_string(),
-                    suffix: None
-                },
-                lexer::Token::NEWLINE,
-            ],
-            tokens
-        );
-        let src = r##"#if 1 + 1 > 2
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "4".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed for 3 inner test"
+            );
+        }
+        {
+            let src = r##"#if 1 + 1 > 2
 4
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(vec![] as Vec<lexer::Token>, tokens);
-        let src = r##"#ifndef hi
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(
+                vec![] as Vec<lexer::Token>,
+                tokens,
+                "failed for 4 inner test"
+            );
+        }
+        {
+            let src = r##"#ifndef hi
 4
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(
-            vec![
-                lexer::Token::CONSTANT_DEC_INT {
-                    value: "4".to_string(),
-                    suffix: None
-                },
-                lexer::Token::NEWLINE,
-            ],
-            tokens
-        );
-        let src = r##"#ifdef hi
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "4".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed for 5 inner test"
+            );
+        }
+        {
+            let src = r##"#ifdef hi
 4
 #else
 5
 #endif
 "##
-        .as_bytes();
-        let defines = HashMap::new();
-        let mut tokens = lexer::lexer(src.to_vec(), true)?;
-        if_directive(&mut tokens, 0, &defines)?;
-        assert_eq!(
-            vec![
-                lexer::Token::CONSTANT_DEC_INT {
-                    value: "5".to_string(),
-                    suffix: None
-                },
-                lexer::Token::NEWLINE,
-            ],
-            tokens
-        );
+            .as_bytes();
+            let defines = HashMap::new();
+            let mut tokens = lexer::lexer(src.to_vec(), true)?;
+            if_directive(&mut tokens, 0, &defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "5".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed 6"
+            );
+        }
+        {
+            let src = r##"#define add(a,b) a + b
+#if add(4,4) < 8
+4
+#elif add(1,4) > 0
+5
+#endif
+"##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "5".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed 7"
+            );
+        }
         Ok(())
     }
     #[test]
