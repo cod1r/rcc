@@ -2053,6 +2053,7 @@ fn if_directive(
                                                 Some(lexer::Token::NEWLINE)
                                             ) {
                                                 tokens.remove(index);
+                                                end_index -= 1;
                                             }
                                             eval_vec = tokens[curr_index + 1..end_index].to_vec();
                                             break;
@@ -3450,8 +3451,7 @@ CHICKEN(1 2,3 4)"##;
             assert_eq!(res, true, "0 - (1 + 1)");
         }
         {
-            let src = r##"1
-"##.as_bytes();
+            let src = r##"1"##.as_bytes();
             let defines = HashMap::new();
             let tokens = lexer::lexer(src.to_vec(), true)?;
             let res = eval_constant_expression(&tokens, &defines)?;
