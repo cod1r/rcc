@@ -2641,10 +2641,7 @@ fn expand_macro(
                             }
                         }
                     } else {
-                        return Err(format!(
-                            "no args given for function macro: {} {:?}",
-                            last_macro_interval.name, tokens
-                        ));
+                        return Ok(());
                     }
                 }
                 let mut length =
@@ -2859,6 +2856,7 @@ pub fn output_tokens_stdout(tokens: &Vec<lexer::Token>) {
     );
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
+// TODO: implement some kind of warning system
 pub fn cpp(
     program_str: Vec<u8>,
     include_paths: &[&str],
