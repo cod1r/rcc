@@ -1478,7 +1478,10 @@ fn eval_constant_expression(
                                     primary_stack.push(v);
                                 }
                                 _ => {
-                                    return Err(format!("{} cannot be represented as i64 or u64", value));
+                                    return Err(format!(
+                                        "{} cannot be represented as i64 or u64",
+                                        value
+                                    ));
                                 }
                             }
                         }
