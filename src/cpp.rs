@@ -2826,8 +2826,9 @@ fn preprocessing_directives(
                 }
             }
             lexer::Token::IDENT(ident) => {
-                if defines.contains_key(ident.as_str()) {
-                    expand_macro(tokens, &mut index, &defines)?;
+                let old_index = index;
+                expand_macro(tokens, &mut index, &defines)?;
+                if old_index != index {
                     continue;
                 }
             }
