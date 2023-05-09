@@ -1909,8 +1909,7 @@ fn if_directive(
                     "ifdef" | "ifndef" => {
                         let lexer::Token::IDENT(id) = eval_vec
                             .iter()
-                            .filter(|t| matches!(t, lexer::Token::IDENT(_)))
-                            .next()
+                            .find(|t| matches!(t, lexer::Token::IDENT(_)))
                             .expect("expected ident token")
                             else
                         {
@@ -2233,9 +2232,8 @@ fn error_directive(tokens: &mut Vec<lexer::Token>) {
 fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> Result<(), String> {
     todo!()
 }
-// TODO: we need to not use vec.remove() because it is slow
 fn undef_directive(
-    tokens: &mut Vec<lexer::Token>,
+    tokens: &Vec<lexer::Token>,
     index: usize,
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
@@ -2440,12 +2438,12 @@ fn expand_macro(
                                             let argument = &seen_args[seen_arg_index];
                                             let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
-                                            for argument_index in 0..argument.len() {
+                                            for t in argument {
                                                 if let Some(mut stringified_token) =
-                                                    argument[argument_index].to_string()
+                                                    t.to_string()
                                                 {
-                                                    if stringified_token.contains("\"")
-                                                        || stringified_token.contains("\\")
+                                                    if stringified_token.contains('\"')
+                                                        || stringified_token.contains('\\')
                                                     {
                                                         let mut escaped_string = String::new();
                                                         for c in stringified_token.chars() {
@@ -2598,7 +2596,7 @@ fn expand_macro(
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                             for t in va_args_slice {
                                                 if let Some(mut t_str) = t.to_string() {
-                                                    if t_str.contains("\"") || t_str.contains("\\")
+                                                    if t_str.contains('\"') || t_str.contains('\\')
                                                     {
                                                         let mut escaped_string = String::new();
                                                         for c in t_str.chars() {
@@ -2720,7 +2718,7 @@ fn expand_macro(
                             stringified_tokens.push_str(&concat_id);
                             replacement_list_copy.remove(concat_ident_index);
                         }
-                        if stringified_tokens.len() > 0 {
+                        if !stringified_tokens.is_empty() {
                             let new_ident_token_vec =
                                 lexer::lexer(stringified_tokens.clone().as_bytes().to_vec(), true)?;
                             assert!(new_ident_token_vec.len() == 1);
@@ -2759,7 +2757,7 @@ fn expand_macro(
                     }
                 }
 
-                if macros_to_replace.len() == 0 {
+                if macros_to_replace.is_empty() {
                     where_index_should_be_after_we_are_done = end + 1;
                 }
             } else {
