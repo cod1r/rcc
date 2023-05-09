@@ -3394,45 +3394,69 @@ CHICKEN(1 2,3 4)"##;
     }
     #[test]
     fn eval_expression_test_primary() -> Result<(), String> {
-        let src = r##"(1 + 1) * 0"##.as_bytes();
-        let defines = HashMap::new();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, false, "(1 + 1) * 0");
-        let src = r##"1 + (1 * 0)"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, true, "1 + (1 * 0)");
-        let src = r##"((1 + 1) * 0)"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, false, "((1 + 1) * 0)");
-        let src = r##"((((1))))"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, true, "((((1))))");
-        let src = r##"((((1)))))"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines);
-        match res {
-            Err(_) => {}
-            Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+        {
+            let src = r##"(1 + 1) * 0"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, false, "(1 + 1) * 0");
         }
-        let src = r##"(((((1))))"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines);
-        match res {
-            Err(_) => {}
-            Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+        {
+            let src = r##"1 + (1 * 0)"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, true, "1 + (1 * 0)");
         }
-        let src = r##"0 - (1 + 1)"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, true, "0 - (1 + 1)");
-        let src = r##"1"##.as_bytes();
-        let tokens = lexer::lexer(src.to_vec(), true)?;
-        let res = eval_constant_expression(&tokens, &defines)?;
-        assert_eq!(res, true, "1");
+        {
+            let src = r##"((1 + 1) * 0)"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, false, "((1 + 1) * 0)");
+        }
+        {
+            let src = r##"((((1))))"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, true, "((((1))))");
+        }
+        {
+            let src = r##"((((1)))))"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines);
+            match res {
+                Err(_) => {}
+                Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+            }
+        }
+        {
+            let src = r##"(((((1))))"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines);
+            match res {
+                Err(_) => {}
+                Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
+            }
+        }
+        {
+            let src = r##"0 - (1 + 1)"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, true, "0 - (1 + 1)");
+        }
+        {
+            let src = r##"1
+"##.as_bytes();
+            let defines = HashMap::new();
+            let tokens = lexer::lexer(src.to_vec(), true)?;
+            let res = eval_constant_expression(&tokens, &defines)?;
+            assert_eq!(res, true, "1");
+        }
         Ok(())
     }
     #[test]
@@ -3731,7 +3755,11 @@ CHICKEN(1 2,3 4)"##;
             let defines = HashMap::new();
             let mut tokens = lexer::lexer(src.to_vec(), true)?;
             if_directive(&mut tokens, 0, &defines)?;
-            assert_eq!(vec![] as Vec<lexer::Token>, tokens, "failed for 2 inner test");
+            assert_eq!(
+                vec![] as Vec<lexer::Token>,
+                tokens,
+                "failed for 2 inner test"
+            );
         }
         {
             let src = r##"#if 1 + 1 > 0
