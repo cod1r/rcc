@@ -723,6 +723,18 @@ fn eval_constant_expression(
                         } else {
                             return Err(format!("unexpected token: {:?}", tokens[index]));
                         }
+                    } else {
+                        if defines.contains_key(ident) {
+                            token_within = lexer::Token::CONSTANT_DEC_INT {
+                                value: "1".to_string(),
+                                suffix: None,
+                            };
+                        } else {
+                            token_within = lexer::Token::CONSTANT_DEC_INT {
+                                value: "0".to_string(),
+                                suffix: None,
+                            };
+                        }
                     }
                 }
                 let primary =
@@ -1441,9 +1453,8 @@ fn eval_constant_expression(
     }
     // where we start evaluating the expression tree
     // TODO: remove duplicate structure of code.
-    // TODO: account for the different integer constant types (U, LL, etc)
     let mut eval_stack = Vec::<parser::Expr>::new();
-    let mut primary_stack = Vec::<i32>::new();
+    let mut primary_stack = Vec::<i128>::new();
     if curr_expr.is_some() {
         eval_stack.push(curr_expr.unwrap());
         while let Some(mut top_expr) = eval_stack.pop() {
@@ -1455,10 +1466,14 @@ fn eval_constant_expression(
                     parser::PrimaryInner::Token(t) => {
                         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
                         if let lexer::Token::CONSTANT_DEC_INT { value, suffix } = t {
-                            // TODO: we need to implement some sort of way to get the proper
-                            // integer constant type is, depending on the value that is
-                            // represented.
-                            primary_stack.push(value.parse::<i32>().unwrap());
+                            // "For the purposes of this token conversion and evaluation,
+                            // all signed integer types and all unsigned integer types act as if they have the same representation
+                            // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
+                            //
+                            // We just 'cheat' by using i128 integer types. That way, regardless
+                            // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
+                            // compare and not have to do any weird casts.
+                            primary_stack.push(value.parse::<i128>().unwrap());
                         }
                     }
                 },
