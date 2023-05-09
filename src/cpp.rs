@@ -1950,46 +1950,43 @@ fn if_directive(
                                 {
                                     curr_index += 1;
                                 }
-                                match tokens.get(curr_index) {
-                                    Some(lexer::Token::IDENT(local_id)) => {
-                                        match local_id.as_str() {
-                                            "if" | "ifdef" | "ifndef" => {
-                                                if_layer_counter += 1;
-                                            }
-                                            "elif" | "else"
-                                                if elif_else_index.is_none()
-                                                    && if_layer_counter == 1 =>
-                                            {
-                                                elif_else_index = Some(hash_index);
-                                            }
-                                            "endif" => {
-                                                if_layer_counter -= 1;
-                                                if if_layer_counter == 0 {
-                                                    while !matches!(
-                                                        tokens.get(curr_index),
-                                                        Some(lexer::Token::NEWLINE)
-                                                    ) {
-                                                        curr_index += 1;
-                                                    }
-                                                    let start_delete = if elif_else_index.is_some()
-                                                    {
-                                                        elif_else_index.unwrap()
-                                                    } else {
-                                                        hash_index
-                                                    };
-                                                    let mut length_delete =
-                                                        curr_index - start_delete + 1;
-                                                    while length_delete > 0 {
-                                                        tokens.remove(start_delete);
-                                                        length_delete -= 1;
-                                                    }
-                                                    break 'outer;
-                                                }
-                                            }
-                                            _ => {}
+                                if let Some(lexer::Token::IDENT(local_id)) = tokens.get(curr_index)
+                                {
+                                    match local_id.as_str() {
+                                        "if" | "ifdef" | "ifndef" => {
+                                            if_layer_counter += 1;
                                         }
+                                        "elif" | "else"
+                                            if elif_else_index.is_none()
+                                                && if_layer_counter == 1 =>
+                                        {
+                                            elif_else_index = Some(hash_index);
+                                        }
+                                        "endif" => {
+                                            if_layer_counter -= 1;
+                                            if if_layer_counter == 0 {
+                                                while !matches!(
+                                                    tokens.get(curr_index),
+                                                    Some(lexer::Token::NEWLINE)
+                                                ) {
+                                                    curr_index += 1;
+                                                }
+                                                let start_delete = if elif_else_index.is_some() {
+                                                    elif_else_index.unwrap()
+                                                } else {
+                                                    hash_index
+                                                };
+                                                let mut length_delete =
+                                                    curr_index - start_delete + 1;
+                                                while length_delete > 0 {
+                                                    tokens.remove(start_delete);
+                                                    length_delete -= 1;
+                                                }
+                                                break 'outer;
+                                            }
+                                        }
+                                        _ => {}
                                     }
-                                    _ => {}
                                 }
                             }
                         } else {
