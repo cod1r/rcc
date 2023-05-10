@@ -606,6 +606,19 @@ fn eval_constant_expression(
     tokens: &[lexer::Token],
     defines: &HashMap<String, Define>,
 ) -> Result<bool, String> {
+    let mut eval_vec_index = 0;
+    let eval_vec = &mut tokens.to_vec();
+    while eval_vec_index < eval_vec.len() {
+        if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
+            let mut eval_vec_index_copy = eval_vec_index;
+            expand_macro(eval_vec, &mut eval_vec_index_copy, defines)?;
+            if eval_vec_index_copy != eval_vec_index {
+                continue;
+            }
+        }
+        eval_vec_index += 1;
+    }
+    let tokens = eval_vec.as_slice();
     if tokens
         .iter()
         .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
@@ -1913,17 +1926,6 @@ fn if_directive(
                 let condition = match curr_id.as_str() {
                     "else" => true,
                     "if" | "elif" => {
-                        let mut eval_vec_index = 0;
-                        while eval_vec_index < eval_vec.len() {
-                            if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
-                                let mut eval_vec_index_copy = eval_vec_index;
-                                expand_macro(&mut eval_vec, &mut eval_vec_index_copy, defines)?;
-                                if eval_vec_index_copy != eval_vec_index {
-                                    continue;
-                                }
-                            }
-                            eval_vec_index += 1;
-                        }
                         eval_constant_expression(eval_vec.as_slice(), defines)?
                     }
                     "ifdef" | "ifndef" => {
