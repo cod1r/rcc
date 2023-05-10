@@ -1925,9 +1925,7 @@ fn if_directive(
                 let lexer::Token::IDENT(curr_id) = &tokens[index_of_id] else { unreachable!() };
                 let condition = match curr_id.as_str() {
                     "else" => true,
-                    "if" | "elif" => {
-                        eval_constant_expression(eval_vec.as_slice(), defines)?
-                    }
+                    "if" | "elif" => eval_constant_expression(eval_vec.as_slice(), defines)?,
                     "ifdef" | "ifndef" => {
                         let lexer::Token::IDENT(id) = eval_vec
                             .iter()
