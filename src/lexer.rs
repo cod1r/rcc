@@ -398,7 +398,11 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                     byte_index += 1;
                 }
                 match program_str_bytes[start_suffex..byte_index] {
-                    [b'U', b'L']
+                    [b'u']
+                    | [b'U']
+                    | [b'l', b'l']
+                    | [b'L', b'L']
+                    | [b'U', b'L']
                     | [b'U', b'l']
                     | [b'u', b'L']
                     | [b'u', b'l']
