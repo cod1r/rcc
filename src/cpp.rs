@@ -2294,12 +2294,21 @@ fn undef_directive(
     index: usize,
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
-    let index_of_identifier = index + 2;
-    if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
-        defines.remove(identifier_to_be_undef);
-        return Ok(());
+    let index_of_identifier = index + 1;
+    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::WHITESPACE)) {
+        index_of_indentifier += 1;
     }
-    Err(format!("unknown token in undef directive"))
+    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::IDENT(_))) {
+        index_of_indentifier += 1;
+    }
+    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::WHITESPACE)) {
+        index_of_indentifier += 1;
+        if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
+            defines.remove(identifier_to_be_undef);
+            return Ok(());
+        }
+    }
+    Err(format!("undef directive not formed correctly"))
 }
 // TODO: we might need to reconsider the having the 'index' as an mutable reference
 // because it's not entirely clear whether or not the 'index' might change.
@@ -2832,46 +2841,36 @@ fn preprocessing_directives(
             lexer::Token::PUNCT_HASH
                 if index == 0 || matches!(tokens.get(index - 1), Some(lexer::Token::NEWLINE)) =>
             {
-                let mut newline = index + 2;
-                while !matches!(tokens.get(newline), Some(lexer::Token::NEWLINE))
-                    && newline < tokens.len()
-                {
-                    newline += 1;
+                let mut index_of_directive = index + 1;
+                if let Some(lexer::Token::WHITESPACE) = tokens.get(index_of_directive) {
+                    index_of_directive += 1;
                 }
-                if let Some(lexer::Token::NEWLINE) = tokens.get(newline) {
-                    let mut index_of_directive = index + 1;
-                    if let Some(lexer::Token::WHITESPACE) = tokens.get(index_of_directive) {
-                        index_of_directive += 1;
-                    }
-                    if let Some(lexer::Token::IDENT(s)) = tokens.get(index_of_directive) {
-                        match s.as_str() {
-                            "include" => {
-                                include_directive(tokens, index, newline, include_paths, defines)?;
-                            }
-                            "if" | "ifdef" | "ifndef" => {
-                                if_directive(tokens, index, defines)?;
-                            }
-                            "define" => {
-                                define_directive(tokens, index, defines)?;
-                            }
-                            "undef" => {
-                                undef_directive(tokens, index, defines)?;
-                            }
-                            "error" => todo!(),
-                            "line" => todo!(),
-                            "pragma" => todo!(),
-                            "\n" => {
-                                for _ in index..index_of_directive + 1 {
-                                    tokens.remove(index);
-                                }
-                            }
-                            _ => return Err(format!("unknown preprocessing directive: {}", s)),
+                if let Some(lexer::Token::IDENT(s)) = tokens.get(index_of_directive) {
+                    match s.as_str() {
+                        "include" => {
+                            include_directive(tokens, index, include_paths, defines)?;
                         }
+                        "if" | "ifdef" | "ifndef" => {
+                            if_directive(tokens, index, defines)?;
+                        }
+                        "define" => {
+                            define_directive(tokens, index, defines)?;
+                        }
+                        "undef" => {
+                            undef_directive(tokens, index, defines)?;
+                        }
+                        "error" => todo!(),
+                        "line" => todo!(),
+                        "pragma" => todo!(),
+                        "\n" => {
+                            for _ in index..index_of_directive + 1 {
+                                tokens.remove(index);
+                            }
+                        }
+                        _ => return Err(format!("unknown preprocessing directive: {}", s)),
                     }
-                    continue;
-                } else {
-                    return Err(format!("no newline at the end of preprocessing directive"));
                 }
+                continue;
             }
             lexer::Token::IDENT(ident) => {
                 let old_index = index;
