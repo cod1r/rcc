@@ -609,11 +609,45 @@ fn eval_constant_expression(
     let mut eval_vec_index = 0;
     let eval_vec = &mut tokens.to_vec();
     while eval_vec_index < eval_vec.len() {
-        if let lexer::Token::IDENT(_) = eval_vec[eval_vec_index] {
-            let mut eval_vec_index_copy = eval_vec_index;
-            expand_macro(eval_vec, &mut eval_vec_index_copy, defines)?;
-            if eval_vec_index_copy != eval_vec_index {
-                continue;
+        if let lexer::Token::IDENT(curr_id) = &eval_vec[eval_vec_index] {
+            if curr_id != "defined" {
+                let mut eval_vec_index_copy = eval_vec_index;
+                expand_macro(eval_vec, &mut eval_vec_index_copy, defines)?;
+                if eval_vec_index_copy != eval_vec_index {
+                    continue;
+                }
+            } else {
+                eval_vec_index += 1;
+                if matches!(eval_vec.get(eval_vec_index), Some(lexer::Token::WHITESPACE)) {
+                    eval_vec_index += 1;
+                }
+                match eval_vec.get(eval_vec_index) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        eval_vec_index += 1;
+                        if matches!(eval_vec.get(eval_vec_index), Some(lexer::Token::WHITESPACE)) {
+                            eval_vec_index += 1;
+                        }
+                        if matches!(eval_vec.get(eval_vec_index), Some(lexer::Token::IDENT(_))) {
+                            eval_vec_index += 1;
+                            if matches!(
+                                eval_vec.get(eval_vec_index),
+                                Some(lexer::Token::WHITESPACE)
+                            ) {
+                                eval_vec_index += 1;
+                            }
+                            if matches!(
+                                eval_vec.get(eval_vec_index),
+                                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                            ) {
+                                eval_vec_index += 1;
+                            }
+                        }
+                    }
+                    Some(lexer::Token::IDENT(_)) => {
+                        eval_vec_index += 1;
+                    }
+                    _ => {}
+                }
             }
         }
         eval_vec_index += 1;
