@@ -770,6 +770,12 @@ fn eval_constant_expression(
                         } else {
                             return Err(format!("unexpected token: {:?}", tokens[index]));
                         }
+                    } else {
+                        assert!(!defines.contains_key(ident));
+                        token_within = lexer::Token::CONSTANT_DEC_INT {
+                            value: "0".to_string(),
+                            suffix: None,
+                        };
                     }
                 }
                 let primary =
@@ -3919,6 +3925,74 @@ PP(/,*)PP2(*,/)"##
                 ],
                 tokens,
                 "failed 7"
+            );
+        }
+        //        {
+        //            let src = r##"#define add(a,b) a + b
+        //#if add(4,4) < '8'
+        //4
+        //#elif add(1,4) > '0'
+        //5
+        //#endif
+        //"##
+        //            .as_bytes();
+        //            let mut defines = HashMap::new();
+        //            let tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines)?;
+        //            assert_eq!(
+        //                vec![
+        //                    lexer::Token::CONSTANT_DEC_INT {
+        //                        value: "5".to_string(),
+        //                        suffix: None
+        //                    },
+        //                    lexer::Token::NEWLINE,
+        //                ],
+        //                tokens,
+        //                "failed 8"
+        //            );
+        //        }
+        {
+            let src = r##"#if HI && 1
+4
+#else
+5
+#endif
+"##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "5".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed 9"
+            );
+        }
+        {
+            let src = r##"#define HI
+#if defined(HI) && 1
+4
+#else
+5
+#endif
+"##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines)?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value: "4".to_string(),
+                        suffix: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens,
+                "failed 10"
             );
         }
         Ok(())
