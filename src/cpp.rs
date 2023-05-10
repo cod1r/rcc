@@ -723,18 +723,6 @@ fn eval_constant_expression(
                         } else {
                             return Err(format!("unexpected token: {:?}", tokens[index]));
                         }
-                    } else {
-                        if defines.contains_key(ident) {
-                            token_within = lexer::Token::CONSTANT_DEC_INT {
-                                value: "1".to_string(),
-                                suffix: None,
-                            };
-                        } else {
-                            token_within = lexer::Token::CONSTANT_DEC_INT {
-                                value: "0".to_string(),
-                                suffix: None,
-                            };
-                        }
                     }
                 }
                 let primary =
