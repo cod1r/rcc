@@ -557,7 +557,7 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
     None
 }
 fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
-    None
+    todo!()
 }
 fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
@@ -1056,6 +1056,10 @@ fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option
     let float_const = match_floating_constant(program_str_bytes, index);
     if float_const.is_some() {
         return float_const;
+    }
+    let char_const = match_character_constant(program_str_bytes, index);
+    if char_const.is_some() {
+        return char_const;
     }
     None
 }
