@@ -19,11 +19,9 @@ struct MacroInterval {
 
 fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut byte_index = 0;
-    let mut within_quotes = false;
     let mut comments_removed = Vec::new();
     while byte_index < bytes.len() {
         if bytes[byte_index] == b'\'' || bytes[byte_index] == b'\"' {
-            within_quotes = true;
             comments_removed.push(bytes[byte_index]);
             let start = bytes[byte_index];
             byte_index += 1;
@@ -36,13 +34,12 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
                 byte_index += 1;
             }
             if byte_index < bytes.len() && bytes[byte_index] == start {
-                within_quotes = false;
                 comments_removed.push(bytes[byte_index]);
                 byte_index += 1;
             } else {
                 return Err(format!("no matching ending quote"));
             }
-        } else if byte_index + 1 < bytes.len() && !within_quotes {
+        } else if byte_index + 1 < bytes.len() {
             if bytes[byte_index] == b'/' && bytes[byte_index + 1] == b'/' {
                 comments_removed.push(b' ');
                 while byte_index < bytes.len() && bytes[byte_index] != b'\n' {
@@ -2076,7 +2073,6 @@ fn if_directive(
                                             return Err(String::from(
                                                 "missing newline after directive",
                                             ));
-                                            break;
                                         }
                                     }
                                     match id.as_str() {
@@ -2488,7 +2484,6 @@ fn expand_macro(
                                         ) {
                                             removal_index -= 1;
                                         }
-                                        let id_name_clone = id_name.clone();
                                         for _ in removal_index..replacement_list_index + 1 {
                                             replacement_list_copy.remove(removal_index);
                                         }
