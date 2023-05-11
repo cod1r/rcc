@@ -3,6 +3,33 @@ use std::collections::HashMap;
 use crate::lexer::{self};
 use crate::parser::{self};
 
+macro_rules! case_where_it_could_be_unary_or_additive {
+    ($parserTypeVar:ident, $rightExprVar:ident, $token:expr) => {
+        if $parserTypeVar.second.is_none() {
+            $rightExprVar = Some(parser::Expr::Unary(parser::Unary {
+                op: match $token {
+                    lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
+                    lexer::Token::PUNCT_MINUS => parser::UnaryOp::Sub,
+                    lexer::Token::PUNCT_NOT_BOOL => parser::UnaryOp::LogicalNOT,
+                    lexer::Token::PUNCT_TILDE => parser::UnaryOp::BitNOT,
+                    _ => unreachable!(),
+                },
+                first: None,
+            }));
+        } else {
+            $rightExprVar = Some(parser::Expr::Additive(parser::Additive {
+                op: match $token {
+                    lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
+                    lexer::Token::PUNCT_MINUS => parser::AdditiveOps::Sub,
+                    _ => unreachable!(),
+                },
+                first: None,
+                second: None,
+            }));
+        }
+    };
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
     identifier: String,
@@ -869,6 +896,10 @@ fn eval_constant_expression(
                             | lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
@@ -949,6 +980,10 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
@@ -961,45 +996,114 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                if curr_expr.is_some()
-                    && !matches!(
-                        curr_expr,
-                        Some(parser::Expr::Unary(parser::Unary { op: _, first: None }))
-                    )
-                {
-                    // if a '~' or '!' follow a primary expression, that is not allowed.
-                    match tokens[index] {
-                        lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
-                            if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
-                        {
-                            return Err(format!("unexpected {:?} token", tokens[index]));
+                // if a '~' or '!' follow a primary expression, that is not allowed.
+                match tokens[index] {
+                    lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
+                        if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                    {
+                        return Err(format!("unexpected {:?} token", tokens[index]));
+                    }
+                    _ => {}
+                }
+                left_expression = curr_expr.clone();
+                match &curr_expr {
+                    Some(parser::Expr::Primary(p)) => {
+                        right_expression = Some(parser::Expr::Additive(parser::Additive {
+                            op: match tokens[index] {
+                                lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
+                                lexer::Token::PUNCT_MINUS => parser::AdditiveOps::Sub,
+                                _ => unreachable!("{:?}", tokens[index]),
+                            },
+                            first: None,
+                            second: None,
+                        }));
+                    }
+                    Some(parser::Expr::Unary(parser::Unary { .. })) | None => {
+                        if let Some(expr) = curr_expr {
+                            stack.push(expr);
                         }
-                        _ => {}
+                        curr_expr = Some(parser::Expr::Unary(parser::Unary {
+                            op: match tokens[index] {
+                                lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
+                                lexer::Token::PUNCT_MINUS => parser::UnaryOp::Sub,
+                                lexer::Token::PUNCT_NOT_BOOL => parser::UnaryOp::LogicalNOT,
+                                lexer::Token::PUNCT_TILDE => parser::UnaryOp::BitNOT,
+                                _ => unreachable!(),
+                            },
+                            first: None,
+                        }));
                     }
-                    left_expression = curr_expr.clone();
-                    right_expression = Some(parser::Expr::Additive(parser::Additive {
-                        op: match tokens[index] {
-                            lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
-                            lexer::Token::PUNCT_MINUS => parser::AdditiveOps::Sub,
-                            _ => unreachable!(),
-                        },
-                        first: None,
-                        second: None,
-                    }));
-                } else {
-                    if let Some(expr) = curr_expr {
-                        stack.push(expr);
+                    Some(parser::Expr::Multiplicative(m)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            m,
+                            right_expression,
+                            tokens[index]
+                        );
                     }
-                    curr_expr = Some(parser::Expr::Unary(parser::Unary {
-                        op: match tokens[index] {
-                            lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
-                            lexer::Token::PUNCT_MINUS => parser::UnaryOp::Sub,
-                            lexer::Token::PUNCT_NOT_BOOL => parser::UnaryOp::LogicalNOT,
-                            lexer::Token::PUNCT_TILDE => parser::UnaryOp::BitNOT,
-                            _ => unreachable!(),
-                        },
-                        first: None,
-                    }));
+                    Some(parser::Expr::Additive(a)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            a,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::BitShift(bs)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bs,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::Relational(r)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            r,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::Equality(e)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            e,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::BitAND(ba)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            ba,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::BitXOR(bx)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bx,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::BitOR(bo)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bo,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::LogicalAND(la)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            la,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    Some(parser::Expr::LogicalOR(lo)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            lo,
+                            right_expression,
+                            tokens[index]
+                        );
+                    }
+                    _ => unreachable!(),
                 }
                 loop {
                     index += 1;
@@ -1019,6 +1123,7 @@ fn eval_constant_expression(
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                     )
                 ) {
+                    //TODO: this can panic if unary is the last token
                     return Err(format!(
                         "not allowed token after operators '+', '-', '!', '~': {:?}",
                         tokens[index]
@@ -1052,7 +1157,10 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
@@ -1087,7 +1195,10 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
@@ -1127,11 +1238,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operators '<', '<=', '>', '>=', {:?}",
                         tokens[index]
                     ));
                 }
@@ -1162,11 +1276,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operators '==', '!=', {:?}",
                         tokens[index]
                     ));
                 }
@@ -1192,11 +1309,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operator '&' {:?}",
                         tokens[index]
                     ));
                 }
@@ -1222,11 +1342,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operator '^' {:?}",
                         tokens[index]
                     ));
                 }
@@ -1252,11 +1375,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operator '|' {:?}",
                         tokens[index]
                     ));
                 }
@@ -1282,11 +1408,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operator '&&' {:?}",
                         tokens[index]
                     ));
                 }
@@ -1312,11 +1441,14 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
-                        "not allowed token after operator {:?}",
+                        "not allowed token after operator '||', {:?}",
                         tokens[index]
                     ));
                 }
@@ -3619,6 +3751,11 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
+        let src = r##"1 * !1"##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
         let src = r##"1 / 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
@@ -3655,6 +3792,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false, "0 - 1 + 1");
+        let src = r##"0 - 1 + !1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true, "0 - 1 + !1");
         Ok(())
     }
     #[test]
@@ -3668,6 +3809,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"1 >> !1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
         Ok(())
     }
     #[test]
@@ -3681,6 +3826,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
+        let src = r##"1 < !2"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
         let src = r##"1 <= 2"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
@@ -3718,6 +3867,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"1 != !1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
         let src = r##"1 != 0"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
@@ -3735,6 +3888,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"1 & !0"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
         let src = r##"1 & 1"##.as_bytes();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
@@ -3752,6 +3909,11 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
+        let src = r##"(1 ^ !0) == 0"##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true);
         Ok(())
     }
     #[test]
@@ -3761,6 +3923,11 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
+        let src = r##"1 | !0 == 0"##.as_bytes();
+        let defines = HashMap::new();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, true, "1 | !0 == 0");
         Ok(())
     }
     #[test]
@@ -3771,6 +3938,11 @@ PP(/,*)PP2(*,/)"##
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
         let src = r##"0 && 1"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
+        let src = r##"1 && !1"##.as_bytes();
+        let defines = HashMap::new();
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, false);
@@ -3812,6 +3984,10 @@ PP(/,*)PP2(*,/)"##
         let tokens = lexer::lexer(src.to_vec(), true)?;
         let res = eval_constant_expression(&tokens, &defines)?;
         assert_eq!(res, true);
+        let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
+        let tokens = lexer::lexer(src.to_vec(), true)?;
+        let res = eval_constant_expression(&tokens, &defines)?;
+        assert_eq!(res, false);
         Ok(())
     }
     #[test]
