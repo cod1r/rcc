@@ -69,118 +69,139 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     }
     Ok(comments_removed)
 }
-fn get_header_name_from_tokens(tokens: &[lexer::Token]) -> Option<String> {
-    if let (Some(lexer::Token::PUNCT_LESS_THAN), Some(lexer::Token::PUNCT_GREATER_THAN)) =
-        (tokens.first(), tokens.last())
-    {
-        let mut stringified = tokens[1..tokens.len() - 1].iter().map(|t| t.to_string());
-        if stringified.any(|t_opt| t_opt.is_none()) {
-            return None;
-        }
-        return Some(stringified.fold(String::new(), |mut acc, e| {
-            acc += &e.unwrap();
-            acc
-        }));
-    }
-    None
-}
 
 // TODO: we need to not use vec.remove() because it is slow
 fn include_directive(
     tokens: &mut Vec<lexer::Token>,
-    mut index: usize,
-    end: usize,
+    index: usize,
     include_paths: &[&str],
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
-    let mut index_header_file = index + 2;
-    while index_header_file < tokens.len() {
-        if matches!(
-            tokens.get(index_header_file),
-            Some(
-                lexer::Token::PUNCT_LESS_THAN
-                    | lexer::Token::IDENT(_)
-                    | lexer::Token::StringLiteral { .. }
-            )
-        ) {
-            break;
-        }
-        index_header_file += 1;
+    let mut newline_index = index;
+    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
+        && newline_index < tokens.len()
+    {
+        newline_index += 1;
     }
-    let mut file_name = String::new();
-    match &tokens[index_header_file] {
-        lexer::Token::PUNCT_LESS_THAN => {
-            if let Some(new_file_name) =
-                get_header_name_from_tokens(&tokens[index_header_file..end])
-            {
-                file_name = new_file_name;
-            } else {
-                return Err(format!(
-                    "unknown token in include directive: {:?}",
-                    tokens[index_header_file]
-                ));
-            }
+    if !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
+        return Err(format!("no newline after include directive"));
+    }
+    let mut include_index = index + 1;
+    if matches!(tokens.get(include_index), Some(lexer::Token::WHITESPACE)) {
+        include_index += 1;
+    }
+    let mut file_name = None;
+    if matches!(tokens.get(include_index), Some(lexer::Token::IDENT(_))) {
+        include_index += 1;
+        if matches!(tokens.get(include_index), Some(lexer::Token::WHITESPACE)) {
+            include_index += 1;
         }
-        lexer::Token::IDENT(identifier) => {
-            if let Some(def_data) = defines.get(identifier) {
-                if let Some(new_file_name) = get_header_name_from_tokens(&def_data.replacement_list)
+        match tokens.get(include_index) {
+            Some(lexer::Token::PUNCT_LESS_THAN) => {
+                include_index += 1;
+                let mut punct_greater_than_index = include_index;
+                while !matches!(
+                    tokens.get(punct_greater_than_index),
+                    Some(lexer::Token::PUNCT_GREATER_THAN)
+                ) && punct_greater_than_index < tokens.len()
                 {
-                    file_name = new_file_name;
-                } else {
+                    punct_greater_than_index += 1;
+                }
+                if !matches!(
+                    tokens.get(punct_greater_than_index),
+                    Some(lexer::Token::PUNCT_GREATER_THAN)
+                ) {
+                    return Err(format!("No '>' for opening '<' in include directive"));
+                }
+                let mut file_path_tokens = tokens[include_index..punct_greater_than_index]
+                    .iter()
+                    .map(|t| t.to_string());
+                if file_path_tokens.any(|t_opt| t_opt.is_none()) {
                     return Err(format!(
-                        "unknown token in include directive: {:?}",
-                        tokens[index_header_file]
+                        "include directive contains tokens that cannot be stringified"
                     ));
                 }
-            } else {
-                return Err(format!(
-                    "unknown identifier in include directive: {}",
-                    identifier
-                ));
+                file_name = Some(file_path_tokens.fold(String::new(), |s, t| s + &t.unwrap()));
             }
-        }
-        lexer::Token::StringLiteral { prefix, sequence } => {
-            if prefix.is_none() {
-                file_name = sequence.to_string();
-            } else {
-                return Err(format!(
-                    "unknown token in include directive: {:?}",
-                    tokens[index_header_file]
-                ));
+            Some(lexer::Token::StringLiteral {
+                prefix: _,
+                sequence,
+            }) => {
+                file_name = Some(sequence.to_string());
             }
-        }
-        _ => {
-            return Err(format!(
-                "unknown token in include directive: {:?}",
-                tokens[index_header_file]
-            ))
+            _ => {}
         }
     }
-    for path in include_paths {
-        if let Ok(mut ei) = std::fs::read_dir(path) {
-            for entry in ei.by_ref().flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name == file_name {
-                    let read_path = path.to_string() + "/" + &name;
-                    match std::fs::read(read_path.as_str()) {
-                        Ok(file_contents) => {
-                            let tokens_from_file = cpp(file_contents, include_paths, defines)?;
-                            loop {
-                                if let lexer::Token::NEWLINE = tokens[index] {
-                                    tokens.remove(index);
-                                    break;
+    if let Some(fname) = file_name {
+        for path in include_paths {
+            let mut dirs = vec![];
+            let mut files = vec![];
+            match std::fs::read_dir(path) {
+                Ok(_) => dirs.push(path.to_string()),
+                Err(_) => files.push(path.to_string()),
+            }
+            let mut dirs_index = 0;
+            loop {
+                if dirs_index == dirs.len() {
+                    break;
+                }
+                match std::fs::read_dir(dirs[dirs_index].clone()) {
+                    Ok(rd) => {
+                        for direntry_res in rd {
+                            if let Ok(direntry) = direntry_res {
+                                match direntry.path().canonicalize() {
+                                    Ok(pathbuf) => {
+                                        if direntry.path().is_dir() {
+                                            dirs.push(pathbuf.to_string_lossy().to_string());
+                                        } else if direntry.path().is_file() {
+                                            files.push(pathbuf.to_string_lossy().to_string());
+                                        }
+                                    }
+                                    Err(_) => {
+                                        eprintln!(
+                                            "{} is a bad path",
+                                            direntry.path().to_string_lossy().to_string()
+                                        );
+                                    }
                                 }
-                                tokens.remove(index);
                             }
-                            for t in tokens_from_file {
-                                tokens.insert(index, t);
-                                index += 1;
+                        }
+                    }
+                    Err(_) => {
+                        eprintln!("{} is not a directory", path);
+                    }
+                }
+                dirs_index += 1;
+            }
+            for full_path_file in files {
+                match std::fs::read(full_path_file.as_str()) {
+                    Ok(file_contents) => {
+                        let file_name = full_path_file.split('/').last().expect("file name of full path");
+                        if file_name == fname {
+                            let tokens_from_file = cpp(file_contents, include_paths, defines)?;
+                            let tokens_copy = tokens[newline_index + 1..].to_vec();
+                            let mut tokens_from_file_index = 0;
+                            let mut curr_index = index;
+                            while tokens_from_file_index < tokens_from_file.len() {
+                                tokens[curr_index] = tokens_from_file[tokens_from_file_index].clone();
+                                curr_index += 1;
+                                tokens_from_file_index += 1;
+                            }
+                            let token_spaces_left = tokens.len() - curr_index + 1;
+                            if token_spaces_left < tokens_copy.len() {
+                                tokens.reserve(tokens_copy.len() - token_spaces_left);
+                            } else if token_spaces_left > tokens_copy.len() {
+                                tokens.resize(curr_index + tokens_copy.len(), lexer::Token::WHITESPACE);
+                            }
+                            for t in tokens_copy {
+                                tokens[curr_index] = t;
+                                curr_index += 1;
                             }
                             return Ok(());
                         }
-                        Err(e) => {
-                            return Err(format!("fs::read failed for path: {}", read_path));
-                        }
+                    }
+                    Err(e) => {
+                        return Err(format!("fs::read failed for path: {}", full_path_file));
                     }
                 }
             }
@@ -2974,7 +2995,7 @@ int main() {
 }"##;
         let mut tokens = lexer::lexer(src.as_bytes().to_vec(), true)?;
         let mut defines = HashMap::new();
-        include_directive(&mut tokens, 0, 18, &["./test_c_files/"], &mut defines)?;
+        include_directive(&mut tokens, 0, &["./test_c_files/"], &mut defines)?;
         let assert_tokens = [
             lexer::Token::IDENT(String::from("int")),
             lexer::Token::WHITESPACE,
