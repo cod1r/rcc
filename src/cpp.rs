@@ -2554,25 +2554,34 @@ fn expand_macro(
                                         let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                         for t in argument {
-                                            if let Some(mut stringified_token) = t.to_string() {
-                                                if stringified_token.contains('\"')
-                                                    || stringified_token.contains('\\')
-                                                {
-                                                    let mut escaped_string = String::new();
-                                                    for c in stringified_token.chars() {
-                                                        match c {
-                                                            '\"' | '\\' => {
-                                                                escaped_string.push('\\')
-                                                            }
-                                                            _ => {}
-                                                        }
-                                                        escaped_string.push(c);
-                                                    }
-                                                    stringified_token = escaped_string;
+                                            match t {
+                                                lexer::Token::NEWLINE => {
+                                                    sequence.push_str(" ");
                                                 }
-                                                sequence.push_str(&stringified_token);
-                                            } else {
-                                                return Err(format!("tried to stringify token that cannot be stringified"));
+                                                _ => {
+                                                    if let Some(mut stringified_token) =
+                                                        t.to_string()
+                                                    {
+                                                        if stringified_token.contains('\"')
+                                                            || stringified_token.contains('\\')
+                                                        {
+                                                            let mut escaped_string = String::new();
+                                                            for c in stringified_token.chars() {
+                                                                match c {
+                                                                    '\"' | '\\' => {
+                                                                        escaped_string.push('\\')
+                                                                    }
+                                                                    _ => {}
+                                                                }
+                                                                escaped_string.push(c);
+                                                            }
+                                                            stringified_token = escaped_string;
+                                                        }
+                                                        sequence.push_str(&stringified_token);
+                                                    } else {
+                                                        return Err(format!("tried to stringify token that cannot be stringified"));
+                                                    }
+                                                }
                                             }
                                         }
                                         replacement_list_copy
@@ -2703,23 +2712,32 @@ fn expand_macro(
                                         let lexer::Token::StringLiteral { prefix: _, sequence } =
                                         &mut string_literal_token else { panic!("WHAT IN THE FUCK") };
                                         for t in va_args_slice {
-                                            if let Some(mut t_str) = t.to_string() {
-                                                if t_str.contains('\"') || t_str.contains('\\') {
-                                                    let mut escaped_string = String::new();
-                                                    for c in t_str.chars() {
-                                                        match c {
-                                                            '\"' | '\\' => {
-                                                                escaped_string.push('\\')
-                                                            }
-                                                            _ => {}
-                                                        }
-                                                        escaped_string.push(c);
-                                                    }
-                                                    t_str = escaped_string;
+                                            match t {
+                                                lexer::Token::NEWLINE => {
+                                                    sequence.push_str(" ");
                                                 }
-                                                sequence.push_str(&t_str);
-                                            } else {
-                                                return Err(format!("tried to stringify token that cannot be stringified"));
+                                                _ => {
+                                                    if let Some(mut t_str) = t.to_string() {
+                                                        if t_str.contains('\"')
+                                                            || t_str.contains('\\')
+                                                        {
+                                                            let mut escaped_string = String::new();
+                                                            for c in t_str.chars() {
+                                                                match c {
+                                                                    '\"' | '\\' => {
+                                                                        escaped_string.push('\\')
+                                                                    }
+                                                                    _ => {}
+                                                                }
+                                                                escaped_string.push(c);
+                                                            }
+                                                            t_str = escaped_string;
+                                                        }
+                                                        sequence.push_str(&t_str);
+                                                    } else {
+                                                        return Err(format!("tried to stringify token that cannot be stringified"));
+                                                    }
+                                                }
                                             }
                                         }
                                         replacement_list_copy
