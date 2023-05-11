@@ -14,7 +14,7 @@ pub struct Define {
 struct MacroInterval {
     name: String,
     start: usize,
-    end: usize,
+    len: usize,
 }
 
 fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -70,7 +70,6 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(comments_removed)
 }
 
-// TODO: we need to not use vec.remove() because it is slow
 fn include_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
@@ -185,14 +184,11 @@ fn include_directive(
                             let tokens_copy = tokens[newline_index + 1..].to_vec();
                             let mut tokens_from_file_index = 0;
                             let mut curr_index = index;
-                            let token_spaces_left = tokens.len() - curr_index + 1;
-                            let total_length = tokens_copy.len() + tokens_from_file.len();
-                            if token_spaces_left < total_length {
-                                tokens
-                                    .resize(total_length + tokens.len(), lexer::Token::WHITESPACE);
-                            } else if token_spaces_left > total_length {
-                                tokens.resize(curr_index + total_length, lexer::Token::WHITESPACE);
-                            }
+                            let amt_to_remove = newline_index - index + 1;
+                            tokens.resize(
+                                tokens.len() - amt_to_remove + tokens_from_file.len(),
+                                lexer::Token::WHITESPACE,
+                            );
                             while tokens_from_file_index < tokens_from_file.len() {
                                 tokens[curr_index] =
                                     tokens_from_file[tokens_from_file_index].clone();
@@ -1937,7 +1933,7 @@ fn if_directive(
             "missing endif directive for if{{def, ndef}} directive",
         ));
     }
-    let mut after_index = index
+    let after_index = index
         + if matches!(tokens[index + 1], lexer::Token::WHITESPACE) {
             2
         } else {
@@ -2013,10 +2009,15 @@ fn if_directive(
                 while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
                     end_index += 1;
                 }
-                let mut length_delete = end_index - index + 1;
-                while length_delete > 0 {
-                    tokens.remove(index);
-                    length_delete -= 1;
+                {
+                    let mut index_overwrite = index;
+                    let mut index_looking = end_index + 1;
+                    while index_looking < tokens.len() {
+                        tokens[index_overwrite] = tokens[index_looking].clone();
+                        index_overwrite += 1;
+                        index_looking += 1;
+                    }
+                    tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
                 }
                 let mut if_layer_counter = 1;
                 if condition {
@@ -2059,12 +2060,18 @@ fn if_directive(
                                                 } else {
                                                     hash_index
                                                 };
-                                                let mut length_delete =
-                                                    curr_index - start_delete + 1;
-                                                while length_delete > 0 {
-                                                    tokens.remove(start_delete);
-                                                    length_delete -= 1;
+                                                let mut index_overwrite = start_delete;
+                                                let mut index_looking = curr_index + 1;
+                                                while index_looking < tokens.len() {
+                                                    tokens[index_overwrite] =
+                                                        tokens[index_looking].clone();
+                                                    index_overwrite += 1;
+                                                    index_looking += 1;
                                                 }
+                                                tokens.resize(
+                                                    index_overwrite,
+                                                    lexer::Token::WHITESPACE,
+                                                );
                                                 break 'outer;
                                             }
                                         }
@@ -2110,16 +2117,23 @@ fn if_directive(
                                             if_layer_counter -= 1;
                                             if if_layer_counter == 0 {
                                                 while !matches!(
-                                                    tokens.get(after_index),
+                                                    tokens.get(curr_index),
                                                     Some(lexer::Token::NEWLINE)
                                                 ) {
-                                                    after_index += 1;
+                                                    curr_index += 1;
                                                 }
-                                                let mut length_delete = after_index - index + 1;
-                                                while length_delete > 0 {
-                                                    tokens.remove(index);
-                                                    length_delete -= 1;
+                                                let mut index_overwrite = index;
+                                                let mut index_looking = curr_index + 1;
+                                                while index_looking < tokens.len() {
+                                                    tokens[index_overwrite] =
+                                                        tokens[index_looking].clone();
+                                                    index_overwrite += 1;
+                                                    index_looking += 1;
                                                 }
+                                                tokens.resize(
+                                                    index_overwrite,
+                                                    lexer::Token::WHITESPACE,
+                                                );
                                                 break 'outer;
                                             }
                                         }
@@ -2294,11 +2308,14 @@ fn define_directive(
             if let Some(lexer::Token::WHITESPACE) = dd.replacement_list.last() {
                 dd.replacement_list.remove(0);
             }
-            let mut length = end - index + 1;
-            while length > 0 {
-                tokens.remove(index);
-                length -= 1;
+            let mut index_overwrite = index;
+            let mut index_looking = end + 1;
+            while index_looking < tokens.len() {
+                tokens[index_overwrite] = tokens[index_looking].clone();
+                index_overwrite += 1;
+                index_looking += 1;
             }
+            tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
             return Ok(());
         } else {
             let lexer::Token::IDENT(id) = &tokens[index_of_identifier] else { unreachable!() };
@@ -2363,7 +2380,7 @@ fn expand_macro(
     macros_to_replace.push(MacroInterval {
         name: macro_id,
         start: index_copy,
-        end: index_copy + 1,
+        len: 1,
     });
     let mut where_index_should_be_after_we_are_done = index_copy;
     loop {
@@ -2410,7 +2427,8 @@ fn expand_macro(
                             last_macro_interval.name
                         ));
                     }
-                    macros_to_replace.last_mut().unwrap().end = fn_like_macro_index + 1;
+                    macros_to_replace.last_mut().unwrap().len =
+                        fn_like_macro_index - macros_to_replace.last().unwrap().start + 1;
 
                     let mut seen_args = Vec::new();
                     {
@@ -2728,13 +2746,6 @@ fn expand_macro(
                     return Ok(());
                 }
             }
-            let mut length =
-                macros_to_replace.last().unwrap().end - macros_to_replace.last().unwrap().start;
-            while length > 0 {
-                tokens.remove(macros_to_replace.last().unwrap().start);
-                macros_to_replace.last_mut().unwrap().end -= 1;
-                length -= 1;
-            }
             /*
                 For both object-like and function-like macro invocations,
                 before the replacement list is reexamined for more macro names to replace,
@@ -2818,16 +2829,30 @@ fn expand_macro(
                 }
             }
 
-            let mut insert_index = macros_to_replace.last().unwrap().start;
-            for t in replacement_list_copy {
-                tokens.insert(insert_index, t);
-                macros_to_replace.last_mut().unwrap().end += 1;
-                insert_index += 1;
+            {
+                let mut index_overwrite = macros_to_replace.last().unwrap().start;
+                let tokens_copy_start =
+                    macros_to_replace.last().unwrap().start + macros_to_replace.last().unwrap().len;
+                let tokens_copy = tokens[tokens_copy_start..].to_vec();
+                tokens.resize(
+                    tokens.len() - macros_to_replace.last().unwrap().len
+                        + replacement_list_copy.len(),
+                    lexer::Token::WHITESPACE,
+                );
+                macros_to_replace.last_mut().unwrap().len = replacement_list_copy.len();
+                for t in replacement_list_copy {
+                    tokens[index_overwrite] = t;
+                    index_overwrite += 1;
+                }
+                for t in tokens_copy {
+                    tokens[index_overwrite] = t;
+                    index_overwrite += 1;
+                }
             }
 
             let top_macro_interval = macros_to_replace.pop().unwrap();
             let beginning = top_macro_interval.start;
-            let end = top_macro_interval.end;
+            let end = top_macro_interval.start + top_macro_interval.len;
             for looking_for_moar_macro_index in beginning..end {
                 if let Some(lexer::Token::IDENT(identifier_that_could_be_macro)) =
                     tokens.get(looking_for_moar_macro_index)
@@ -2838,7 +2863,7 @@ fn expand_macro(
                         macros_to_replace.push(MacroInterval {
                             name: identifier_that_could_be_macro.to_string(),
                             start: looking_for_moar_macro_index,
-                            end: looking_for_moar_macro_index + 1,
+                            len: 1,
                         });
                     }
                 }
