@@ -182,16 +182,17 @@ fn include_directive(
                             let tokens_copy = tokens[newline_index + 1..].to_vec();
                             let mut tokens_from_file_index = 0;
                             let mut curr_index = index;
+                            let token_spaces_left = tokens.len() - curr_index + 1;
+                            let total_length = tokens_copy.len() + tokens_from_file.len();
+                            if token_spaces_left < total_length {
+                                tokens.resize(total_length + tokens.len(), lexer::Token::WHITESPACE);
+                            } else if token_spaces_left > total_length {
+                                tokens.resize(curr_index + total_length, lexer::Token::WHITESPACE);
+                            }
                             while tokens_from_file_index < tokens_from_file.len() {
                                 tokens[curr_index] = tokens_from_file[tokens_from_file_index].clone();
                                 curr_index += 1;
                                 tokens_from_file_index += 1;
-                            }
-                            let token_spaces_left = tokens.len() - curr_index + 1;
-                            if token_spaces_left < tokens_copy.len() {
-                                tokens.reserve(tokens_copy.len() - token_spaces_left);
-                            } else if token_spaces_left > tokens_copy.len() {
-                                tokens.resize(curr_index + tokens_copy.len(), lexer::Token::WHITESPACE);
                             }
                             for t in tokens_copy {
                                 tokens[curr_index] = t;
@@ -3010,8 +3011,8 @@ int main() {
             lexer::Token::PUNCT_OPEN_CURLY,
             lexer::Token::NEWLINE,
             lexer::Token::PUNCT_CLOSE_CURLY,
-        ];
-        assert_eq!(tokens, assert_tokens);
+        ].to_vec();
+        assert_eq!(assert_tokens, tokens);
         Ok(())
     }
     #[test]
