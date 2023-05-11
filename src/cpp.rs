@@ -176,7 +176,10 @@ fn include_directive(
             for full_path_file in files {
                 match std::fs::read(full_path_file.as_str()) {
                     Ok(file_contents) => {
-                        let file_name = full_path_file.split('/').last().expect("file name of full path");
+                        let file_name = full_path_file
+                            .split('/')
+                            .last()
+                            .expect("file name of full path");
                         if file_name == fname {
                             let tokens_from_file = cpp(file_contents, include_paths, defines)?;
                             let tokens_copy = tokens[newline_index + 1..].to_vec();
@@ -185,12 +188,14 @@ fn include_directive(
                             let token_spaces_left = tokens.len() - curr_index + 1;
                             let total_length = tokens_copy.len() + tokens_from_file.len();
                             if token_spaces_left < total_length {
-                                tokens.resize(total_length + tokens.len(), lexer::Token::WHITESPACE);
+                                tokens
+                                    .resize(total_length + tokens.len(), lexer::Token::WHITESPACE);
                             } else if token_spaces_left > total_length {
                                 tokens.resize(curr_index + total_length, lexer::Token::WHITESPACE);
                             }
                             while tokens_from_file_index < tokens_from_file.len() {
-                                tokens[curr_index] = tokens_from_file[tokens_from_file_index].clone();
+                                tokens[curr_index] =
+                                    tokens_from_file[tokens_from_file_index].clone();
                                 curr_index += 1;
                                 tokens_from_file_index += 1;
                             }
@@ -3011,7 +3016,8 @@ int main() {
             lexer::Token::PUNCT_OPEN_CURLY,
             lexer::Token::NEWLINE,
             lexer::Token::PUNCT_CLOSE_CURLY,
-        ].to_vec();
+        ]
+        .to_vec();
         assert_eq!(assert_tokens, tokens);
         Ok(())
     }
