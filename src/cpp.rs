@@ -133,81 +133,36 @@ fn include_directive(
     }
     if let Some(fname) = file_name {
         for path in include_paths {
-            let mut dirs = vec![];
-            let mut files = vec![];
-            match std::fs::read_dir(path) {
-                Ok(_) => dirs.push(path.to_string()),
-                Err(_) => files.push(path.to_string()),
-            }
-            let mut dirs_index = 0;
-            loop {
-                if dirs_index == dirs.len() {
-                    break;
+            let full_path_file = path.to_string() + "/" + &fname;
+            match std::fs::read(full_path_file.as_str()) {
+                Ok(file_contents) => {
+                    eprintln!("CPP'ing for {}", fname);
+                    let tokens_from_file = cpp(file_contents, include_paths, defines)?;
+                    let tokens_copy = tokens[newline_index + 1..].to_vec();
+                    let mut tokens_from_file_index = 0;
+                    let mut curr_index = index;
+                    let amt_to_remove = newline_index - index + 1;
+                    tokens.resize(
+                        tokens.len() - amt_to_remove + tokens_from_file.len(),
+                        lexer::Token::WHITESPACE,
+                    );
+                    while tokens_from_file_index < tokens_from_file.len() {
+                        tokens[curr_index] = tokens_from_file[tokens_from_file_index].clone();
+                        curr_index += 1;
+                        tokens_from_file_index += 1;
+                    }
+                    for t in tokens_copy {
+                        tokens[curr_index] = t;
+                        curr_index += 1;
+                    }
+                    return Ok(());
                 }
-                match std::fs::read_dir(dirs[dirs_index].clone()) {
-                    Ok(rd) => {
-                        for direntry_res in rd {
-                            if let Ok(direntry) = direntry_res {
-                                match direntry.path().canonicalize() {
-                                    Ok(pathbuf) => {
-                                        if direntry.path().is_dir() {
-                                            dirs.push(pathbuf.to_string_lossy().to_string());
-                                        } else if direntry.path().is_file() {
-                                            files.push(pathbuf.to_string_lossy().to_string());
-                                        }
-                                    }
-                                    Err(_) => {
-                                        eprintln!(
-                                            "{} is a bad path",
-                                            direntry.path().to_string_lossy().to_string()
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        eprintln!("{} is not a directory", path);
-                    }
-                }
-                dirs_index += 1;
-            }
-            for full_path_file in files {
-                match std::fs::read(full_path_file.as_str()) {
-                    Ok(file_contents) => {
-                        let file_name = full_path_file
-                            .split('/')
-                            .last()
-                            .expect("file name of full path");
-                        if file_name == fname {
-                            let tokens_from_file = cpp(file_contents, include_paths, defines)?;
-                            let tokens_copy = tokens[newline_index + 1..].to_vec();
-                            let mut tokens_from_file_index = 0;
-                            let mut curr_index = index;
-                            let amt_to_remove = newline_index - index + 1;
-                            tokens.resize(
-                                tokens.len() - amt_to_remove + tokens_from_file.len(),
-                                lexer::Token::WHITESPACE,
-                            );
-                            while tokens_from_file_index < tokens_from_file.len() {
-                                tokens[curr_index] =
-                                    tokens_from_file[tokens_from_file_index].clone();
-                                curr_index += 1;
-                                tokens_from_file_index += 1;
-                            }
-                            for t in tokens_copy {
-                                tokens[curr_index] = t;
-                                curr_index += 1;
-                            }
-                            return Ok(());
-                        }
-                    }
-                    Err(e) => {
-                        return Err(format!("fs::read failed for path: {}", full_path_file));
-                    }
+                Err(_) => {
+                    eprintln!("fs::read failed for path: {}", full_path_file);
                 }
             }
         }
+        eprintln!("{fname} not found");
     }
     Err(String::from("file not found"))
 }
@@ -2334,11 +2289,18 @@ fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> R
     todo!()
 }
 fn undef_directive(
-    tokens: &Vec<lexer::Token>,
+    tokens: &mut Vec<lexer::Token>,
     index: usize,
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
     let mut index_of_identifier = index + 1;
+    let mut newline_index = index + 1;
+    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
+        newline_index += 1;
+        if matches!(tokens.get(newline_index), None) {
+            return Err(String::from("missing newline for undef directive"));
+        }
+    }
     if matches!(
         tokens.get(index_of_identifier),
         Some(lexer::Token::WHITESPACE)
@@ -2353,6 +2315,14 @@ fn undef_directive(
         index_of_identifier += 1;
         if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
             defines.remove(identifier_to_be_undef);
+            let mut index_overwrite = index;
+            let mut index_looking = newline_index + 1;
+            while index_looking < tokens.len() {
+                tokens[index_overwrite] = tokens[index_looking].clone();
+                index_overwrite += 1;
+                index_looking += 1;
+            }
+            tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
             return Ok(());
         }
     }
