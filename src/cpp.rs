@@ -2315,15 +2315,19 @@ fn undef_directive(
     index: usize,
     defines: &mut HashMap<String, Define>,
 ) -> Result<(), String> {
-    let index_of_identifier = index + 1;
-    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::WHITESPACE)) {
-        index_of_indentifier += 1;
+    let mut index_of_identifier = index + 1;
+    if matches!(
+        tokens.get(index_of_identifier),
+        Some(lexer::Token::WHITESPACE)
+    ) {
+        index_of_identifier += 1;
     }
-    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::IDENT(_))) {
-        index_of_indentifier += 1;
-    }
-    if matches!(tokens.get(index_of_identifier), Some(lexer::Token::WHITESPACE)) {
-        index_of_indentifier += 1;
+    index_of_identifier += 1;
+    if matches!(
+        tokens.get(index_of_identifier),
+        Some(lexer::Token::WHITESPACE)
+    ) {
+        index_of_identifier += 1;
         if let Some(lexer::Token::IDENT(identifier_to_be_undef)) = tokens.get(index_of_identifier) {
             defines.remove(identifier_to_be_undef);
             return Ok(());
