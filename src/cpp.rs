@@ -923,7 +923,7 @@ fn eval_constant_expression(
                             break;
                         }
                         _ => {
-                            assert!(e.priority() < curr_expr.clone().unwrap().priority());
+                            assert!(e.priority() <= curr_expr.clone().unwrap().priority());
                             let unwrapped = Some(Box::new(curr_expr.unwrap()));
                             match e {
                                 parser::Expr::Unary(ref mut u) => {
@@ -1923,90 +1923,140 @@ fn if_directive(
 ) -> Result<(), String> {
     let mut balance_index = index;
     let mut if_endif_counter = 0;
-    while if_endif_counter > 0 {
+    let mut if_elif_else_structure_index: Vec<(String, usize, usize)> = Vec::new();
+    'outer: loop {
         match tokens.get(balance_index) {
-            Some(lexer::Token::PUNCT_HASH)
-                if balance_index == 0
-                    || matches!(tokens.get(balance_index - 1), Some(lexer::Token::NEWLINE)) =>
-            {
-                balance_index += 1;
-                if matches!(tokens.get(balance_index), Some(lexer::Token::WHITESPACE)) {
+            Some(lexer::Token::PUNCT_HASH) => {
+                let punct_hash_index = balance_index;
+                let mut checks_follows_whitespace_nothing_newline_index = balance_index;
+                let follows_whitespace_nothing_newline = loop {
+                    if checks_follows_whitespace_nothing_newline_index > 0 {
+                        checks_follows_whitespace_nothing_newline_index -= 1;
+                    } else {
+                        break true;
+                    }
+
+                    match tokens.get(checks_follows_whitespace_nothing_newline_index) {
+                        Some(lexer::Token::WHITESPACE) => {}
+                        Some(lexer::Token::NEWLINE) => break true,
+                        _ => break false,
+                    }
+                };
+                if follows_whitespace_nothing_newline {
                     balance_index += 1;
-                }
-                match tokens.get(balance_index) {
-                    Some(lexer::Token::IDENT(id)) => match id.as_str() {
-                        "endif" => loop {
-                            balance_index += 1;
-                            match tokens.get(balance_index) {
-                                Some(lexer::Token::NEWLINE) => {
-                                    if_endif_counter -= 1;
-                                    balance_index += 1;
-                                    break;
+                    if matches!(tokens.get(balance_index), Some(lexer::Token::WHITESPACE)) {
+                        balance_index += 1;
+                    }
+                    match tokens.get(balance_index) {
+                        Some(lexer::Token::IDENT(id)) => match id.as_str() {
+                            "endif" => loop {
+                                balance_index += 1;
+                                match tokens.get(balance_index) {
+                                    Some(lexer::Token::NEWLINE) => {
+                                        if_endif_counter -= 1;
+                                        if if_endif_counter == 0 {
+                                            if_elif_else_structure_index.push((
+                                                id.clone(),
+                                                punct_hash_index,
+                                                balance_index,
+                                            ));
+                                            break 'outer;
+                                        }
+                                        balance_index += 1;
+                                        break;
+                                    }
+                                    Some(lexer::Token::WHITESPACE) => {}
+                                    Some(_) => {
+                                        return Err(format!(
+                                            "unexpected token after endif directive: {:?}",
+                                            tokens[balance_index]
+                                        ))
+                                    }
+                                    None => {
+                                        return Err(format!(
+                                            "missing newline after endif directive"
+                                        ))
+                                    }
                                 }
-                                Some(lexer::Token::WHITESPACE) => {}
-                                Some(_) => {
-                                    return Err(format!(
-                                        "unexpected token after endif directive: {:?}",
-                                        tokens[balance_index]
-                                    ))
+                            },
+                            "if" | "ifdef" | "ifndef" => loop {
+                                balance_index += 1;
+                                match tokens.get(balance_index) {
+                                    Some(lexer::Token::NEWLINE) => {
+                                        if_endif_counter += 1;
+                                        if if_endif_counter == 1 {
+                                            if_elif_else_structure_index.push((
+                                                id.clone(),
+                                                punct_hash_index,
+                                                balance_index,
+                                            ));
+                                        }
+                                        balance_index += 1;
+                                        break;
+                                    }
+                                    None => {
+                                        return Err(format!(
+                                            "missing newline after if{{def, ndef}} directive"
+                                        ))
+                                    }
+                                    _ => {}
                                 }
-                                None => {
-                                    return Err(format!("missing newline after endif directive"))
+                            },
+                            "elif" if if_endif_counter == 1 => loop {
+                                balance_index += 1;
+                                match tokens.get(balance_index) {
+                                    Some(lexer::Token::NEWLINE) => {
+                                        if if_endif_counter == 1 {
+                                            if_elif_else_structure_index.push((
+                                                id.clone(),
+                                                punct_hash_index,
+                                                balance_index,
+                                            ));
+                                        }
+                                        balance_index += 1;
+                                        break;
+                                    }
+                                    None => {
+                                        return Err(format!("missing newline after elif directive"))
+                                    }
+                                    _ => {}
                                 }
+                            },
+                            "else" if if_endif_counter == 1 => loop {
+                                balance_index += 1;
+                                match tokens.get(balance_index) {
+                                    Some(lexer::Token::NEWLINE) => {
+                                        if if_endif_counter == 1 {
+                                            if_elif_else_structure_index.push((
+                                                id.clone(),
+                                                punct_hash_index,
+                                                balance_index,
+                                            ));
+                                        }
+                                        balance_index += 1;
+                                        break;
+                                    }
+                                    Some(lexer::Token::WHITESPACE) => {}
+                                    Some(_) => {
+                                        return Err(format!(
+                                            "unexpected token after else directive: {:?}",
+                                            tokens[balance_index]
+                                        ))
+                                    }
+                                    None => {
+                                        return Err(format!("missing newline after else directive"))
+                                    }
+                                }
+                            },
+                            _ => {
+                                balance_index += 1;
                             }
                         },
-                        "if" | "ifdef" | "ifndef" => loop {
+                        None => break,
+                        _ => {
                             balance_index += 1;
-                            match tokens.get(balance_index) {
-                                Some(lexer::Token::NEWLINE) => {
-                                    if_endif_counter += 1;
-                                    balance_index += 1;
-                                    break;
-                                }
-                                None => {
-                                    return Err(format!(
-                                        "missing newline after if{{def, ndef}} directive"
-                                    ))
-                                }
-                                _ => {}
-                            }
-                        },
-                        "elif" if if_endif_counter == 0 => loop {
-                            balance_index += 1;
-                            match tokens.get(balance_index) {
-                                Some(lexer::Token::NEWLINE) => {
-                                    balance_index += 1;
-                                    break;
-                                }
-                                None => {
-                                    return Err(format!("missing newline after elif directive"))
-                                }
-                                _ => {}
-                            }
-                        },
-                        "else" if if_endif_counter == 0 => loop {
-                            balance_index += 1;
-                            match tokens.get(balance_index) {
-                                Some(lexer::Token::NEWLINE) => {
-                                    balance_index += 1;
-                                    break;
-                                }
-                                Some(lexer::Token::WHITESPACE) => {}
-                                Some(_) => {
-                                    return Err(format!(
-                                        "unexpected token after else directive: {:?}",
-                                        tokens[balance_index]
-                                    ))
-                                }
-                                None => {
-                                    return Err(format!("missing newline after else directive"))
-                                }
-                            }
-                        },
-                        _ => {}
-                    },
-                    None => break,
-                    _ => {}
+                        }
+                    }
                 }
             }
             Some(_) => {
@@ -2015,252 +2065,113 @@ fn if_directive(
             None => break,
         }
     }
-    if if_endif_counter > 0 {
+    if if_endif_counter != 0 {
         return Err(String::from(
             "missing endif directive for if{{def, ndef}} directive",
         ));
     }
-    let after_index = index
-        + if matches!(tokens[index + 1], lexer::Token::WHITESPACE) {
-            2
-        } else {
-            1
-        };
-    match tokens.get(after_index) {
-        Some(lexer::Token::IDENT(first_id)) => {
-            let mut end_index = after_index;
-            while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
-                end_index += 1;
-                if matches!(tokens.get(end_index), None) {
-                    return Err(String::from("missing newline for if directive"));
+    let mut seen_elif = false;
+    let mut seen_else = false;
+    for index_for_structure_index in 0..if_elif_else_structure_index.len() {
+        let (macro_id, start, end) = &if_elif_else_structure_index[index_for_structure_index];
+        match macro_id.as_str() {
+            "if" | "ifdef" | "ifndef" => {
+                if seen_elif || seen_else {
+                    return Err(format!("cannot have elif or else before if{{def, ndef}}"));
                 }
             }
-            let mut eval_vec = tokens[after_index + 1..end_index].to_vec();
-            match first_id.as_str() {
-                "if" => {}
-                "ifdef" | "ifndef" => {
-                    if eval_vec
-                        .iter()
-                        .filter(|t| matches!(t, lexer::Token::IDENT(_)))
-                        .count()
-                        == 0
-                    {
-                        return Err(String::from("expected identifier"));
-                    }
-                    if eval_vec
-                        .iter()
-                        .any(|t| !matches!(t, lexer::Token::IDENT(_) | lexer::Token::WHITESPACE))
-                    {
-                        return Err(format!(
-                            "non identifier within constant expression of {}",
-                            first_id
-                        ));
-                    }
+            "elif" => {
+                if seen_else {
+                    return Err(format!("cannot have else before elif"));
                 }
-                _ => unreachable!(),
+                seen_elif = true;
             }
-            'outer: loop {
-                assert!(matches!(tokens.get(index), Some(lexer::Token::PUNCT_HASH)));
-                let mut index_of_id = index + 1;
-                if matches!(tokens.get(index_of_id), Some(lexer::Token::WHITESPACE)) {
-                    index_of_id += 1;
-                }
-                assert!(matches!(
-                    tokens.get(index_of_id),
-                    Some(lexer::Token::IDENT(_))
-                ));
-                let lexer::Token::IDENT(curr_id) = &tokens[index_of_id] else { unreachable!() };
-                let condition = match curr_id.as_str() {
-                    "else" => true,
-                    "if" | "elif" => eval_constant_expression(eval_vec.as_slice(), defines)?,
-                    "ifdef" | "ifndef" => {
-                        let lexer::Token::IDENT(id) = eval_vec
-                            .iter()
-                            .find(|t| matches!(t, lexer::Token::IDENT(_)))
-                            .expect("expected ident token")
-                            else
-                        {
-                            unreachable!()
-                        };
-                        let res = defines.contains_key(id.as_str());
-                        match curr_id.as_str() {
-                            "ifdef" => res,
-                            "ifndef" => !res,
-                            _ => unreachable!(),
-                        }
-                    }
-                    _ => unreachable!(),
-                };
-                // deleting if/elif/else line
-                let mut end_index = index;
-                while !matches!(tokens.get(end_index), Some(lexer::Token::NEWLINE)) {
-                    end_index += 1;
-                }
-                {
-                    let mut index_overwrite = index;
-                    let mut index_looking = end_index + 1;
-                    while index_looking < tokens.len() {
-                        tokens[index_overwrite] = tokens[index_looking].clone();
-                        index_overwrite += 1;
-                        index_looking += 1;
-                    }
-                    tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
-                }
-                let mut if_layer_counter = 1;
-                if condition {
-                    // deleting everything from elif/else down to endif
-                    let mut curr_index = index;
-                    let mut elif_else_index = None;
-                    loop {
-                        if matches!(tokens.get(curr_index), Some(lexer::Token::NEWLINE)) {
-                            curr_index += 1;
-                            if matches!(tokens.get(curr_index), Some(lexer::Token::PUNCT_HASH)) {
-                                let hash_index = curr_index;
-                                curr_index += 1;
-                                if matches!(tokens.get(curr_index), Some(lexer::Token::WHITESPACE))
-                                {
-                                    curr_index += 1;
-                                }
-                                if let Some(lexer::Token::IDENT(local_id)) = tokens.get(curr_index)
-                                {
-                                    match local_id.as_str() {
-                                        "if" | "ifdef" | "ifndef" => {
-                                            if_layer_counter += 1;
-                                        }
-                                        "elif" | "else"
-                                            if elif_else_index.is_none()
-                                                && if_layer_counter == 1 =>
-                                        {
-                                            elif_else_index = Some(hash_index);
-                                        }
-                                        "endif" => {
-                                            if_layer_counter -= 1;
-                                            if if_layer_counter == 0 {
-                                                while !matches!(
-                                                    tokens.get(curr_index),
-                                                    Some(lexer::Token::NEWLINE)
-                                                ) {
-                                                    curr_index += 1;
-                                                }
-                                                let start_delete = if elif_else_index.is_some() {
-                                                    elif_else_index.unwrap()
-                                                } else {
-                                                    hash_index
-                                                };
-                                                let mut index_overwrite = start_delete;
-                                                let mut index_looking = curr_index + 1;
-                                                while index_looking < tokens.len() {
-                                                    tokens[index_overwrite] =
-                                                        tokens[index_looking].clone();
-                                                    index_overwrite += 1;
-                                                    index_looking += 1;
-                                                }
-                                                tokens.resize(
-                                                    index_overwrite,
-                                                    lexer::Token::WHITESPACE,
-                                                );
-                                                break 'outer;
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                        } else {
-                            curr_index += 1;
-                        }
-                    }
-                } else {
-                    loop {
-                        tokens.remove(index);
-                        let mut curr_index = index;
-                        if matches!(tokens.get(curr_index), Some(lexer::Token::NEWLINE)) {
-                            curr_index += 1;
-                            if matches!(tokens.get(curr_index), Some(lexer::Token::PUNCT_HASH)) {
-                                curr_index += 1;
-                            }
-                            if matches!(tokens.get(curr_index), Some(lexer::Token::WHITESPACE)) {
-                                curr_index += 1;
-                            }
-                            match tokens.get(curr_index) {
-                                Some(lexer::Token::IDENT(id)) => {
-                                    let mut end_index = curr_index + 1;
-                                    while !matches!(
-                                        tokens.get(end_index),
-                                        Some(lexer::Token::NEWLINE)
-                                    ) {
-                                        end_index += 1;
-                                        if matches!(tokens.get(end_index), None) {
-                                            return Err(String::from(
-                                                "missing newline after directive",
-                                            ));
-                                        }
-                                    }
-                                    match id.as_str() {
-                                        "if" | "ifdef" | "ifndef" => {
-                                            if_layer_counter += 1;
-                                        }
-                                        "endif" => {
-                                            if_layer_counter -= 1;
-                                            if if_layer_counter == 0 {
-                                                while !matches!(
-                                                    tokens.get(curr_index),
-                                                    Some(lexer::Token::NEWLINE)
-                                                ) {
-                                                    curr_index += 1;
-                                                }
-                                                let mut index_overwrite = index;
-                                                let mut index_looking = curr_index + 1;
-                                                while index_looking < tokens.len() {
-                                                    tokens[index_overwrite] =
-                                                        tokens[index_looking].clone();
-                                                    index_overwrite += 1;
-                                                    index_looking += 1;
-                                                }
-                                                tokens.resize(
-                                                    index_overwrite,
-                                                    lexer::Token::WHITESPACE,
-                                                );
-                                                break 'outer;
-                                            }
-                                        }
-                                        "elif" => {
-                                            if matches!(
-                                                tokens.get(index),
-                                                Some(lexer::Token::NEWLINE)
-                                            ) {
-                                                tokens.remove(index);
-                                                end_index -= 1;
-                                            }
-                                            eval_vec = tokens[curr_index + 1..end_index].to_vec();
-                                            break;
-                                        }
-                                        "else" => {
-                                            if matches!(
-                                                tokens.get(index),
-                                                Some(lexer::Token::NEWLINE)
-                                            ) {
-                                                tokens.remove(index);
-                                            }
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                Some(_) => {}
-                                None => unreachable!(),
-                            }
-                        }
-                    }
-                }
+            "else" => {
+                seen_else = true;
             }
+            "endif" => {}
+            _ => unreachable!(),
         }
-        None => unreachable!(),
-        _ => {}
     }
+    for index_for_structure_index in 0..if_elif_else_structure_index.len() {
+        let (macro_id, start, end) = &if_elif_else_structure_index[index_for_structure_index];
+        let mut start_looking = *start;
+        while !matches!(tokens.get(start_looking), Some(lexer::Token::IDENT(_)))
+            && start_looking < tokens.len()
+        {
+            start_looking += 1;
+        }
+        assert!(matches!(
+            tokens.get(start_looking),
+            Some(lexer::Token::IDENT(_))
+        ));
+        start_looking += 1;
+        let eval_vec = &mut tokens[start_looking..*end].to_vec();
+        let truthy = match macro_id.as_str() {
+            "if" | "elif" => eval_constant_expression(eval_vec, defines)?,
+            "ifdef" => {
+                if eval_vec
+                    .iter()
+                    .any(|t| !matches!(t, lexer::Token::IDENT(_) | lexer::Token::WHITESPACE))
+                {
+                    return Err(format!(
+                        "expected only identifier within ifdef directive: {:?}",
+                        eval_vec
+                    ));
+                }
+                let Some(lexer::Token::IDENT(ident)) = eval_vec.iter().find(|t| matches!(t, lexer::Token::IDENT(_))) else { unreachable!() };
+                defines.contains_key(ident.as_str())
+            }
+            "ifndef" => {
+                if eval_vec
+                    .iter()
+                    .any(|t| !matches!(t, lexer::Token::IDENT(_) | lexer::Token::WHITESPACE))
+                {
+                    return Err(format!(
+                        "expected only identifier within ifndef directive: {:?}",
+                        eval_vec
+                    ));
+                }
+                let Some(lexer::Token::IDENT(ident)) = eval_vec.iter().find(|t| matches!(t, lexer::Token::IDENT(_))) else { unreachable!() };
+                !defines.contains_key(ident.as_str())
+            }
+            "else" => true,
+            "endif" => break,
+            _ => unreachable!(),
+        };
+        if truthy {
+            assert!(index_for_structure_index + 1 < if_elif_else_structure_index.len());
+            let (_, next_start, next_end) =
+                if_elif_else_structure_index[index_for_structure_index + 1];
+            let mut index_overwrite = if_elif_else_structure_index[0].1;
+            let mut index_looking = *end + 1;
+            while index_looking < next_start {
+                tokens[index_overwrite] = tokens[index_looking].clone();
+                index_overwrite += 1;
+                index_looking += 1;
+            }
+            let (_, _, last_end) = if_elif_else_structure_index.last().unwrap();
+            let mut index_looking = last_end + 1;
+            while index_looking < tokens.len() {
+                tokens[index_overwrite] = tokens[index_looking].clone();
+                index_overwrite += 1;
+                index_looking += 1;
+            }
+
+            tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
+            return Ok(());
+        }
+    }
+    let mut index_overwrite = if_elif_else_structure_index[0].1;
+    let mut index_looking = if_elif_else_structure_index.last().unwrap().2 + 1;
+    while index_looking < tokens.len() {
+        tokens[index_overwrite] = tokens[index_looking].clone();
+        index_overwrite += 1;
+        index_looking += 1;
+    }
+    tokens.resize(index_overwrite, lexer::Token::WHITESPACE);
     Ok(())
 }
-// TODO: we need to not use vec.remove() because it is slow
 fn define_directive(
     tokens: &mut Vec<lexer::Token>,
     index: usize,
@@ -3048,6 +2959,9 @@ fn preprocessing_directives(
                             }
                             "undef" => {
                                 undef_directive(tokens, index, defines)?;
+                            }
+                            "endif" => {
+                                return Err(format!("missing if directive for endif directive"));
                             }
                             "error" => todo!(),
                             "line" => todo!(),
