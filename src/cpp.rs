@@ -710,6 +710,8 @@ fn eval_constant_expression(
             _ => {}
         }
     }
+    // TODO: describe our algorithm in comments below
+    // or we will forget how any of this shit works
     if !parenth_balance.is_empty() {
         return Err(String::from("parentheses in expression not balanced"));
     }
@@ -911,16 +913,30 @@ fn eval_constant_expression(
             lexer::Token::PUNCT_CLOSE_PAR => {
                 // thought process here is that we want to pop until we hit the opening parenthesis
                 // that created the primary expression.
+                //  -- Side Note: if there is a unary operator before the opening parenthesis, we
+                //     need to keep going until we pop the unary operator
                 // if we do not encounter the primary expression, we treat other expressions as
                 // having a lower priority (it has to be because that's the only reason our 'stack'
                 // exists) which means that we set curr_expr to that expression with that
                 // expression having the old curr_expr as a child in the expression tree
+                let mut popped_opening_parenth_already = false;
                 while let Some(mut e) = stack.pop() {
                     match e {
                         parser::Expr::Primary(ref mut p) => {
                             *p = Some(parser::PrimaryInner::new_p_expr(curr_expr.unwrap()));
                             curr_expr = Some(e);
-                            break;
+                            if !matches!(stack.last(), Some(parser::Expr::Unary(_))) {
+                                break;
+                            } else {
+                                popped_opening_parenth_already = true;
+                            }
+                        }
+                        parser::Expr::Unary(ref mut u) => {
+                            u.first = Some(Box::new(curr_expr.unwrap()));
+                            curr_expr = Some(e);
+                            if popped_opening_parenth_already {
+                                break;
+                            }
                         }
                         _ => {
                             assert!(e.priority() <= curr_expr.clone().unwrap().priority());
@@ -980,10 +996,6 @@ fn eval_constant_expression(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
                             | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
                     )
                 ) {
                     return Err(format!(
@@ -996,18 +1008,18 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                // if a '~' or '!' follow a primary expression, that is not allowed.
-                match tokens[index] {
-                    lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
-                        if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
-                    {
-                        return Err(format!("unexpected {:?} token", tokens[index]));
-                    }
-                    _ => {}
-                }
                 left_expression = curr_expr.clone();
                 match &curr_expr {
                     Some(parser::Expr::Primary(p)) => {
+                        // if a '~' or '!' follow a primary expression, that is not allowed.
+                        match tokens[index] {
+                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
+                                if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                            {
+                                return Err(format!("unexpected {:?} token", tokens[index]));
+                            }
+                            _ => {}
+                        }
                         right_expression = Some(parser::Expr::Additive(parser::Additive {
                             op: match tokens[index] {
                                 lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
@@ -1018,10 +1030,7 @@ fn eval_constant_expression(
                             second: None,
                         }));
                     }
-                    Some(parser::Expr::Unary(parser::Unary { .. })) | None => {
-                        if let Some(expr) = curr_expr {
-                            stack.push(expr);
-                        }
+                    None => {
                         curr_expr = Some(parser::Expr::Unary(parser::Unary {
                             op: match tokens[index] {
                                 lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
@@ -1032,6 +1041,40 @@ fn eval_constant_expression(
                             },
                             first: None,
                         }));
+                    }
+                    Some(parser::Expr::Unary(parser::Unary { op: _, first })) => {
+                        if first.is_none() {
+                            stack.push(curr_expr.unwrap());
+                            curr_expr = Some(parser::Expr::Unary(parser::Unary {
+                                op: match tokens[index] {
+                                    lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
+                                    lexer::Token::PUNCT_MINUS => parser::UnaryOp::Sub,
+                                    lexer::Token::PUNCT_NOT_BOOL => parser::UnaryOp::LogicalNOT,
+                                    lexer::Token::PUNCT_TILDE => parser::UnaryOp::BitNOT,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                            }));
+                        } else {
+                            // if a '~' or '!' follow a unary expression, that is not allowed.
+                            match tokens[index] {
+                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
+                                    if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                                {
+                                    return Err(format!("unexpected {:?} token", tokens[index]));
+                                }
+                                _ => {}
+                            }
+                            right_expression = Some(parser::Expr::Additive(parser::Additive {
+                                op: match tokens[index] {
+                                    lexer::Token::PUNCT_PLUS => parser::AdditiveOps::Add,
+                                    lexer::Token::PUNCT_MINUS => parser::AdditiveOps::Sub,
+                                    _ => unreachable!("{:?}", tokens[index]),
+                                },
+                                first: None,
+                                second: None,
+                            }));
+                        }
                     }
                     Some(parser::Expr::Multiplicative(m)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1476,7 +1519,7 @@ fn eval_constant_expression(
             }
             lexer::Token::PUNCT_COLON => {
                 if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                    return Err(format!("expected expression before ':'"));
                 }
                 while let Some(mut expr) = stack.pop() {
                     let unwrapped = Some(Box::new(curr_expr.unwrap()));
@@ -1524,7 +1567,7 @@ fn eval_constant_expression(
                     curr_expr = Some(expr);
                 }
                 if !matches!(curr_expr, Some(parser::Expr::Conditional(_))) {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                    return Err(format!("unexpected ':'. ':' are used in conditional expressions (<expr> ? <expr> : <expr>)"));
                 }
                 stack.push(curr_expr.unwrap());
                 curr_expr = None;
@@ -1595,7 +1638,7 @@ fn eval_constant_expression(
                 assert!(c.first.is_some() && c.second.is_some());
                 c.third = unwrapped;
             }
-            _ => unreachable!(),
+            _ => unreachable!("{}", expr.priority()),
         }
         curr_expr = Some(expr);
     }
@@ -2057,6 +2100,8 @@ fn if_directive(
                             balance_index += 1;
                         }
                     }
+                } else {
+                    balance_index += 1;
                 }
             }
             Some(_) => {
