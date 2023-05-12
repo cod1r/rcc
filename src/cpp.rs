@@ -32,10 +32,10 @@ macro_rules! case_where_it_could_be_unary_or_additive {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
-    identifier: String,
-    parameters: Option<Vec<String>>,
-    var_arg: bool,
-    replacement_list: Vec<lexer::Token>,
+    pub identifier: String,
+    pub parameters: Option<Vec<String>>,
+    pub var_arg: bool,
+    pub replacement_list: Vec<lexer::Token>,
 }
 #[derive(Debug)]
 struct MacroInterval {
@@ -189,6 +189,10 @@ fn include_directive(
                 }
             }
         }
+        eprintln!(
+            "{fname} not found relative to any paths in {:?}",
+            include_paths
+        );
     }
     Err(String::from("file not found"))
 }
@@ -751,6 +755,9 @@ fn eval_constant_expression(
                             if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
                                 defined_index += 1;
                             }
+                            if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(defined_index) {
+                                defined_index += 1;
+                            }
                             if let Some(lexer::Token::IDENT(identifier_name)) =
                                 tokens.get(defined_index)
                             {
@@ -768,10 +775,10 @@ fn eval_constant_expression(
                                     index = defined_index;
                                 }
                             } else {
-                                return Err(format!("unexpected token: {:?}", tokens[index]));
+                                return Err(format!("unexpected token: {:?}", tokens[defined_index]));
                             }
                         } else {
-                            return Err(format!("unexpected token: {:?}", tokens[index]));
+                            return Err(format!("unexpected token: {:?}", tokens[defined_index]));
                         }
                     } else {
                         assert!(!defines.contains_key(ident));
