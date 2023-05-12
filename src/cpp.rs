@@ -758,6 +758,9 @@ fn eval_constant_expression(
                             if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(defined_index) {
                                 defined_index += 1;
                             }
+                            if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
+                                defined_index += 1;
+                            }
                             if let Some(lexer::Token::IDENT(identifier_name)) =
                                 tokens.get(defined_index)
                             {
@@ -1014,13 +1017,12 @@ fn eval_constant_expression(
             | lexer::Token::PUNCT_MINUS
             | lexer::Token::PUNCT_NOT_BOOL
             | lexer::Token::PUNCT_TILDE => {
-                left_expression = curr_expr.clone();
-                match &curr_expr {
+                left_expression = curr_expr;
+                match &left_expression {
                     Some(parser::Expr::Primary(p)) => {
                         // if a '~' or '!' follow a primary expression, that is not allowed.
                         match tokens[index] {
-                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
-                                if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL =>
                             {
                                 return Err(format!("unexpected {:?} token", tokens[index]));
                             }
@@ -1035,6 +1037,7 @@ fn eval_constant_expression(
                             first: None,
                             second: None,
                         }));
+                        curr_expr = None;
                     }
                     None => {
                         curr_expr = Some(parser::Expr::Unary(parser::Unary {
@@ -1050,7 +1053,7 @@ fn eval_constant_expression(
                     }
                     Some(parser::Expr::Unary(parser::Unary { op: _, first })) => {
                         if first.is_none() {
-                            stack.push(curr_expr.unwrap());
+                            stack.push(left_expression.clone().unwrap());
                             curr_expr = Some(parser::Expr::Unary(parser::Unary {
                                 op: match tokens[index] {
                                     lexer::Token::PUNCT_PLUS => parser::UnaryOp::Add,
@@ -1064,8 +1067,7 @@ fn eval_constant_expression(
                         } else {
                             // if a '~' or '!' follow a unary expression, that is not allowed.
                             match tokens[index] {
-                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL
-                                    if matches!(curr_expr, Some(parser::Expr::Primary(_))) =>
+                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL =>
                                 {
                                     return Err(format!("unexpected {:?} token", tokens[index]));
                                 }
@@ -1080,6 +1082,7 @@ fn eval_constant_expression(
                                 first: None,
                                 second: None,
                             }));
+                        curr_expr = None;
                         }
                     }
                     Some(parser::Expr::Multiplicative(m)) => {
@@ -1088,6 +1091,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::Additive(a)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1095,6 +1099,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::BitShift(bs)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1102,6 +1107,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::Relational(r)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1109,6 +1115,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::Equality(e)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1116,6 +1123,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::BitAND(ba)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1123,6 +1131,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::BitXOR(bx)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1130,6 +1139,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::BitOR(bo)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1137,6 +1147,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::LogicalAND(la)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1144,6 +1155,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     Some(parser::Expr::LogicalOR(lo)) => {
                         case_where_it_could_be_unary_or_additive!(
@@ -1151,6 +1163,7 @@ fn eval_constant_expression(
                             right_expression,
                             tokens[index]
                         );
+                        curr_expr = None;
                     }
                     _ => unreachable!(),
                 }
@@ -1183,7 +1196,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::Multiplicative(parser::Multiplicative {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_MULT => parser::MultiplicativeOps::Mult,
@@ -1222,7 +1236,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::BitShift(parser::BitShift {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_BITSHFT_LEFT => parser::BitShiftOp::Left,
@@ -1263,7 +1278,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::Relational(parser::Relational {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_LESS_THAN => parser::RelationalOp::LessThan,
@@ -1303,7 +1319,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::Equality(parser::Equality {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_EQ_BOOL => parser::EqualityOp::Equal,
@@ -1341,7 +1358,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::BitAND(parser::BitAND {
                     first: None,
                     second: None,
@@ -1374,7 +1392,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::BitXOR(parser::BitXOR {
                     first: None,
                     second: None,
@@ -1407,7 +1426,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::BitOR(parser::BitOR {
                     first: None,
                     second: None,
@@ -1440,7 +1460,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::LogicalAND(parser::LogicalAND {
                     first: None,
                     second: None,
@@ -1473,7 +1494,8 @@ fn eval_constant_expression(
                 if curr_expr.is_none() {
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
-                left_expression = curr_expr.clone();
+                left_expression = curr_expr;
+                curr_expr = None;
                 right_expression = Some(parser::Expr::LogicalOR(parser::LogicalOR {
                     first: None,
                     second: None,
@@ -1596,7 +1618,7 @@ fn eval_constant_expression(
                 left_has_higher_eq_priority(&mut left, &mut right);
             } else {
                 right_has_higher_priority(&mut left, &mut right);
-                stack.push(left.clone());
+                stack.push(left);
             }
             curr_expr = Some(right);
             left_expression = None;
@@ -1714,12 +1736,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut m.first {
                         let left_clone = *left.clone();
                         m.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut m.second {
                         let right_clone = *right.clone();
                         m.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1750,12 +1772,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut a.first {
                         let left_clone = *left.clone();
                         a.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut a.second {
                         let right_clone = *right.clone();
                         a.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1775,12 +1797,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut bs.first {
                         let left_clone = *left.clone();
                         bs.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut bs.second {
                         let right_clone = *right.clone();
                         bs.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1800,12 +1822,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut r.first {
                         let left_clone = *left.clone();
                         r.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut r.second {
                         let right_clone = *right.clone();
                         r.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1831,12 +1853,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut e.first {
                         let left_clone = *left.clone();
                         e.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut e.second {
                         let right_clone = *right.clone();
                         e.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1856,12 +1878,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut ba.first {
                         let left_clone = *left.clone();
                         ba.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut ba.second {
                         let right_clone = *right.clone();
                         ba.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1874,12 +1896,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut bx.first {
                         let left_clone = *left.clone();
                         bx.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut bx.second {
                         let right_clone = *right.clone();
                         bx.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1892,12 +1914,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut bo.first {
                         let left_clone = *left.clone();
                         bo.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut bo.second {
                         let right_clone = *right.clone();
                         bo.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1910,12 +1932,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut la.first {
                         let left_clone = *left.clone();
                         la.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut la.second {
                         let right_clone = *right.clone();
                         la.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1928,12 +1950,12 @@ fn eval_constant_expression(
                     if let Some(left) = &mut lo.first {
                         let left_clone = *left.clone();
                         lo.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(left_clone);
                     } else if let Some(right) = &mut lo.second {
                         let right_clone = *right.clone();
                         lo.second = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(right_clone);
                     } else {
                         assert!(primary_stack.len() >= 2);
@@ -1946,15 +1968,17 @@ fn eval_constant_expression(
                     if let Some(first) = &mut c.first {
                         let first_clone = *first.clone();
                         c.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(first_clone);
                     } else {
                         assert!(!primary_stack.is_empty());
                         let top = primary_stack.pop().unwrap();
                         if top != 0 {
-                            eval_stack.push(*c.second.clone().unwrap());
+                            let second = c.second.clone().unwrap();
+                            eval_stack.push(*second);
                         } else {
-                            eval_stack.push(*c.third.clone().unwrap());
+                            let third = c.third.clone().unwrap();
+                            eval_stack.push(*third);
                         }
                     }
                 }
