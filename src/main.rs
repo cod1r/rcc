@@ -13,7 +13,7 @@ fn main() -> Result<(), String> {
         }
     }
     let mut defines = HashMap::new();
-    let include_paths = &["./test_c_files"];
+    let include_paths = &["./test_c_files", "/usr/include"];
     for file in files {
         match std::fs::read(file) {
             Ok(contents) => {

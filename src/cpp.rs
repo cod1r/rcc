@@ -163,7 +163,7 @@ fn include_directive(
             let full_path_file = path.to_string() + "/" + &fname;
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
-                    eprintln!("CPP'ing for {}", fname);
+                    eprintln!("preprocessing {}...", fname);
                     let tokens_from_file = cpp(file_contents, include_paths, defines)?;
                     let tokens_copy = tokens[newline_index + 1..].to_vec();
                     let mut tokens_from_file_index = 0;
@@ -189,7 +189,6 @@ fn include_directive(
                 }
             }
         }
-        eprintln!("{fname} not found");
     }
     Err(String::from("file not found"))
 }

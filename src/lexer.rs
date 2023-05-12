@@ -1088,8 +1088,13 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
                 tokens.push(t);
             } else {
                 return Err(format!(
-                    "unexpected token: '{}' at index: {}",
-                    program_str_bytes[index] as char, index
+                    "unexpected token: '{}' at index: {}, {}",
+                    program_str_bytes[index] as char,
+                    index,
+                    program_str_bytes[0..index]
+                        .to_vec()
+                        .iter()
+                        .fold(String::new(), |s, b| s + &(*b as char).to_string())
                 ));
             }
         } else {
