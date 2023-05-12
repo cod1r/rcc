@@ -778,7 +778,10 @@ fn eval_constant_expression(
                                     index = defined_index;
                                 }
                             } else {
-                                return Err(format!("unexpected token: {:?}", tokens[defined_index]));
+                                return Err(format!(
+                                    "unexpected token: {:?}",
+                                    tokens[defined_index]
+                                ));
                             }
                         } else {
                             return Err(format!("unexpected token: {:?}", tokens[defined_index]));
@@ -1022,8 +1025,7 @@ fn eval_constant_expression(
                     Some(parser::Expr::Primary(p)) => {
                         // if a '~' or '!' follow a primary expression, that is not allowed.
                         match tokens[index] {
-                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL =>
-                            {
+                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
                                 return Err(format!("unexpected {:?} token", tokens[index]));
                             }
                             _ => {}
@@ -1067,8 +1069,7 @@ fn eval_constant_expression(
                         } else {
                             // if a '~' or '!' follow a unary expression, that is not allowed.
                             match tokens[index] {
-                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL =>
-                                {
+                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
                                     return Err(format!("unexpected {:?} token", tokens[index]));
                                 }
                                 _ => {}
@@ -1082,7 +1083,7 @@ fn eval_constant_expression(
                                 first: None,
                                 second: None,
                             }));
-                        curr_expr = None;
+                            curr_expr = None;
                         }
                     }
                     Some(parser::Expr::Multiplicative(m)) => {
