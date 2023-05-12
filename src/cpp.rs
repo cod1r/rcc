@@ -2815,7 +2815,9 @@ fn expand_macro(
                         Some([lexer::Token::PLACEMARKER, _]) => {
                             replacement_list_copy.remove(start_removal - 1);
                         }
-                        _ => {}
+                        _ => {
+                            punct_hash_hash_index += 1;
+                        }
                     }
                     continue;
                 }
