@@ -2940,12 +2940,11 @@ fn expand_macro(
             }
 
             {
-                already_replaced_macro_names
-                    .push(macros_to_replace.last().unwrap().name.clone());
+                already_replaced_macro_names.push(macros_to_replace.last().unwrap().name.clone());
                 let mut index_overwrite = macros_to_replace.last().unwrap().start;
                 let mut tokens_copy_start =
                     macros_to_replace.last().unwrap().start + macros_to_replace.last().unwrap().len;
-                let tokens_copy = tokens[tokens_copy_start .. ].to_vec();
+                let tokens_copy = tokens[tokens_copy_start..].to_vec();
                 tokens.resize(
                     tokens.len() - macros_to_replace.last().unwrap().len
                         + replacement_list_copy.len(),

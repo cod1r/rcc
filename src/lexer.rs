@@ -319,7 +319,12 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                 is_hexa = true;
             }
             while byte_index < program_str_bytes.len()
-                && program_str_bytes[byte_index].is_ascii_digit()
+                && (program_str_bytes[byte_index].is_ascii_digit()
+                    || if is_hexa {
+                        program_str_bytes[byte_index].is_ascii_hexdigit()
+                    } else {
+                        false
+                    })
             {
                 byte_index += 1;
             }
