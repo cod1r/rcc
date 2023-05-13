@@ -139,7 +139,7 @@ fn include_directive(
                 ) {
                     return Err(format!("No '>' for opening '<' in include directive"));
                 }
-                let mut file_path_tokens = tokens[include_index..punct_greater_than_index]
+                let file_path_tokens = tokens[include_index..punct_greater_than_index]
                     .iter()
                     .map(|t| t.to_string());
                 if file_path_tokens.clone().any(|t_opt| t_opt.is_none()) {
@@ -163,7 +163,7 @@ fn include_directive(
             let full_path_file = path.to_string() + "/" + &fname;
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
-                    eprintln!("preprocessing {}...", fname);
+                    //eprintln!("preprocessing {}...", fname);
                     let tokens_from_file = cpp(file_contents, include_paths, defines)?;
                     let tokens_copy = tokens[newline_index + 1..].to_vec();
                     let mut tokens_from_file_index = 0;
@@ -185,7 +185,7 @@ fn include_directive(
                     return Ok(());
                 }
                 Err(_) => {
-                    eprintln!("fs::read failed for path: {}", full_path_file);
+                    //eprintln!("fs::read failed for path: {}", full_path_file);
                 }
             }
         }
@@ -607,10 +607,12 @@ fn left_has_higher_eq_priority(left: &mut parser::Expr, right: &mut parser::Expr
 //The expression that controls conditional inclusion shall be an integer constant expression
 //Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
 //All macro identifiers are evaluated as defined or not defined.
+// TODO: rewrite this. It works but is WAYY too convoluted.
 fn eval_constant_expression(
     tokens: &[lexer::Token],
     defines: &HashMap<String, Define>,
 ) -> Result<bool, String> {
+    //let START_TIMER = std::time::Instant::now();
     let mut eval_vec_index = 0;
     let eval_vec = &mut tokens.to_vec();
     while eval_vec_index < eval_vec.len() {
@@ -1987,6 +1989,7 @@ fn eval_constant_expression(
             }
         }
     }
+    //eprintln!("END TIME: {}", (std::time::Instant::now() - START_TIMER).as_nanos());
     assert!(primary_stack.len() == 1);
     Ok(*primary_stack.last().unwrap() != 0)
 }
@@ -2592,8 +2595,6 @@ fn expand_macro(
                                 ));
                     }
 
-                    already_replaced_macro_names
-                        .push(macros_to_replace.last().unwrap().name.clone());
                     {
                         let mut replacement_list_index = 0;
                         while replacement_list_index < replacement_list_copy.len() {
@@ -2939,10 +2940,12 @@ fn expand_macro(
             }
 
             {
+                already_replaced_macro_names
+                    .push(macros_to_replace.last().unwrap().name.clone());
                 let mut index_overwrite = macros_to_replace.last().unwrap().start;
-                let tokens_copy_start =
+                let mut tokens_copy_start =
                     macros_to_replace.last().unwrap().start + macros_to_replace.last().unwrap().len;
-                let tokens_copy = tokens[tokens_copy_start..].to_vec();
+                let tokens_copy = tokens[tokens_copy_start .. ].to_vec();
                 tokens.resize(
                     tokens.len() - macros_to_replace.last().unwrap().len
                         + replacement_list_copy.len(),
@@ -3072,7 +3075,7 @@ fn preprocessing_directives(
     Err(String::from("unable to preprocess"))
 }
 pub fn output_tokens_stdout(tokens: &Vec<lexer::Token>) {
-    println!(
+    print!(
         "{}",
         tokens
             .iter()
@@ -3088,14 +3091,21 @@ pub fn cpp(
     defines: &mut HashMap<String, Define>,
 ) -> Result<Vec<lexer::Token>, String> {
     // step 2 in the translation phase
-    let backslash_newline_spliced = program_str
-        .iter()
-        .map(|b| *b as char)
-        .collect::<String>()
-        .replace("\\\n", "");
-    let backslash_newline_spliced = backslash_newline_spliced.as_bytes();
+    let mut backslash_newline_spliced = Vec::with_capacity(program_str.len());
+    let mut add_index = 0;
+    while add_index < program_str.len() {
+        if program_str[add_index] == b'\\'
+            && add_index + 1 < program_str.len()
+            && program_str[add_index + 1] == b'\n'
+        {
+            add_index += 2;
+            continue;
+        }
+        backslash_newline_spliced.push(program_str[add_index]);
+        add_index += 1;
+    }
     // step 3 in the translation phase
-    let comments_removed = comments(backslash_newline_spliced)?;
+    let comments_removed = comments(backslash_newline_spliced.as_slice())?;
     let mut lexed_tokens = lexer::lexer(comments_removed, true)?;
     // step 4 in the translation phase
     preprocessing_directives(&mut lexed_tokens, include_paths, defines)?;

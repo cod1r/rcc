@@ -1,5 +1,6 @@
 test_c_files/
 .ccls-cache/
+perf_data/
 # Added by cargo
 
 /target
