@@ -1,7 +1,34 @@
+use ahash::{AHasher, RandomState};
+use std::collections::HashMap;
+
+pub struct ByteVecMaps {
+    pub key_to_byte_vec: Vec<Vec<u8>>,
+    pub byte_vec_to_key: HashMap<Vec<u8>, usize, RandomState>,
+}
+
+impl ByteVecMaps {
+    pub fn new() -> ByteVecMaps {
+        ByteVecMaps {
+            key_to_byte_vec: Vec::new(),
+            byte_vec_to_key: HashMap::default(),
+        }
+    }
+    pub fn add_byte_vec(&mut self, bytes_vec: &[u8]) -> usize {
+        if !self.byte_vec_to_key.contains_key(bytes_vec) {
+            let key = self.key_to_byte_vec.len();
+            self.key_to_byte_vec.push(bytes_vec.to_vec());
+            self.byte_vec_to_key.insert(bytes_vec.to_vec(), key);
+            key
+        } else {
+            *self.byte_vec_to_key.get(bytes_vec).unwrap()
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Token {
-    IDENT(String),
+    IDENT(usize),
     PLACEMARKER,
     WHITESPACE,
     NEWLINE,
@@ -105,171 +132,203 @@ pub enum Token {
     KEYWORD__STATIC_ASSERT,
     KEYWORD__THREAD_LOCAL,
     TYPE,
-    CONSTANT_ENUM(String),
+    CONSTANT_ENUM(usize),
     CONSTANT_OCTAL_INT {
-        value: String,
-        suffix: Option<String>,
+        value_key: usize,
+        suffix_key: Option<usize>,
     },
     CONSTANT_HEXA_INT {
-        value: String,
-        suffix: Option<String>,
+        value_key: usize,
+        suffix_key: Option<usize>,
     },
     CONSTANT_DEC_INT {
-        value: String,
-        suffix: Option<String>,
+        value_key: usize,
+        suffix_key: Option<usize>,
     },
     CONSTANT_DEC_FLOAT {
-        value: String,
-        exp_part: Option<String>,
-        suffix: Option<String>,
+        value_key: usize,
+        exp_part_key: Option<usize>,
+        suffix_key: Option<usize>,
     },
     CONSTANT_HEXA_FLOAT {
-        value: String,
-        binary_exp_part: String,
-        suffix: Option<String>,
+        value_key: usize,
+        binary_exp_part_key: usize,
+        suffix_key: Option<usize>,
     },
     StringLiteral {
-        prefix: Option<String>,
-        sequence: String,
+        prefix_key: Option<usize>,
+        sequence_key: usize,
     },
-    CONSTANT_CHAR(String),
+    CONSTANT_CHAR(usize),
 }
 impl Token {
-    pub fn to_string(&self) -> Option<String> {
+    pub fn to_byte_vec(&self, str_maps: &ByteVecMaps) -> Option<Vec<u8>> {
         match self {
             Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix,
+                value_key,
+                binary_exp_part_key,
+                suffix_key,
             } => {
-                if let Some(suff) = suffix {
-                    Some(value.clone() + binary_exp_part + suff)
+                if let Some(suff_key) = suffix_key {
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    Some(vec)
                 } else {
-                    Some(value.clone() + binary_exp_part)
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
+                    Some(vec)
                 }
             }
-            Token::CONSTANT_HEXA_INT { value, suffix } => {
-                if let Some(suff) = suffix {
-                    Some(value.clone() + suff)
+            Token::CONSTANT_HEXA_INT {
+                value_key,
+                suffix_key,
+            } => {
+                if let Some(suff_key) = suffix_key {
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    Some(vec)
                 } else {
-                    Some(value.to_string())
+                    Some(str_maps.key_to_byte_vec[*value_key].to_vec())
                 }
             }
             Token::CONSTANT_DEC_FLOAT {
-                value,
-                exp_part,
-                suffix,
-            } => match (exp_part, suffix) {
-                (Some(ep), Some(suff)) => Some(value.clone() + ep + suff),
-                (_, Some(suff)) => Some(value.clone() + suff),
-                _ => Some(value.to_string()),
+                value_key,
+                exp_part_key,
+                suffix_key,
+            } => match (exp_part_key, suffix_key) {
+                (Some(ep_key), Some(suff_key)) => {
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*ep_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    Some(vec)
+                }
+                (_, Some(suff_key)) => {
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    Some(vec)
+                }
+                _ => Some(str_maps.key_to_byte_vec[*value_key].to_vec()),
             },
-            Token::StringLiteral { prefix, sequence } => {
-                if let Some(pre) = prefix {
-                    Some(pre.clone() + sequence)
+            Token::StringLiteral {
+                prefix_key,
+                sequence_key,
+            } => {
+                if let Some(pre_key) = prefix_key {
+                    let mut vec = str_maps.key_to_byte_vec[*pre_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    Some(vec)
                 } else {
-                    Some("\"".to_string() + &sequence + "\"")
+                    let mut vec = vec![b'\"'];
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.push(b'\"');
+                    Some(vec)
                 }
             }
-            Token::CONSTANT_DEC_INT { value, suffix } => {
-                if let Some(suff) = suffix {
-                    Some(value.clone() + suff)
+            Token::CONSTANT_DEC_INT {
+                value_key,
+                suffix_key,
+            } => {
+                if let Some(suff_key) = suffix_key {
+                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    Some(vec)
                 } else {
-                    Some(value.to_string())
+                    Some(str_maps.key_to_byte_vec[*value_key].to_vec())
                 }
             }
-            Token::IDENT(s) => Some(s.to_string()),
-            Token::WHITESPACE => Some(" ".to_string()),
-            Token::NEWLINE => Some("\n".to_string()),
-            Token::PUNCT_OPEN_SQR => Some("[".to_string()),
-            Token::PUNCT_CLOSE_SQR => Some("]".to_string()),
-            Token::PUNCT_OPEN_PAR => Some("(".to_string()),
-            Token::PUNCT_CLOSE_PAR => Some(")".to_string()),
-            Token::PUNCT_OPEN_CURLY => Some("{".to_string()),
-            Token::PUNCT_CLOSE_CURLY => Some("}".to_string()),
-            Token::PUNCT_DOT => Some(".".to_string()),
-            Token::PUNCT_ARROW => Some("=>".to_string()),
-            Token::PUNCT_INCREMENT => Some("++".to_string()),
-            Token::PUNCT_DECREMENT => Some("--".to_string()),
-            Token::PUNCT_AND_BIT => Some("&".to_string()),
-            Token::PUNCT_MULT => Some("*".to_string()),
-            Token::PUNCT_PLUS => Some("+".to_string()),
-            Token::PUNCT_MINUS => Some("-".to_string()),
-            Token::PUNCT_TILDE => Some("~".to_string()),
-            Token::PUNCT_NOT_BOOL => Some("!".to_string()),
-            Token::PUNCT_DIV => Some("/".to_string()),
-            Token::PUNCT_MODULO => Some("%".to_string()),
-            Token::PUNCT_BITSHFT_LEFT => Some("<<".to_string()),
-            Token::PUNCT_BITSHFT_RIGHT => Some(">>".to_string()),
-            Token::PUNCT_LESS_THAN => Some("<".to_string()),
-            Token::PUNCT_GREATER_THAN => Some(">".to_string()),
-            Token::PUNCT_LESS_THAN_EQ => Some("<=".to_string()),
-            Token::PUNCT_GREATER_THAN_EQ => Some(">=".to_string()),
-            Token::PUNCT_EQ_BOOL => Some("==".to_string()),
-            Token::PUNCT_NOT_EQ_BOOL => Some("!=".to_string()),
-            Token::PUNCT_XOR_BIT => Some("^".to_string()),
-            Token::PUNCT_OR_BIT => Some("|".to_string()),
-            Token::PUNCT_AND_BOOL => Some("&&".to_string()),
-            Token::PUNCT_OR_BOOL => Some("||".to_string()),
-            Token::PUNCT_QUESTION_MARK => Some("?".to_string()),
-            Token::PUNCT_COLON => Some(":".to_string()),
-            Token::PUNCT_SEMI_COLON => Some(";".to_string()),
-            Token::PUNCT_ELLIPSIS => Some("...".to_string()),
-            Token::PUNCT_ASSIGNMENT => Some("=".to_string()),
-            Token::PUNCT_MULT_ASSIGN => Some("*=".to_string()),
-            Token::PUNCT_DIV_ASSIGN => Some("/=".to_string()),
-            Token::PUNCT_MODULO_ASSIGN => Some("%=".to_string()),
-            Token::PUNCT_ADD_ASSIGN => Some("+=".to_string()),
-            Token::PUNCT_SUB_ASSIGN => Some("-=".to_string()),
-            Token::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<=".to_string()),
-            Token::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>=".to_string()),
-            Token::PUNCT_AND_BIT_ASSIGN => Some("&=".to_string()),
-            Token::PUNCT_XOR_BIT_ASSIGN => Some("^=".to_string()),
-            Token::PUNCT_OR_BIT_ASSIGN => Some("|=".to_string()),
-            Token::PUNCT_COMMA => Some(",".to_string()),
-            Token::PUNCT_HASH => Some("#".to_string()),
-            Token::PUNCT_HASH_HASH => Some("##".to_string()),
-            Token::PUNCT_DIGRAPH_OPEN_SQR => Some("<:".to_string()),
-            Token::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>".to_string()),
-            Token::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%".to_string()),
-            Token::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>".to_string()),
-            Token::PUNCT_DIGRAPH_HASH => Some("%:".to_string()),
-            Token::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:".to_string()),
+            Token::IDENT(s_key) => Some(str_maps.key_to_byte_vec[*s_key].to_vec()),
+            Token::WHITESPACE => Some(" ".as_bytes().to_vec()),
+            Token::NEWLINE => Some("\n".as_bytes().to_vec()),
+            Token::PUNCT_OPEN_SQR => Some("[".as_bytes().to_vec()),
+            Token::PUNCT_CLOSE_SQR => Some("]".as_bytes().to_vec()),
+            Token::PUNCT_OPEN_PAR => Some("(".as_bytes().to_vec()),
+            Token::PUNCT_CLOSE_PAR => Some(")".as_bytes().to_vec()),
+            Token::PUNCT_OPEN_CURLY => Some("{".as_bytes().to_vec()),
+            Token::PUNCT_CLOSE_CURLY => Some("}".as_bytes().to_vec()),
+            Token::PUNCT_DOT => Some(".".as_bytes().to_vec()),
+            Token::PUNCT_ARROW => Some("=>".as_bytes().to_vec()),
+            Token::PUNCT_INCREMENT => Some("++".as_bytes().to_vec()),
+            Token::PUNCT_DECREMENT => Some("--".as_bytes().to_vec()),
+            Token::PUNCT_AND_BIT => Some("&".as_bytes().to_vec()),
+            Token::PUNCT_MULT => Some("*".as_bytes().to_vec()),
+            Token::PUNCT_PLUS => Some("+".as_bytes().to_vec()),
+            Token::PUNCT_MINUS => Some("-".as_bytes().to_vec()),
+            Token::PUNCT_TILDE => Some("~".as_bytes().to_vec()),
+            Token::PUNCT_NOT_BOOL => Some("!".as_bytes().to_vec()),
+            Token::PUNCT_DIV => Some("/".as_bytes().to_vec()),
+            Token::PUNCT_MODULO => Some("%".as_bytes().to_vec()),
+            Token::PUNCT_BITSHFT_LEFT => Some("<<".as_bytes().to_vec()),
+            Token::PUNCT_BITSHFT_RIGHT => Some(">>".as_bytes().to_vec()),
+            Token::PUNCT_LESS_THAN => Some("<".as_bytes().to_vec()),
+            Token::PUNCT_GREATER_THAN => Some(">".as_bytes().to_vec()),
+            Token::PUNCT_LESS_THAN_EQ => Some("<=".as_bytes().to_vec()),
+            Token::PUNCT_GREATER_THAN_EQ => Some(">=".as_bytes().to_vec()),
+            Token::PUNCT_EQ_BOOL => Some("==".as_bytes().to_vec()),
+            Token::PUNCT_NOT_EQ_BOOL => Some("!=".as_bytes().to_vec()),
+            Token::PUNCT_XOR_BIT => Some("^".as_bytes().to_vec()),
+            Token::PUNCT_OR_BIT => Some("|".as_bytes().to_vec()),
+            Token::PUNCT_AND_BOOL => Some("&&".as_bytes().to_vec()),
+            Token::PUNCT_OR_BOOL => Some("||".as_bytes().to_vec()),
+            Token::PUNCT_QUESTION_MARK => Some("?".as_bytes().to_vec()),
+            Token::PUNCT_COLON => Some(":".as_bytes().to_vec()),
+            Token::PUNCT_SEMI_COLON => Some(";".as_bytes().to_vec()),
+            Token::PUNCT_ELLIPSIS => Some("...".as_bytes().to_vec()),
+            Token::PUNCT_ASSIGNMENT => Some("=".as_bytes().to_vec()),
+            Token::PUNCT_MULT_ASSIGN => Some("*=".as_bytes().to_vec()),
+            Token::PUNCT_DIV_ASSIGN => Some("/=".as_bytes().to_vec()),
+            Token::PUNCT_MODULO_ASSIGN => Some("%=".as_bytes().to_vec()),
+            Token::PUNCT_ADD_ASSIGN => Some("+=".as_bytes().to_vec()),
+            Token::PUNCT_SUB_ASSIGN => Some("-=".as_bytes().to_vec()),
+            Token::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<=".as_bytes().to_vec()),
+            Token::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>=".as_bytes().to_vec()),
+            Token::PUNCT_AND_BIT_ASSIGN => Some("&=".as_bytes().to_vec()),
+            Token::PUNCT_XOR_BIT_ASSIGN => Some("^=".as_bytes().to_vec()),
+            Token::PUNCT_OR_BIT_ASSIGN => Some("|=".as_bytes().to_vec()),
+            Token::PUNCT_COMMA => Some(",".as_bytes().to_vec()),
+            Token::PUNCT_HASH => Some("#".as_bytes().to_vec()),
+            Token::PUNCT_HASH_HASH => Some("##".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_OPEN_SQR => Some("<:".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_HASH => Some("%:".as_bytes().to_vec()),
+            Token::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:".as_bytes().to_vec()),
             _ => None,
         }
     }
 }
-fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_string_literal(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let mut byte_index = *index;
     let mut token = Token::StringLiteral {
-        prefix: None,
-        sequence: String::new(),
+        prefix_key: None,
+        sequence_key: 0,
     };
     if byte_index < program_str_bytes.len()
         && [b'u', b'U', b'L'].contains(&program_str_bytes[byte_index])
     {
         if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'8' {
             if let Token::StringLiteral {
-                prefix,
-                sequence: _,
+                prefix_key,
+                sequence_key: _,
             } = &mut token
             {
-                *prefix = Some(
-                    String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 2])
-                        .to_string(),
-                );
+                *prefix_key =
+                    Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 2]));
             }
             byte_index += 2;
         } else {
             if let Token::StringLiteral {
-                prefix,
-                sequence: _,
+                prefix_key,
+                sequence_key: _,
             } = &mut token
             {
-                *prefix = Some(
-                    String::from_utf8_lossy(&program_str_bytes[byte_index..byte_index + 1])
-                        .to_string(),
-                );
+                *prefix_key =
+                    Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 1]));
             }
             byte_index += 1;
         }
@@ -290,12 +349,11 @@ fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<T
         }
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'"' {
             if let Token::StringLiteral {
-                prefix: _,
-                sequence,
+                prefix_key: _,
+                sequence_key,
             } = &mut token
             {
-                *sequence = String::from_utf8_lossy(&program_str_bytes[start_of_seq..byte_index])
-                    .to_string();
+                *sequence_key = str_maps.add_byte_vec(&program_str_bytes[start_of_seq..byte_index]);
             }
             byte_index += 1;
             *index = byte_index;
@@ -304,7 +362,11 @@ fn match_string_literal(program_str_bytes: &[u8], index: &mut usize) -> Option<T
     }
     None
 }
-fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_integer_constant(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let mut byte_index = *index;
     match program_str_bytes[byte_index] {
         b'0' if byte_index + 1 < program_str_bytes.len()
@@ -358,31 +420,26 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                 | [b'U', b'l', b'l']
                 | [b'U', b'L', b'L']
                 | [] => {
-                    let suffix = if byte_index - start_suffex > 0 {
-                        Some(
-                            String::from_utf8_lossy(&program_str_bytes[start_suffex..byte_index])
-                                .to_string(),
-                        )
+                    let suffix_key = if byte_index - start_suffex > 0 {
+                        Some(str_maps.add_byte_vec(&program_str_bytes[start_suffex..byte_index]))
                     } else {
                         None
                     };
                     if is_hexa {
                         let token = Some(Token::CONSTANT_HEXA_INT {
-                            value: String::from_utf8_lossy(
-                                &program_str_bytes[*index..start_suffex],
-                            )
-                            .to_string(),
-                            suffix,
+                            value_key: {
+                                str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
+                            },
+                            suffix_key,
                         });
                         *index = byte_index;
                         token
                     } else {
                         let token = Some(Token::CONSTANT_OCTAL_INT {
-                            value: String::from_utf8_lossy(
-                                &program_str_bytes[*index..start_suffex],
-                            )
-                            .to_string(),
-                            suffix,
+                            value_key: {
+                                str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
+                            },
+                            suffix_key,
                         });
                         *index = byte_index;
                         token
@@ -428,22 +485,18 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
                     | [b'U', b'l', b'l']
                     | [b'U', b'L', b'L']
                     | [] => {
-                        let suffix = if byte_index - start_suffex > 0 {
+                        let suffix_key = if byte_index - start_suffex > 0 {
                             Some(
-                                String::from_utf8_lossy(
-                                    &program_str_bytes[start_suffex..byte_index],
-                                )
-                                .to_string(),
+                                str_maps.add_byte_vec(&program_str_bytes[start_suffex..byte_index]),
                             )
                         } else {
                             None
                         };
                         let token = Some(Token::CONSTANT_DEC_INT {
-                            value: String::from_utf8_lossy(
-                                &program_str_bytes[*index..start_suffex],
-                            )
-                            .to_string(),
-                            suffix,
+                            value_key: {
+                                str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
+                            },
+                            suffix_key,
                         });
                         *index = byte_index;
                         return token;
@@ -457,7 +510,11 @@ fn match_integer_constant(program_str_bytes: &[u8], index: &mut usize) -> Option
         }
     }
 }
-fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_floating_constant(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let mut byte_index = *index;
     let is_hexa = if byte_index + 1 < program_str_bytes.len()
         && (program_str_bytes[byte_index + 1] == b'x' || program_str_bytes[byte_index + 1] == b'X')
@@ -526,46 +583,38 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
             && (length_first_digit_sequence > 0 || length_of_second_digit_sequence > 0)
             && length_of_exp_digit_sequence > 0)
     {
-        let suffix = if length_of_suffix > 0 {
-            Some(
-                String::from_utf8_lossy(&program_str_bytes[end_of_exp_digit_sequence..byte_index])
-                    .to_string(),
-            )
+        let suffix_key = if length_of_suffix > 0 {
+            Some(str_maps.add_byte_vec(&program_str_bytes[end_of_exp_digit_sequence..byte_index]))
         } else {
             None
         };
         if is_hexa {
             let token = Some(Token::CONSTANT_HEXA_FLOAT {
-                value: String::from_utf8_lossy(
-                    &program_str_bytes[*index..end_of_second_digit_sequence],
-                )
-                .to_string(),
-                binary_exp_part: String::from_utf8_lossy(
-                    &program_str_bytes[end_of_second_digit_sequence..end_of_exp_digit_sequence],
-                )
-                .to_string(),
-                suffix,
+                value_key: {
+                    str_maps.add_byte_vec(&program_str_bytes[*index..end_of_second_digit_sequence])
+                },
+                binary_exp_part_key: {
+                    str_maps.add_byte_vec(
+                        &program_str_bytes[end_of_second_digit_sequence..end_of_exp_digit_sequence],
+                    )
+                },
+                suffix_key,
             });
             *index = byte_index;
             return token;
         } else {
             let token = Some(Token::CONSTANT_DEC_FLOAT {
-                value: String::from_utf8_lossy(
-                    &program_str_bytes[*index..end_of_second_digit_sequence],
-                )
-                .to_string(),
-                exp_part: if has_exponential {
-                    Some(
-                        String::from_utf8_lossy(
-                            &program_str_bytes
-                                [end_of_second_digit_sequence..end_of_exp_digit_sequence],
-                        )
-                        .to_string(),
-                    )
+                value_key: {
+                    str_maps.add_byte_vec(&program_str_bytes[*index..end_of_second_digit_sequence])
+                },
+                exp_part_key: if has_exponential {
+                    Some(str_maps.add_byte_vec(
+                        &program_str_bytes[end_of_second_digit_sequence..end_of_exp_digit_sequence],
+                    ))
                 } else {
                     None
                 },
-                suffix,
+                suffix_key,
             });
             *index = byte_index;
             return token;
@@ -576,7 +625,11 @@ fn match_floating_constant(program_str_bytes: &[u8], index: &mut usize) -> Optio
 fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     todo!()
 }
-fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_character_constant(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let mut byte_index = *index;
     if program_str_bytes[byte_index] == b'L'
         || program_str_bytes[byte_index] == b'u'
@@ -623,7 +676,7 @@ fn match_character_constant(program_str_bytes: &[u8], index: &mut usize) -> Opti
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\'' {
             byte_index += 1;
             let token = Some(Token::CONSTANT_CHAR(
-                String::from_utf8_lossy(&program_str_bytes[*index..byte_index]).to_string(),
+                str_maps.add_byte_vec(&program_str_bytes[*index..byte_index]),
             ));
             *index = byte_index;
             return token;
@@ -922,7 +975,11 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
     }
     None
 }
-fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_identifier(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let mut byte_index = *index;
     while byte_index < program_str_bytes.len()
         && (program_str_bytes[byte_index].is_ascii_alphanumeric()
@@ -931,12 +988,11 @@ fn match_identifier(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
         byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
-    let utf8_lossy = String::from_utf8_lossy(bytes).to_string();
     // TODO: we need to check for universal character names
-    if !bytes.is_empty() && !bytes[0].is_ascii_digit() && utf8_lossy != "__func__" {
+    if !bytes.is_empty() && !bytes[0].is_ascii_digit() && *bytes != *"__func__".as_bytes() {
         *index = byte_index;
-        return Some(Token::IDENT(utf8_lossy));
-    } else if utf8_lossy == "__func__" {
+        return Some(Token::IDENT(str_maps.add_byte_vec(bytes)));
+    } else if *bytes == *"__func__".as_bytes() {
         *index = byte_index;
         return Some(Token::PREDEF_IDENT___FUNC__);
     }
@@ -951,51 +1007,51 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
         byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
-    const KEYWORD_AUTO: &str = "auto";
-    const KEYWORD_BREAK: &str = "break";
-    const KEYWORD_CASE: &str = "case";
-    const KEYWORD_CHAR: &str = "char";
-    const KEYWORD_CONST: &str = "const";
-    const KEYWORD_CONTINUE: &str = "continue";
-    const KEYWORD_DEFAULT: &str = "default";
-    const KEYWORD_DO: &str = "do";
-    const KEYWORD_DOUBLE: &str = "double";
-    const KEYWORD_ELSE: &str = "else";
-    const KEYWORD_ENUM: &str = "enum";
-    const KEYWORD_EXTERN: &str = "extern";
-    const KEYWORD_FLOAT: &str = "float";
-    const KEYWORD_FOR: &str = "for";
-    const KEYWORD_GOTO: &str = "goto";
-    const KEYWORD_IF: &str = "if";
-    const KEYWORD_INLINE: &str = "inline";
-    const KEYWORD_INT: &str = "int";
-    const KEYWORD_LONG: &str = "long";
-    const KEYWORD_REGISTER: &str = "register";
-    const KEYWORD_RESTRICT: &str = "restrict";
-    const KEYWORD_RETURN: &str = "return";
-    const KEYWORD_SHORT: &str = "short";
-    const KEYWORD_SIGNED: &str = "signed";
-    const KEYWORD_SIZEOF: &str = "sizeof";
-    const KEYWORD_STATIC: &str = "static";
-    const KEYWORD_STRUCT: &str = "struct";
-    const KEYWORD_SWITCH: &str = "switch";
-    const KEYWORD_TYPEDEF: &str = "typedef";
-    const KEYWORD_UNION: &str = "union";
-    const KEYWORD_UNSIGNED: &str = "unsigned";
-    const KEYWORD_VOID: &str = "void";
-    const KEYWORD_VOLATILE: &str = "volatile";
-    const KEYWORD_WHILE: &str = "while";
-    const KEYWORD__ALIGNAS: &str = "_Alignas";
-    const KEYWORD__ALIGNOF: &str = "_Alignof";
-    const KEYWORD__ATOMIC: &str = "_Atomic";
-    const KEYWORD__BOOL: &str = "_Bool";
-    const KEYWORD__COMPLEX: &str = "_Complex";
-    const KEYWORD__GENERIC: &str = "_Generic";
-    const KEYWORD__IMAGINARY: &str = "_Imaginary";
-    const KEYWORD__NORETURN: &str = "_Noreturn";
-    const KEYWORD__STATIC_ASSERT: &str = "_Static_assert";
-    const KEYWORD__THREAD_LOCAL: &str = "_Thread_local";
-    let keyword = match String::from_utf8_lossy(bytes).to_string().as_str() {
+    const KEYWORD_AUTO: &[u8] = "auto".as_bytes();
+    const KEYWORD_BREAK: &[u8] = "break".as_bytes();
+    const KEYWORD_CASE: &[u8] = "case".as_bytes();
+    const KEYWORD_CHAR: &[u8] = "char".as_bytes();
+    const KEYWORD_CONST: &[u8] = "const".as_bytes();
+    const KEYWORD_CONTINUE: &[u8] = "continue".as_bytes();
+    const KEYWORD_DEFAULT: &[u8] = "default".as_bytes();
+    const KEYWORD_DO: &[u8] = "do".as_bytes();
+    const KEYWORD_DOUBLE: &[u8] = "double".as_bytes();
+    const KEYWORD_ELSE: &[u8] = "else".as_bytes();
+    const KEYWORD_ENUM: &[u8] = "enum".as_bytes();
+    const KEYWORD_EXTERN: &[u8] = "extern".as_bytes();
+    const KEYWORD_FLOAT: &[u8] = "float".as_bytes();
+    const KEYWORD_FOR: &[u8] = "for".as_bytes();
+    const KEYWORD_GOTO: &[u8] = "goto".as_bytes();
+    const KEYWORD_IF: &[u8] = "if".as_bytes();
+    const KEYWORD_INLINE: &[u8] = "inline".as_bytes();
+    const KEYWORD_INT: &[u8] = "int".as_bytes();
+    const KEYWORD_LONG: &[u8] = "long".as_bytes();
+    const KEYWORD_REGISTER: &[u8] = "register".as_bytes();
+    const KEYWORD_RESTRICT: &[u8] = "restrict".as_bytes();
+    const KEYWORD_RETURN: &[u8] = "return".as_bytes();
+    const KEYWORD_SHORT: &[u8] = "short".as_bytes();
+    const KEYWORD_SIGNED: &[u8] = "signed".as_bytes();
+    const KEYWORD_SIZEOF: &[u8] = "sizeof".as_bytes();
+    const KEYWORD_STATIC: &[u8] = "static".as_bytes();
+    const KEYWORD_STRUCT: &[u8] = "struct".as_bytes();
+    const KEYWORD_SWITCH: &[u8] = "switch".as_bytes();
+    const KEYWORD_TYPEDEF: &[u8] = "typedef".as_bytes();
+    const KEYWORD_UNION: &[u8] = "union".as_bytes();
+    const KEYWORD_UNSIGNED: &[u8] = "unsigned".as_bytes();
+    const KEYWORD_VOID: &[u8] = "void".as_bytes();
+    const KEYWORD_VOLATILE: &[u8] = "volatile".as_bytes();
+    const KEYWORD_WHILE: &[u8] = "while".as_bytes();
+    const KEYWORD__ALIGNAS: &[u8] = "_Alignas".as_bytes();
+    const KEYWORD__ALIGNOF: &[u8] = "_Alignof".as_bytes();
+    const KEYWORD__ATOMIC: &[u8] = "_Atomic".as_bytes();
+    const KEYWORD__BOOL: &[u8] = "_Bool".as_bytes();
+    const KEYWORD__COMPLEX: &[u8] = "_Complex".as_bytes();
+    const KEYWORD__GENERIC: &[u8] = "_Generic".as_bytes();
+    const KEYWORD__IMAGINARY: &[u8] = "_Imaginary".as_bytes();
+    const KEYWORD__NORETURN: &[u8] = "_Noreturn".as_bytes();
+    const KEYWORD__STATIC_ASSERT: &[u8] = "_Static_assert".as_bytes();
+    const KEYWORD__THREAD_LOCAL: &[u8] = "_Thread_local".as_bytes();
+    let keyword = match bytes {
         KEYWORD_AUTO => Some(Token::KEYWORD_AUTO),
         KEYWORD_BREAK => Some(Token::KEYWORD_BREAK),
         KEYWORD_CASE => Some(Token::KEYWORD_CASE),
@@ -1047,7 +1103,12 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     }
     keyword
 }
-fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option<Token> {
+fn chain_lex(
+    program_str_bytes: &[u8],
+    index: &mut usize,
+    is_pp: bool,
+    str_maps: &mut ByteVecMaps,
+) -> Option<Token> {
     let punctuator = match_punctuator(program_str_bytes, index);
     if punctuator.is_some() {
         return punctuator;
@@ -1058,29 +1119,33 @@ fn chain_lex(program_str_bytes: &[u8], index: &mut usize, is_pp: bool) -> Option
             return keyword;
         }
     }
-    let identifier = match_identifier(program_str_bytes, index);
+    let identifier = match_identifier(program_str_bytes, index, str_maps);
     if identifier.is_some() {
         return identifier;
     }
-    let string_lit = match_string_literal(program_str_bytes, index);
+    let string_lit = match_string_literal(program_str_bytes, index, str_maps);
     if string_lit.is_some() {
         return string_lit;
     }
-    let integer_const = match_integer_constant(program_str_bytes, index);
+    let integer_const = match_integer_constant(program_str_bytes, index, str_maps);
     if integer_const.is_some() {
         return integer_const;
     }
-    let float_const = match_floating_constant(program_str_bytes, index);
+    let float_const = match_floating_constant(program_str_bytes, index, str_maps);
     if float_const.is_some() {
         return float_const;
     }
-    let char_const = match_character_constant(program_str_bytes, index);
+    let char_const = match_character_constant(program_str_bytes, index, str_maps);
     if char_const.is_some() {
         return char_const;
     }
     None
 }
-pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, String> {
+pub fn lexer(
+    program_str_bytes: &Vec<u8>,
+    is_pp: bool,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut index: usize = 0;
     while index < program_str_bytes.len() {
@@ -1088,7 +1153,7 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
             tokens.push(Token::NEWLINE);
             index += 1;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
-            let token = chain_lex(&program_str_bytes, &mut index, is_pp);
+            let token = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
             if let Some(t) = token {
                 tokens.push(t);
             } else {
@@ -1096,7 +1161,7 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
                     "unexpected token: '{}' at index: {}, {}",
                     program_str_bytes[index] as char,
                     index,
-                    program_str_bytes[0..index]
+                    program_str_bytes
                         .to_vec()
                         .iter()
                         .fold(String::new(), |s, b| s + &(*b as char).to_string())
@@ -1116,22 +1181,27 @@ pub fn lexer(program_str_bytes: Vec<u8>, is_pp: bool) -> Result<Vec<Token>, Stri
 mod tests {
     use super::{
         lexer, match_character_constant, match_floating_constant, match_string_literal, Token,
+        ByteVecMaps,
     };
+    use std::collections::HashMap;
 
     #[test]
     fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
         let s = "0x.0p0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix: _,
+                value_key,
+                binary_exp_part_key,
+                suffix_key: _,
             }) => {
-                assert_eq!(*value, "0x.0");
-                assert_eq!(*binary_exp_part, "p0");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
+                assert_eq!(value, b"0x.0");
+                assert_eq!(binary_exp_part, b"p0");
             }
             _ => panic!(),
         }
@@ -1142,15 +1212,18 @@ mod tests {
         let s = "0x0.p0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix: _,
+                value_key,
+                binary_exp_part_key,
+                suffix_key: _,
             }) => {
-                assert_eq!(*value, "0x0.");
-                assert_eq!(*binary_exp_part, "p0");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
+                assert_eq!(value, b"0x0.");
+                assert_eq!(binary_exp_part, b"p0");
             }
             _ => panic!(),
         }
@@ -1161,7 +1234,8 @@ mod tests {
         let s = "0x.p0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1173,7 +1247,8 @@ mod tests {
         let s = "0x0e";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1185,7 +1260,8 @@ mod tests {
         let s = "";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1197,7 +1273,8 @@ mod tests {
         let s = "01";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1209,7 +1286,8 @@ mod tests {
         let s = "0x1";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1221,7 +1299,8 @@ mod tests {
         let s = "0x1e0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             None => {}
             _ => panic!(),
@@ -1233,15 +1312,18 @@ mod tests {
         let s = "0x1p0";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix: _,
+                value_key,
+                binary_exp_part_key,
+                suffix_key: _,
             }) => {
-                assert_eq!(value, "0x1");
-                assert_eq!(binary_exp_part, "p0");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
+                assert_eq!(value, b"0x1");
+                assert_eq!(binary_exp_part, b"p0");
             }
             _ => panic!(),
         }
@@ -1251,16 +1333,18 @@ mod tests {
     fn test_match_float_constant_valid_decimal() {
         let s = "001223e0";
         let s_bytes = s.as_bytes();
-        let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut 0, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_DEC_FLOAT {
-                value,
-                exp_part,
-                suffix: _,
+                value_key,
+                exp_part_key,
+                suffix_key: _,
             }) => {
-                assert_eq!(value, "001223");
-                assert_eq!(exp_part.clone().unwrap(), "e0");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
+                assert_eq!(value, b"001223");
+                assert_eq!(exp_part, b"e0");
             }
             _ => panic!(),
         }
@@ -1271,16 +1355,20 @@ mod tests {
         let s = "001223e0L";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_DEC_FLOAT {
-                value,
-                exp_part,
-                suffix,
+                value_key,
+                exp_part_key,
+                suffix_key,
             }) => {
-                assert_eq!(value, "001223");
-                assert_eq!(exp_part.clone().unwrap(), "e0");
-                assert_eq!(suffix.clone().unwrap(), "L");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                assert_eq!(value, b"001223");
+                assert_eq!(exp_part, b"e0");
+                assert_eq!(suffix, b"L");
             }
             _ => panic!(),
         }
@@ -1291,16 +1379,20 @@ mod tests {
         let s = "0x01223p0L";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix,
+                value_key,
+                binary_exp_part_key,
+                suffix_key,
             }) => {
-                assert_eq!(value, "0x01223");
-                assert_eq!(binary_exp_part, "p0");
-                assert_eq!(suffix.clone().unwrap(), "L");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                assert_eq!(value, b"0x01223");
+                assert_eq!(binary_exp_part, b"p0");
+                assert_eq!(suffix, b"L");
             }
             _ => panic!(),
         }
@@ -1311,44 +1403,35 @@ mod tests {
         let s = "0x01223p+0L";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let float_token = match_floating_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
-                value,
-                binary_exp_part,
-                suffix,
+                value_key,
+                binary_exp_part_key,
+                suffix_key,
             }) => {
-                assert_eq!(value, "0x01223");
-                assert_eq!(binary_exp_part, "p+0");
-                assert_eq!(suffix.clone().unwrap(), "L");
+                let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
+                let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                assert_eq!(value, b"0x01223");
+                assert_eq!(binary_exp_part, b"p+0");
+                assert_eq!(suffix, b"L");
             }
             _ => panic!(),
         }
         assert!(float_token.is_some());
     }
     #[test]
-    fn test_match_character_constant() {
-        let s = "U'hi'";
-        let s_bytes = s.as_bytes();
-        let mut index = 0;
-        let char_token = match_character_constant(s_bytes, &mut index);
-        match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s)) => {
-                assert_eq!(s, "U'hi'");
-            }
-            _ => panic!(),
-        }
-        assert!(char_token.is_some());
-    }
-    #[test]
     fn test_match_character_constant_no_prefix() {
         let s = "'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let char_token = match_character_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s)) => {
-                assert_eq!(s, "'hi'");
+            Some(super::Token::CONSTANT_CHAR(s_key)) => {
+                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"'hi'");
             }
             _ => panic!(),
         }
@@ -1359,10 +1442,11 @@ mod tests {
         let s = "L'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let char_token = match_character_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s)) => {
-                assert_eq!(s, "L'hi'");
+            Some(super::Token::CONSTANT_CHAR(s_key)) => {
+                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"L'hi'");
             }
             _ => panic!(),
         }
@@ -1373,10 +1457,11 @@ mod tests {
         let s = "u'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let char_token = match_character_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s)) => {
-                assert_eq!(s, "u'hi'");
+            Some(super::Token::CONSTANT_CHAR(s_key)) => {
+                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"u'hi'");
             }
             _ => panic!(),
         }
@@ -1387,10 +1472,11 @@ mod tests {
         let s = "U'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let char_token = match_character_constant(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s)) => {
-                assert_eq!(s, "U'hi'");
+            Some(super::Token::CONSTANT_CHAR(s_key)) => {
+                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"U'hi'");
             }
             _ => panic!(),
         }
@@ -1401,11 +1487,18 @@ mod tests {
         let s = "U\"hi\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let string_literal = match_string_literal(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
         match &string_literal {
-            Some(super::Token::StringLiteral { prefix, sequence }) => {
-                assert_eq!(prefix.clone().unwrap(), "U");
-                assert_eq!(sequence.clone(), "hi");
+            Some(super::Token::StringLiteral {
+                prefix_key,
+                sequence_key,
+            }) => {
+                assert_eq!(
+                    str_maps.key_to_byte_vec.get(prefix_key.unwrap()).unwrap(),
+                    b"U"
+                );
+                assert_eq!(str_maps.key_to_byte_vec.get(*sequence_key).unwrap(), b"hi");
             }
             _ => panic!(),
         }
@@ -1416,11 +1509,15 @@ mod tests {
         let s = "\"hi\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let string_literal = match_string_literal(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
         match &string_literal {
-            Some(super::Token::StringLiteral { prefix, sequence }) => {
-                assert!(prefix.is_none());
-                assert_eq!(sequence.clone(), "hi");
+            Some(super::Token::StringLiteral {
+                prefix_key,
+                sequence_key,
+            }) => {
+                assert!(prefix_key.is_none());
+                assert_eq!(str_maps.key_to_byte_vec.get(*sequence_key).unwrap(), b"hi");
             }
             _ => panic!(),
         }
@@ -1431,11 +1528,18 @@ mod tests {
         let s = "\"\\U0001F600\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
-        let string_literal = match_string_literal(s_bytes, &mut index);
+        let mut str_maps = ByteVecMaps::new();
+        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
         match &string_literal {
-            Some(super::Token::StringLiteral { prefix, sequence }) => {
-                assert!(prefix.is_none());
-                assert_eq!(sequence.clone(), "\\U0001F600");
+            Some(super::Token::StringLiteral {
+                prefix_key,
+                sequence_key,
+            }) => {
+                assert!(prefix_key.is_none());
+                assert_eq!(
+                    str_maps.key_to_byte_vec.get(*sequence_key).unwrap(),
+                    b"\\U0001F600"
+                );
             }
             _ => panic!(),
         }
@@ -1445,11 +1549,13 @@ mod tests {
     fn test_lexer() -> Result<(), String> {
         let s = "int main() {\nint hi = 4;\nreturn 0;\n}";
         let s_bytes = s.as_bytes();
-        let tokens = lexer(s_bytes.to_vec(), false)?;
+        let mut str_maps = ByteVecMaps::new();
+        
+        let tokens = lexer(&s_bytes.to_vec(), false, &mut str_maps)?;
         let tokens_assert = vec![
             Token::KEYWORD_INT,
             Token::WHITESPACE,
-            Token::IDENT("main".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
             Token::PUNCT_OPEN_PAR,
             Token::PUNCT_CLOSE_PAR,
             Token::WHITESPACE,
@@ -1457,21 +1563,21 @@ mod tests {
             Token::NEWLINE,
             Token::KEYWORD_INT,
             Token::WHITESPACE,
-            Token::IDENT("hi".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("hi".as_bytes())),
             Token::WHITESPACE,
             Token::PUNCT_ASSIGNMENT,
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
-                value: "4".to_string(),
-                suffix: None,
+                value_key: str_maps.add_byte_vec("4".as_bytes()),
+                suffix_key: None,
             },
             Token::PUNCT_SEMI_COLON,
             Token::NEWLINE,
             Token::KEYWORD_RETURN,
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
-                value: "0".to_string(),
-                suffix: None,
+                value_key: str_maps.add_byte_vec("0".as_bytes()),
+                suffix_key: None,
             },
             Token::PUNCT_SEMI_COLON,
             Token::NEWLINE,
@@ -1484,20 +1590,31 @@ mod tests {
     fn test_lexer_directives() -> Result<(), String> {
         let s = "#include <stdio.h>\nint main() {}";
         let s_bytes = s.as_bytes();
-        let tokens = lexer(s_bytes.to_vec(), true)?;
+        let mut str_maps = ByteVecMaps::new();
+        
+        str_maps.add_byte_vec("include".as_bytes());
+        
+        str_maps.add_byte_vec("stdio".as_bytes());
+        
+        str_maps.add_byte_vec("h".as_bytes());
+        
+        str_maps.add_byte_vec("int".as_bytes());
+        
+        str_maps.add_byte_vec("main".as_bytes());
+        let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
             Token::PUNCT_HASH,
-            Token::IDENT("include".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("include".as_bytes())),
             Token::WHITESPACE,
             Token::PUNCT_LESS_THAN,
-            Token::IDENT("stdio".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("stdio".as_bytes())),
             Token::PUNCT_DOT,
-            Token::IDENT("h".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("h".as_bytes())),
             Token::PUNCT_GREATER_THAN,
             Token::NEWLINE,
-            Token::IDENT("int".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
             Token::WHITESPACE,
-            Token::IDENT("main".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
             Token::PUNCT_OPEN_PAR,
             Token::PUNCT_CLOSE_PAR,
             Token::WHITESPACE,
@@ -1511,35 +1628,48 @@ mod tests {
     fn test_lexer_if_directives() -> Result<(), String> {
         let s = "#if 1 + 1\n#define CHICKEN 5\n#endif\n";
         let s_bytes = s.as_bytes();
-        let tokens = lexer(s_bytes.to_vec(), true)?;
+        let mut str_maps: ByteVecMaps = ByteVecMaps::new();
+        
+       
+        
+       
+        
+       
+        
+       
+        
+       
+        
+        str_maps.add_byte_vec("endif".as_bytes());
+        let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
             Token::PUNCT_HASH,
-            Token::IDENT("if".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("if".as_bytes())),
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
-                value: "1".to_string(),
-                suffix: None,
+                value_key: str_maps.add_byte_vec("1".as_bytes()),
+                suffix_key: None,
             },
             Token::WHITESPACE,
             Token::PUNCT_PLUS,
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
-                value: "1".to_string(),
-                suffix: None,
+                value_key: str_maps.add_byte_vec("1".as_bytes()),
+                suffix_key: None,
             },
             Token::NEWLINE,
             Token::PUNCT_HASH,
-            Token::IDENT("define".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("define".as_bytes())),
             Token::WHITESPACE,
-            Token::IDENT("CHICKEN".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("CHICKEN".as_bytes())),
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
-                value: "5".to_string(),
-                suffix: None,
+                value_key: str_maps.add_byte_vec("5".as_bytes()),
+                suffix_key: None,
             },
             Token::NEWLINE,
             Token::PUNCT_HASH,
-            Token::IDENT("endif".to_string()),
+            Token::IDENT(str_maps.add_byte_vec("endif".as_bytes())),
             Token::NEWLINE,
         ];
         assert_eq!(tokens, tokens_assert);

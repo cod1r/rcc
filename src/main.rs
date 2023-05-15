@@ -13,17 +13,20 @@ fn main() -> Result<(), String> {
             files.push(arg);
         }
     }
-    let mut defines = HashMap::new();
+    let mut defines: HashMap<usize, cpp::Define> = HashMap::new();
+    let mut str_maps = lexer::ByteVecMaps::new();
     let stdc_version = cpp::Define {
-        identifier: "__STDC_VERSION__".to_string(),
         parameters: None,
         var_arg: false,
         replacement_list: vec![lexer::Token::CONSTANT_DEC_INT {
-            value: "201710".to_string(),
-            suffix: Some("L".to_string()),
+            value_key: str_maps.add_byte_vec("201710".as_bytes()),
+            suffix_key: Some(str_maps.add_byte_vec("L".as_bytes())),
         }],
     };
-    defines.insert("__STDC_VERSION__".to_string(), stdc_version);
+    defines.insert(
+        str_maps.add_byte_vec("__STDC_VERSION__".as_bytes()),
+        stdc_version,
+    );
     let include_paths = &[
         "./test_c_files",
         "/usr/include",
@@ -32,19 +35,18 @@ fn main() -> Result<(), String> {
     ];
     for file in files {
         let define = cpp::Define {
-            identifier: "__FILE__".to_string(),
             parameters: None,
             var_arg: false,
             replacement_list: vec![lexer::Token::StringLiteral {
-                prefix: None,
-                sequence: file.to_string(),
+                prefix_key: None,
+                sequence_key: str_maps.add_byte_vec(file.as_bytes()),
             }],
         };
-        defines.insert("__FILE__".to_string(), define);
+        defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
         match std::fs::read(file) {
             Ok(contents) => {
-                let tokens = cpp::cpp(contents, include_paths, &mut defines)?;
-                cpp::output_tokens_stdout(&tokens);
+                let tokens = cpp::cpp(contents, include_paths, &mut defines, &mut str_maps)?;
+                cpp::output_tokens_stdout(&tokens, &str_maps);
             }
             Err(_) => println!("error"),
         }
