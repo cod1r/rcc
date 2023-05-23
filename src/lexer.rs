@@ -1142,7 +1142,7 @@ fn chain_lex(
     None
 }
 pub fn lexer(
-    program_str_bytes: &Vec<u8>,
+    program_str_bytes: &[u8],
     is_pp: bool,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Token>, String> {

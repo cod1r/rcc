@@ -2600,7 +2600,7 @@ fn parse_macro_and_replace(
         while argument_index < curr_token_list.len() {
             match curr_token_list.get(argument_index) {
                 Some(lexer::Token::PUNCT_OPEN_PAR) => {
-                    let mut parenth_bal_counter = 1;
+                    let mut parenth_bal_counter = 0;
                     loop {
                         match curr_token_list.get(argument_index) {
                             Some(lexer::Token::PUNCT_OPEN_PAR) => {
@@ -2644,8 +2644,8 @@ fn parse_macro_and_replace(
             let byte_vec = &str_maps.key_to_byte_vec[first_macro_section.macro_key];
             let macro_str = String::from_utf8_lossy(byte_vec).to_string();
             return Err(format!(
-                "Wrong number of arguments given to macro {}",
-                macro_str
+                "Wrong number of arguments given to macro {}, num arguments given: {}, num parameters: {}",
+                macro_str, seen_args.len(), parameters.len()
             ));
         }
         let mut token_index = 0;
@@ -2839,7 +2839,7 @@ fn expand_macro(
     str_maps: &mut lexer::ByteVecMaps,
     final_tokens: &mut Vec<lexer::Token>,
 ) -> Result<usize, String> {
-    let lexer::Token::IDENT(macro_id_key) = tokens[index] else { unreachable!() };
+    let lexer::Token::IDENT(macro_id_key) = tokens[index] else { unreachable!("tried matching on ident but instead got {:?}", tokens[index]) };
     if !defines.contains_key(&macro_id_key) {
         return Ok(index + 1);
     }
@@ -3323,7 +3323,7 @@ A"##
         .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut tokens = lexer::lexer(src, true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -3336,10 +3336,10 @@ A"##
         )?;
         assert_eq!(
             vec![lexer::Token::CONSTANT_DEC_INT {
-                value_key: 7,
+                value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix_key: None
             }],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3352,28 +3352,34 @@ A"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 0, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 7,
+                    value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 9,
+                    value_key: str_maps.add_byte_vec("5".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 11,
+                    value_key: str_maps.add_byte_vec("6".as_bytes()),
                     suffix_key: None
                 }
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3385,9 +3391,15 @@ HI((,),(,))"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 0, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::PUNCT_OPEN_PAR,
@@ -3398,7 +3410,7 @@ HI((,),(,))"##
                 lexer::Token::PUNCT_COMMA,
                 lexer::Token::PUNCT_CLOSE_PAR,
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3410,32 +3422,38 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 0, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 8,
+                    value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 9,
+                    value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 11,
+                    value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 12,
+                    value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix_key: None
                 },
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3448,10 +3466,16 @@ HAHA(C,4)"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 0, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::PUNCT_COMMA,
@@ -3459,11 +3483,11 @@ HAHA(C,4)"##
                 lexer::Token::PUNCT_PLUS,
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 10,
+                    value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix_key: None
                 },
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3476,26 +3500,32 @@ f(2)(9)"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 0, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 11,
+                    value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::PUNCT_MULT,
-                lexer::Token::IDENT(10),
+                lexer::Token::IDENT(str_maps.add_byte_vec("f".as_bytes())),
                 lexer::Token::PUNCT_OPEN_PAR,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 12,
+                    value_key: str_maps.add_byte_vec("9".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::PUNCT_CLOSE_PAR,
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3599,7 +3629,26 @@ CHICKEN(1 2,3 4)"##
 PP(/,*)PP2(*,/)"##
             .as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
+        let src = comments(src)?;
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut defines = HashMap::new();
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
+        let mut final_tokens = Vec::new();
+        let new_index = expand_macro(
+            &tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
+        let new_index = expand_macro(
+            &tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::PUNCT_DIV,
@@ -3608,7 +3657,7 @@ PP(/,*)PP2(*,/)"##
                 lexer::Token::WHITESPACE,
                 lexer::Token::PUNCT_DIV
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
