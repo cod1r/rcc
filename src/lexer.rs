@@ -1180,8 +1180,8 @@ pub fn lexer(
 #[cfg(test)]
 mod tests {
     use super::{
-        lexer, match_character_constant, match_floating_constant, match_string_literal, Token,
-        ByteVecMaps,
+        lexer, match_character_constant, match_floating_constant, match_string_literal,
+        ByteVecMaps, Token,
     };
     use std::collections::HashMap;
 
@@ -1550,7 +1550,7 @@ mod tests {
         let s = "int main() {\nint hi = 4;\nreturn 0;\n}";
         let s_bytes = s.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        
+
         let tokens = lexer(&s_bytes.to_vec(), false, &mut str_maps)?;
         let tokens_assert = vec![
             Token::KEYWORD_INT,
@@ -1591,15 +1591,15 @@ mod tests {
         let s = "#include <stdio.h>\nint main() {}";
         let s_bytes = s.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        
+
         str_maps.add_byte_vec("include".as_bytes());
-        
+
         str_maps.add_byte_vec("stdio".as_bytes());
-        
+
         str_maps.add_byte_vec("h".as_bytes());
-        
+
         str_maps.add_byte_vec("int".as_bytes());
-        
+
         str_maps.add_byte_vec("main".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
@@ -1629,17 +1629,7 @@ mod tests {
         let s = "#if 1 + 1\n#define CHICKEN 5\n#endif\n";
         let s_bytes = s.as_bytes();
         let mut str_maps: ByteVecMaps = ByteVecMaps::new();
-        
-       
-        
-       
-        
-       
-        
-       
-        
-       
-        
+
         str_maps.add_byte_vec("endif".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
