@@ -2714,10 +2714,13 @@ fn parse_macro_and_replace(
                                     }
                                 }
                             }
-                            actual_replacement_list.insert(start_remove_index, lexer::Token::StringLiteral {
-                                prefix_key: None,
-                                sequence_key: str_maps.add_byte_vec(&sequence),
-                            });
+                            actual_replacement_list.insert(
+                                start_remove_index,
+                                lexer::Token::StringLiteral {
+                                    prefix_key: None,
+                                    sequence_key: str_maps.add_byte_vec(&sequence),
+                                },
+                            );
                         } else {
                             // check if there is a ## in front or behind the token sequence.
                             //let first = token_index > 0
@@ -2759,7 +2762,8 @@ fn parse_macro_and_replace(
                                     insert_index += 1;
                                 }
                             } else {
-                                actual_replacement_list.insert(insert_index, lexer::Token::PLACEMARKER);
+                                actual_replacement_list
+                                    .insert(insert_index, lexer::Token::PLACEMARKER);
                             }
                             //if !first && !second && !third && !four {
                             //    while token_index < insert_index {
@@ -2869,12 +2873,7 @@ fn expand_macro(
     //  any macro sections onto the macro stack)
     let mut val = true;
     while val {
-        val = parse_macro_and_replace(
-            defines,
-            &mut macro_stack,
-            &mut original_macro,
-            str_maps,
-        )?;
+        val = parse_macro_and_replace(defines, &mut macro_stack, &mut original_macro, str_maps)?;
     }
     final_tokens.extend_from_slice(&original_macro);
     Ok(ending_index)
@@ -3195,12 +3194,10 @@ char p[] = join(x, y);"##;
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![
-                lexer::Token::StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
-                },
-            ],
+            vec![lexer::Token::StringLiteral {
+                prefix_key: None,
+                sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
+            },],
             final_tokens
         );
         Ok(())
@@ -3330,7 +3327,13 @@ A"##
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, new_index, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![lexer::Token::CONSTANT_DEC_INT {
                 value_key: 7,
@@ -3508,7 +3511,13 @@ INVOKE(FOO,BAR)"##
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, new_index, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(
+            &mut tokens,
+            new_index,
+            &defines,
+            &mut str_maps,
+            &mut final_tokens,
+        )?;
         assert_eq!(
             vec![
                 lexer::Token::IDENT(str_maps.add_byte_vec("printf".as_bytes())),
