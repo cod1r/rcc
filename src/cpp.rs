@@ -2795,7 +2795,7 @@ fn expand_macro(
 ) -> Result<usize, String> {
     let lexer::Token::IDENT(macro_id_key) = tokens[index] else { unreachable!("tried matching on ident but instead got {:?}", tokens[index]) };
     if !defines.contains_key(&macro_id_key) {
-        return Ok(index + 1);
+        return Ok(index);
     }
     let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
     let Some(def_data) = defines.get(&macro_id_key) else { unreachable!() };
