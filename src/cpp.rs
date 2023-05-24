@@ -2445,10 +2445,7 @@ fn undef_directive(
     }
     Err(format!("undef directive not formed correctly"))
 }
-fn get_end_of_fn_macro(
-    tokens: &[lexer::Token],
-    index: usize,
-) -> Result<usize, String> {
+fn get_end_of_fn_macro(tokens: &[lexer::Token], index: usize) -> Result<usize, String> {
     let mut starting_index = index + 1;
     while let Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) = tokens.get(starting_index) {
         starting_index += 1;
@@ -2802,16 +2799,38 @@ fn expand_macro(
     }
     let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
     let Some(def_data) = defines.get(&macro_id_key) else { unreachable!() };
-    let ending_index = if def_data.parameters.is_some() {
-        get_end_of_fn_macro(tokens, index)?
-    } else {
-        index + 1
+    let ending_index = {
+        let mut take_ident_and_parenths = index;
+        loop {
+            match tokens.get(take_ident_and_parenths) {
+                Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    let mut parenth_balance_counter = 0;
+                    loop {
+                        match tokens.get(take_ident_and_parenths) {
+                            Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_balance_counter += 1,
+                            Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_balance_counter -= 1,
+                            _ => {}
+                        }
+                        if parenth_balance_counter < 0 {
+                            return Err(format!("parentheses aren't balanced"));
+                        }
+                        if parenth_balance_counter == 0 {
+                            break;
+                        }
+                        take_ident_and_parenths += 1;
+                    }
+                }
+                Some(lexer::Token::IDENT(_)) => {}
+                _ => break take_ident_and_parenths,
+            }
+            take_ident_and_parenths += 1;
+        }
     };
     let mut original_macro = tokens[index..ending_index].to_vec();
     let mut first_macro_section = MacroSection {
         macro_key: macro_id_key,
         start: 0,
-        depth: 1
+        depth: 1,
     };
     let mut macro_stack: Vec<MacroSection> = vec![first_macro_section];
     // Our idea is that we have a stack of macro sections that describe where the macro is in
@@ -3537,13 +3556,12 @@ f(2)(9)"##
                     suffix_key: None
                 },
                 lexer::Token::PUNCT_MULT,
-                lexer::Token::IDENT(str_maps.add_byte_vec("f".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("9".as_bytes()),
                     suffix_key: None
                 },
-                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::PUNCT_MULT,
+                lexer::Token::IDENT(str_maps.add_byte_vec("g".as_bytes())),
             ],
             final_tokens
         );
@@ -3596,32 +3614,32 @@ CHICKEN(1 2,3 4)"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
+        let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        expand_macro(&mut tokens, 8, &defines, &mut str_maps, &mut final_tokens)?;
+        expand_macro(&mut tokens, new_index, &defines, &mut str_maps, &mut final_tokens)?;
         assert_eq!(
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 4,
+                    value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 5,
+                    value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::PUNCT_COMMA,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 6,
+                    value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix_key: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
-                    value_key: 7,
+                    value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix_key: None
                 },
             ],
-            tokens
+            final_tokens
         );
         Ok(())
     }
@@ -3655,13 +3673,6 @@ PP(/,*)PP2(*,/)"##
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        let new_index = expand_macro(
-            &tokens,
-            new_index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
         let new_index = expand_macro(
             &tokens,
             new_index,
