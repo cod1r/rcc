@@ -1206,12 +1206,13 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-            Token::CONSTANT_CHAR(str_maps.add_byte_vec("u'hehe'".as_bytes())),
-            Token::PUNCT_SEMI_COLON,
-            Token::StringLiteral {
-                prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
-                sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
-            }],
+                Token::CONSTANT_CHAR(str_maps.add_byte_vec("u'hehe'".as_bytes())),
+                Token::PUNCT_SEMI_COLON,
+                Token::StringLiteral {
+                    prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
+                    sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
+                }
+            ],
             tokens
         );
         Ok(())
