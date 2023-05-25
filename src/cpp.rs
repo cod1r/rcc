@@ -671,7 +671,7 @@ fn eval_constant_expression(
     {
         return Err(format!("empty expression given"));
     }
-    if tokens.iter().any(|t| {
+    if let Some(not_allowed_t) = tokens.iter().find(|t| {
         matches!(
             t,
             lexer::Token::PUNCT_ASSIGNMENT
@@ -699,7 +699,8 @@ fn eval_constant_expression(
         )
     }) {
         return Err(format!(
-            "'=', '++', '--', ',' operators are not allowed and non integer types are not allowed"
+            "{:?}'s are not allowed in constant expressions",
+            not_allowed_t
         ));
     }
     let mut parenth_balance = Vec::<lexer::Token>::with_capacity(tokens.len());
@@ -1721,7 +1722,7 @@ fn eval_constant_expression(
                     if let Some(first) = &mut u.first {
                         let first_clone = *first.clone();
                         u.first = None;
-                        eval_stack.push(top_expr.clone());
+                        eval_stack.push(top_expr);
                         eval_stack.push(first_clone);
                     } else {
                         assert!(!primary_stack.is_empty());
