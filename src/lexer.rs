@@ -1119,13 +1119,17 @@ fn chain_lex(
             return keyword;
         }
     }
-    let identifier = match_identifier(program_str_bytes, index, str_maps);
-    if identifier.is_some() {
-        return identifier;
+    let char_const = match_character_constant(program_str_bytes, index, str_maps);
+    if char_const.is_some() {
+        return char_const;
     }
     let string_lit = match_string_literal(program_str_bytes, index, str_maps);
     if string_lit.is_some() {
         return string_lit;
+    }
+    let identifier = match_identifier(program_str_bytes, index, str_maps);
+    if identifier.is_some() {
+        return identifier;
     }
     let integer_const = match_integer_constant(program_str_bytes, index, str_maps);
     if integer_const.is_some() {
@@ -1134,10 +1138,6 @@ fn chain_lex(
     let float_const = match_floating_constant(program_str_bytes, index, str_maps);
     if float_const.is_some() {
         return float_const;
-    }
-    let char_const = match_character_constant(program_str_bytes, index, str_maps);
-    if char_const.is_some() {
-        return char_const;
     }
     None
 }
@@ -1184,6 +1184,38 @@ mod tests {
         ByteVecMaps, Token,
     };
     use std::collections::HashMap;
+    #[test]
+    fn chain_lex_test() -> Result<(), String> {
+        let s = r#"u8"hi""#.as_bytes();
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(s, false, &mut str_maps)?;
+        assert_eq!(
+            vec![Token::StringLiteral {
+                prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
+                sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
+            }],
+            tokens
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn chain_lex_test_character_string_lit() -> Result<(), String> {
+        let s = r#"u'hehe';u8"hi""#.as_bytes();
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(s, false, &mut str_maps)?;
+        assert_eq!(
+            vec![
+            Token::CONSTANT_CHAR(str_maps.add_byte_vec("u'hehe'".as_bytes())),
+            Token::PUNCT_SEMI_COLON,
+            Token::StringLiteral {
+                prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
+                sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
+            }],
+            tokens
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
