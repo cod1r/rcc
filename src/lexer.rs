@@ -159,7 +159,10 @@ pub enum Token {
         prefix_key: Option<usize>,
         sequence_key: usize,
     },
-    CONSTANT_CHAR(usize),
+    CONSTANT_CHAR {
+        prefix: Option<u8>,
+        sequence_key: usize,
+    },
 }
 impl Token {
     pub fn to_byte_vec(&self, str_maps: &ByteVecMaps) -> Option<Vec<u8>> {
@@ -675,9 +678,17 @@ fn match_character_constant(
         }
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\'' {
             byte_index += 1;
-            let token = Some(Token::CONSTANT_CHAR(
-                str_maps.add_byte_vec(&program_str_bytes[*index..byte_index]),
-            ));
+            let mut start_of_sequence = *index;
+            let token = Some(Token::CONSTANT_CHAR {
+                prefix: if program_str_bytes[*index] == b'\'' {
+                    None
+                } else {
+                    start_of_sequence += 1;
+                    Some(program_str_bytes[*index])
+                },
+                sequence_key: str_maps
+                    .add_byte_vec(&program_str_bytes[start_of_sequence..byte_index]),
+            });
             *index = byte_index;
             return token;
         }
@@ -1206,7 +1217,10 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                Token::CONSTANT_CHAR(str_maps.add_byte_vec("u'hehe'".as_bytes())),
+                Token::CONSTANT_CHAR {
+                    prefix: Some(b'u'),
+                    sequence_key: str_maps.add_byte_vec("'hehe'".as_bytes())
+                },
                 Token::PUNCT_SEMI_COLON,
                 Token::StringLiteral {
                     prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
@@ -1463,8 +1477,11 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s_key)) => {
-                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"'hi'");
+            Some(super::Token::CONSTANT_CHAR {
+                prefix,
+                sequence_key,
+            }) => {
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
             }
             _ => panic!(),
         }
@@ -1478,8 +1495,12 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s_key)) => {
-                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"L'hi'");
+            Some(super::Token::CONSTANT_CHAR {
+                prefix,
+                sequence_key,
+            }) => {
+                assert_eq!(*prefix, Some(b'L'));
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
             }
             _ => panic!(),
         }
@@ -1493,8 +1514,12 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s_key)) => {
-                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"u'hi'");
+            Some(super::Token::CONSTANT_CHAR {
+                prefix,
+                sequence_key,
+            }) => {
+                assert_eq!(*prefix, Some(b'u'));
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
             }
             _ => panic!(),
         }
@@ -1508,8 +1533,12 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR(s_key)) => {
-                assert_eq!(str_maps.key_to_byte_vec.get(*s_key).unwrap(), b"U'hi'");
+            Some(super::Token::CONSTANT_CHAR {
+                prefix,
+                sequence_key,
+            }) => {
+                assert_eq!(*prefix, Some(b'U'));
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
             }
             _ => panic!(),
         }
@@ -1550,7 +1579,7 @@ mod tests {
                 sequence_key,
             }) => {
                 assert!(prefix_key.is_none());
-                assert_eq!(str_maps.key_to_byte_vec.get(*sequence_key).unwrap(), b"hi");
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }

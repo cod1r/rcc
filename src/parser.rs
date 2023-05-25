@@ -16,7 +16,7 @@ impl PrimaryInner {
                 | lexer::Token::CONSTANT_HEXA_INT { .. }
                 | lexer::Token::CONSTANT_DEC_FLOAT { .. }
                 | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
-                | lexer::Token::CONSTANT_CHAR(_)
+                | lexer::Token::CONSTANT_CHAR { .. }
                 | lexer::Token::CONSTANT_OCTAL_INT { .. }
                 | lexer::Token::CONSTANT_ENUM(_)
         ) {
