@@ -1,16 +1,15 @@
-use ahash::{AHasher, RandomState};
 use std::collections::HashMap;
 
 pub struct ByteVecMaps {
     pub key_to_byte_vec: Vec<Vec<u8>>,
-    pub byte_vec_to_key: HashMap<Vec<u8>, usize, RandomState>,
+    pub byte_vec_to_key: HashMap<Vec<u8>, usize>,
 }
 
 impl ByteVecMaps {
     pub fn new() -> ByteVecMaps {
         ByteVecMaps {
             key_to_byte_vec: Vec::new(),
-            byte_vec_to_key: HashMap::default(),
+            byte_vec_to_key: HashMap::new(),
         }
     }
     pub fn add_byte_vec(&mut self, bytes_vec: &[u8]) -> usize {
