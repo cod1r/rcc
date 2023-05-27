@@ -347,6 +347,25 @@ fn match_string_literal(
             && (program_str_bytes[byte_index].is_ascii_alphanumeric()
                 || symbols.contains(&program_str_bytes[byte_index]))
         {
+            if program_str_bytes[byte_index] == b'\\' {
+                // allowed escape characters
+                // else return None
+                if byte_index + 1 < program_str_bytes.len()
+                    && (([
+                        b'\'', b'\"', b'?', b'\\', b'a', b'b', b'f', b'n', b'r', b't', b'v',
+                    ]
+                    .contains(&program_str_bytes[byte_index + 1])
+                        || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1]))
+                        || (byte_index + 2 < program_str_bytes.len()
+                            && program_str_bytes[byte_index + 1] == b'x'
+                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit()))
+                {
+                    byte_index += 2;
+                    continue;
+                } else {
+                    return None;
+                }
+            }
             byte_index += 1;
         }
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'"' {
