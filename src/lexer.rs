@@ -19,9 +19,191 @@ impl ByteVecMaps {
             self.byte_vec_to_key.insert(bytes_vec.to_vec(), key);
             key
         } else {
-            *self.byte_vec_to_key.get(bytes_vec).unwrap()
+            let Some(key) = self.byte_vec_to_key.get(bytes_vec) else { unreachable!() };
+            *key
         }
     }
+}
+
+macro_rules! parse_to_byte_vec_implementation {
+    ($type:expr) => {
+        fn parse_to_byte_vec(&self, str_maps: &ByteVecMaps) -> Result<Vec<u8>, String> {
+            let mut byte_vec = Vec::new();
+            let mut byte_index = 0;
+            while byte_index < str_maps.key_to_byte_vec[self.sequence_key].len() {
+                if str_maps.key_to_byte_vec[self.sequence_key][byte_index] == b'\\' {
+                    if byte_index + 1 < str_maps.key_to_byte_vec[self.sequence_key].len() {
+                        let b = str_maps.key_to_byte_vec[self.sequence_key][byte_index + 1];
+                        match b {
+                            b'a' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' | b'\'' | b'"' | b'?'
+                                | b'\\' => {
+                                    let escaped_byte = match b {
+                                        b'a' => 7,  // bell ascii
+                                        b'b' => 8,  // backspace ascii
+                                        b'f' => 12, // formfeed ascii
+                                        b'n' => b'\n',
+                                        b'r' => b'\r',
+                                        b't' => b'\t',
+                                        b'v' => 11, // vertical tab ascii
+                                        b'\'' => b'\'',
+                                        b'"' => b'"',
+                                        b'?' => b'?',
+                                        b'\\' => b'\\',
+                                        _ => unreachable!(),
+                                    };
+                                    byte_vec.push(escaped_byte);
+                                    byte_index += 2;
+                                    continue;
+                                }
+                            b'0' | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' => {
+                                let mut octal_seq_index = byte_index + 1;
+                                while octal_seq_index < byte_index + 4
+                                    && octal_seq_index
+                                        < str_maps.key_to_byte_vec[self.sequence_key].len()
+                                        && (b'0'..=b'7').contains(
+                                            &str_maps.key_to_byte_vec[self.sequence_key][octal_seq_index],
+                                            )
+                                        {
+                                            octal_seq_index += 1;
+                                        }
+                                let octal_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
+                                    [byte_index + 1..octal_seq_index]
+                                    .to_vec();
+                                let Ok(octal_str) = String::from_utf8(octal_seq_vec) else { unreachable!() };
+                                match u8::from_str_radix(octal_str.as_str(), 8) {
+                                    Ok(v) => {
+                                        byte_vec.push(v);
+                                        byte_index = octal_seq_index;
+                                        continue;
+                                    }
+                                    Err(parse_int_error) => match *parse_int_error.kind() {
+                                        std::num::IntErrorKind::Empty => {
+                                            return Err(format!(
+                                                    "Attempted to parse an empty string into a octal digit"
+                                                    ));
+                                        }
+                                        std::num::IntErrorKind::InvalidDigit => {
+                                            return Err(format!("Attempted to parse an invalid string into an octal digit"));
+                                        }
+                                        std::num::IntErrorKind::PosOverflow => {
+                                            return Err(format!("Attempted to parse a string that is too positive to fit into an octal digit"));
+                                        }
+                                        std::num::IntErrorKind::NegOverflow => {
+                                            return Err(format!("Attempted to parse a string that is too negative to fit into an octal digit"));
+                                        }
+                                        std::num::IntErrorKind::Zero => {
+                                            return Err(format!(
+                                                    "Value parsed was zero but should not be"
+                                                    ));
+                                        }
+                                        _ => unreachable!("Probably new parse int error enum variant"),
+                                    },
+                                }
+                            }
+                            // TODO: there is implemenation-defined behavior here
+                            // TODO: we need to go back and document all of the implementation defined
+                            // behaviors sooner or later.
+                            b'x' => {
+                                let mut hex_seq_index = byte_index + 2;
+                                while hex_seq_index < str_maps.key_to_byte_vec[self.sequence_key].len()
+                                    && str_maps.key_to_byte_vec[self.sequence_key][hex_seq_index]
+                                        .is_ascii_hexdigit()
+                                        {
+                                            hex_seq_index += 1;
+                                        }
+                                let mut start_of_seq = byte_index + 2;
+                                if (hex_seq_index - start_of_seq) & 1 != 0 {
+                                    let b = str_maps.key_to_byte_vec[self.sequence_key][start_of_seq];
+                                    let hex_val_byte = if b.is_ascii_digit() {
+                                        b - b'0'
+                                    } else {
+                                        b.to_ascii_lowercase() - b'a' + 10
+                                    };
+                                    byte_vec.push(hex_val_byte);
+                                    start_of_seq += 1;
+                                }
+                                while start_of_seq < hex_seq_index {
+                                    let hex_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
+                                        [start_of_seq..start_of_seq + 2]
+                                        .to_vec();
+                                    let Ok(hex_str) = String::from_utf8(hex_seq_vec) else { unreachable!() };
+                                    match u8::from_str_radix(hex_str.as_str(), 16) {
+                                        Ok(v) => {
+                                            byte_vec.push(v);
+                                        }
+                                        Err(parse_int_error) => match *parse_int_error.kind() {
+                                            std::num::IntErrorKind::Empty => {
+                                                return Err(format!("Attempted to parse an empty string into a hex digit"));
+                                            }
+                                            std::num::IntErrorKind::InvalidDigit => {
+                                                return Err(format!("Attempted to parse an invalid string into an hex digit"));
+                                            }
+                                            std::num::IntErrorKind::PosOverflow => {
+                                                return Err(format!("Attempted to parse a string that is too positive to fit into an hex digit"));
+                                            }
+                                            std::num::IntErrorKind::NegOverflow => {
+                                                return Err(format!("Attempted to parse a string that is too negative to fit into an hex digit"));
+                                            }
+                                            std::num::IntErrorKind::Zero => {
+                                                return Err(format!(
+                                                        "Value parsed was zero but should not be"
+                                                        ));
+                                            }
+                                            _ => unreachable!(
+                                                "Probably new parse int error enum variant"
+                                                ),
+                                        },
+                                    }
+                                    start_of_seq += 2;
+                                }
+                                byte_index = hex_seq_index;
+                                continue;
+                            }
+                            _ => {
+                                return Err(format!("unknown escape character \\{}", b as char));
+                            }
+                        }
+                    } else {
+                        return Err(format!("{} literal cannot have \\ in sequence", $type));
+                    }
+                }
+                byte_index += 1;
+            }
+            Ok(byte_vec)
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct ConstantChar {
+    prefix: Option<u8>,
+    sequence_key: usize,
+}
+
+impl ConstantChar {
+    fn new(prefix: Option<u8>, sequence_key: usize) -> ConstantChar {
+        ConstantChar {
+            prefix,
+            sequence_key,
+        }
+    }
+    parse_to_byte_vec_implementation!("character");
+}
+
+#[derive(Copy, Clone)]
+pub struct StringLiteral {
+    prefix_key: Option<usize>,
+    sequence_key: usize,
+}
+
+impl StringLiteral {
+    fn new(prefix_key: Option<usize>, sequence_key: usize) -> StringLiteral {
+        StringLiteral {
+            prefix_key,
+            sequence_key,
+        }
+    }
+    parse_to_byte_vec_implementation!("string");
 }
 
 #[allow(non_camel_case_types)]
