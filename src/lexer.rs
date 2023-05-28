@@ -482,11 +482,72 @@ impl Token {
         }
     }
 }
+fn match_universal_character_name<'a>(
+    program_str_bytes: &'a [u8],
+    index: usize,
+) -> Result<Option<&'a [u8]>, String> {
+    if program_str_bytes[index] == b'\\' {
+        match program_str_bytes[index + 1] {
+            b'U' => {
+                let mut eight_digit_index = index + 2;
+                while eight_digit_index < index + 10
+                    && eight_digit_index < program_str_bytes.len()
+                    && program_str_bytes[eight_digit_index].is_ascii_hexdigit()
+                    && program_str_bytes.len() - 1 - (index + 1) >= 8
+                {
+                    eight_digit_index += 1;
+                }
+                let slice = &program_str_bytes[index..eight_digit_index];
+                if slice.len() == 2 {
+                    return Err(format!("empty universal character name"));
+                }
+                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else { unreachable!() };
+                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else { unreachable!() };
+                //A universal character name shall not specify a character whose short identifier is less than 00A0
+                //other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive
+                if (v != b'$'.into() && v != b'@'.into() && v != b'`'.into() && v < 160)
+                    || (v >= 55296 && v <= 57343)
+                {
+                    return Err(format!("A universal character name shall not specify a character whose short identifier is less than 00A0
+other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive"));
+                }
+                return Ok(Some(slice));
+            }
+            b'u' => {
+                let mut four_digit_index = index + 2;
+                while four_digit_index < index + 6
+                    && four_digit_index < program_str_bytes.len()
+                    && program_str_bytes[four_digit_index].is_ascii_hexdigit()
+                    && program_str_bytes.len() - 1 - (index + 1) >= 4
+                {
+                    four_digit_index += 1;
+                }
+                let slice = &program_str_bytes[index..four_digit_index];
+                if slice.len() == 2 {
+                    return Err(format!("empty universal character name"));
+                }
+                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else { unreachable!() };
+                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else { unreachable!() };
+                //A universal character name shall not specify a character whose short identifier is less than 00A0
+                //other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive
+                if (v != b'$'.into() && v != b'@'.into() && v != b'`'.into() && v < 160)
+                    || (v >= 55296 && v <= 57343)
+                {
+                    return Err(format!("A universal character name shall not specify a character whose short identifier is less than 00A0
+other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive"));
+                }
+                return Ok(Some(slice));
+            }
+            _ => {}
+        }
+    }
+    Ok(None)
+}
 fn match_string_literal(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Result<Option<Token>, String> {
     let mut byte_index = *index;
     let mut token = Token::StringLiteral {
         prefix_key: None,
@@ -532,20 +593,30 @@ fn match_string_literal(
             if program_str_bytes[byte_index] == b'\\' {
                 // allowed escape characters
                 // else return None
-                if byte_index + 1 < program_str_bytes.len()
-                    && (([
+                if byte_index + 1 < program_str_bytes.len() {
+                    if ([
                         b'\'', b'\"', b'?', b'\\', b'a', b'b', b'f', b'n', b'r', b't', b'v',
                     ]
                     .contains(&program_str_bytes[byte_index + 1])
                         || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1]))
                         || (byte_index + 2 < program_str_bytes.len()
                             && program_str_bytes[byte_index + 1] == b'x'
-                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit()))
-                {
-                    byte_index += 2;
-                    continue;
+                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit())
+                    {
+                        byte_index += 2;
+                        continue;
+                    } else if program_str_bytes[byte_index + 1] == b'u'
+                        || program_str_bytes[byte_index + 1] == b'U'
+                    {
+                        if let Some(ucn) =
+                            match_universal_character_name(program_str_bytes, byte_index)?
+                        {
+                            byte_index += ucn.len();
+                            continue;
+                        }
+                    }
                 } else {
-                    return None;
+                    return Ok(None);
                 }
             }
             byte_index += 1;
@@ -560,10 +631,10 @@ fn match_string_literal(
             }
             byte_index += 1;
             *index = byte_index;
-            return Some(token);
+            return Ok(Some(token));
         }
     }
-    None
+    Ok(None)
 }
 fn match_integer_constant(
     program_str_bytes: &[u8],
@@ -832,7 +903,7 @@ fn match_character_constant(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Result<Option<Token>, String> {
     let mut byte_index = *index;
     if program_str_bytes[byte_index] == b'L'
         || program_str_bytes[byte_index] == b'u'
@@ -858,20 +929,30 @@ fn match_character_constant(
             if program_str_bytes[byte_index] == b'\\' {
                 // allowed escape characters
                 // else return None
-                if byte_index + 1 < program_str_bytes.len()
-                    && (([
+                if byte_index + 1 < program_str_bytes.len() {
+                    if ([
                         b'\'', b'\"', b'?', b'\\', b'a', b'b', b'f', b'n', b'r', b't', b'v',
                     ]
                     .contains(&program_str_bytes[byte_index + 1])
                         || (b'0'..=b'7').contains(&program_str_bytes[byte_index + 1]))
                         || (byte_index + 2 < program_str_bytes.len()
                             && program_str_bytes[byte_index + 1] == b'x'
-                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit()))
-                {
-                    byte_index += 2;
-                    continue;
+                            && program_str_bytes[byte_index + 2].is_ascii_hexdigit())
+                    {
+                        byte_index += 2;
+                        continue;
+                    } else if program_str_bytes[byte_index + 1] == b'u'
+                        || program_str_bytes[byte_index + 1] == b'U'
+                    {
+                        if let Some(ucn) =
+                            match_universal_character_name(program_str_bytes, byte_index)?
+                        {
+                            byte_index += ucn.len();
+                            continue;
+                        }
+                    }
                 } else {
-                    return None;
+                    return Ok(None);
                 }
             }
             byte_index += 1;
@@ -887,13 +968,13 @@ fn match_character_constant(
                     Some(program_str_bytes[*index])
                 },
                 sequence_key: str_maps
-                    .add_byte_vec(&program_str_bytes[start_of_sequence..byte_index]),
+                    .add_byte_vec(&program_str_bytes[start_of_sequence + 1..byte_index - 1]),
             });
             *index = byte_index;
-            return token;
+            return Ok(token);
         }
     }
-    None
+    Ok(None)
 }
 fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let byte_index = *index;
@@ -1190,8 +1271,16 @@ fn match_identifier(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Result<Option<Token>, String> {
     let mut byte_index = *index;
+    if byte_index + 1 < program_str_bytes.len()
+        && program_str_bytes[byte_index] == b'\\'
+        && (program_str_bytes[byte_index + 1] == b'U' || program_str_bytes[byte_index + 1] == b'u')
+    {
+        if let Some(ucn) = match_universal_character_name(program_str_bytes, *index)? {
+            byte_index += ucn.len();
+        }
+    }
     while byte_index < program_str_bytes.len()
         && (program_str_bytes[byte_index].is_ascii_alphanumeric()
             || program_str_bytes[byte_index] == b'_')
@@ -1199,15 +1288,14 @@ fn match_identifier(
         byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
-    // TODO: we need to check for universal character names
     if !bytes.is_empty() && !bytes[0].is_ascii_digit() && *bytes != *"__func__".as_bytes() {
         *index = byte_index;
-        return Some(Token::IDENT(str_maps.add_byte_vec(bytes)));
+        return Ok(Some(Token::IDENT(str_maps.add_byte_vec(bytes))));
     } else if *bytes == *"__func__".as_bytes() {
         *index = byte_index;
-        return Some(Token::PREDEF_IDENT___FUNC__);
+        return Ok(Some(Token::PREDEF_IDENT___FUNC__));
     }
-    None
+    Ok(None)
 }
 fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     let mut byte_index = *index;
@@ -1319,38 +1407,38 @@ fn chain_lex(
     index: &mut usize,
     is_pp: bool,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Result<Option<Token>, String> {
     let punctuator = match_punctuator(program_str_bytes, index);
     if punctuator.is_some() {
-        return punctuator;
+        return Ok(punctuator);
     }
     if !is_pp {
         let keyword = match_keyword(program_str_bytes, index);
         if keyword.is_some() {
-            return keyword;
+            return Ok(keyword);
         }
     }
-    let char_const = match_character_constant(program_str_bytes, index, str_maps);
+    let char_const = match_character_constant(program_str_bytes, index, str_maps)?;
     if char_const.is_some() {
-        return char_const;
+        return Ok(char_const);
     }
-    let string_lit = match_string_literal(program_str_bytes, index, str_maps);
+    let string_lit = match_string_literal(program_str_bytes, index, str_maps)?;
     if string_lit.is_some() {
-        return string_lit;
+        return Ok(string_lit);
     }
-    let identifier = match_identifier(program_str_bytes, index, str_maps);
+    let identifier = match_identifier(program_str_bytes, index, str_maps)?;
     if identifier.is_some() {
-        return identifier;
+        return Ok(identifier);
     }
     let integer_const = match_integer_constant(program_str_bytes, index, str_maps);
     if integer_const.is_some() {
-        return integer_const;
+        return Ok(integer_const);
     }
     let float_const = match_floating_constant(program_str_bytes, index, str_maps);
     if float_const.is_some() {
-        return float_const;
+        return Ok(float_const);
     }
-    None
+    Ok(None)
 }
 pub fn lexer(
     program_str_bytes: &[u8],
@@ -1365,7 +1453,7 @@ pub fn lexer(
             index += 1;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
             let token = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
-            if let Some(t) = token {
+            if let Ok(Some(t)) = token {
                 tokens.push(t);
             } else {
                 return Err(format!(
@@ -1396,6 +1484,28 @@ mod tests {
     };
     use std::collections::HashMap;
     #[test]
+    fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {
+        let s = r#"int \UAAAA_URMOM = 4"#.as_bytes();
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(s, false, &mut str_maps)?;
+        assert_eq!(
+            vec![
+                Token::KEYWORD_INT,
+                Token::WHITESPACE,
+                Token::IDENT(str_maps.add_byte_vec("\\UAAAA_URMOM".as_bytes())),
+                Token::WHITESPACE,
+                Token::PUNCT_ASSIGNMENT,
+                Token::WHITESPACE,
+                Token::CONSTANT_DEC_INT {
+                    suffix_key: None,
+                    value_key: str_maps.add_byte_vec("4".as_bytes())
+                }
+            ],
+            tokens
+        );
+        Ok(())
+    }
+    #[test]
     fn chain_lex_test() -> Result<(), String> {
         let s = r#"u8"hi""#.as_bytes();
         let mut str_maps = ByteVecMaps::new();
@@ -1419,7 +1529,7 @@ mod tests {
             vec![
                 Token::CONSTANT_CHAR {
                     prefix: Some(b'u'),
-                    sequence_key: str_maps.add_byte_vec("'hehe'".as_bytes())
+                    sequence_key: str_maps.add_byte_vec("hehe".as_bytes())
                 },
                 Token::PUNCT_SEMI_COLON,
                 Token::StringLiteral {
@@ -1670,92 +1780,92 @@ mod tests {
         assert!(float_token.is_some());
     }
     #[test]
-    fn test_match_character_constant_no_prefix() {
+    fn test_match_character_constant_no_prefix() -> Result<(), String> {
         let s = "'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR {
+            super::Token::CONSTANT_CHAR {
                 prefix,
                 sequence_key,
-            }) => {
-                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
+            } => {
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }
-        assert!(char_token.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_character_constant_wchar_t() {
+    fn test_match_character_constant_wchar_t() -> Result<(), String> {
         let s = "L'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR {
+            super::Token::CONSTANT_CHAR {
                 prefix,
                 sequence_key,
-            }) => {
+            } => {
                 assert_eq!(*prefix, Some(b'L'));
-                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }
-        assert!(char_token.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_character_constant_char16_t() {
+    fn test_match_character_constant_char16_t() -> Result<(), String> {
         let s = "u'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR {
+            super::Token::CONSTANT_CHAR {
                 prefix,
                 sequence_key,
-            }) => {
+            } => {
                 assert_eq!(*prefix, Some(b'u'));
-                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }
-        assert!(char_token.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_character_constant_char32_t() {
+    fn test_match_character_constant_char32_t() -> Result<(), String> {
         let s = "U'hi'";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let char_token = match_character_constant(s_bytes, &mut index, &mut str_maps);
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
         match &char_token {
-            Some(super::Token::CONSTANT_CHAR {
+            super::Token::CONSTANT_CHAR {
                 prefix,
                 sequence_key,
-            }) => {
+            } => {
                 assert_eq!(*prefix, Some(b'U'));
-                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"'hi'");
+                assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }
-        assert!(char_token.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_string_literal() {
+    fn test_match_string_literal() -> Result<(), String> {
         let s = "U\"hi\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
         match &string_literal {
-            Some(super::Token::StringLiteral {
+            super::Token::StringLiteral {
                 prefix_key,
                 sequence_key,
-            }) => {
+            } => {
                 assert_eq!(
                     str_maps.key_to_byte_vec.get(prefix_key.unwrap()).unwrap(),
                     b"U"
@@ -1764,39 +1874,39 @@ mod tests {
             }
             _ => panic!(),
         }
-        assert!(string_literal.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_string_literal_no_prefix() {
+    fn test_match_string_literal_no_prefix() -> Result<(), String> {
         let s = "\"hi\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
         match &string_literal {
-            Some(super::Token::StringLiteral {
+            super::Token::StringLiteral {
                 prefix_key,
                 sequence_key,
-            }) => {
+            } => {
                 assert!(prefix_key.is_none());
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
             _ => panic!(),
         }
-        assert!(string_literal.is_some());
+        Ok(())
     }
     #[test]
-    fn test_match_string_literal_no_prefix_universal_char_name() {
+    fn test_match_string_literal_no_prefix_universal_char_name() -> Result<(), String> {
         let s = "\"\\U0001F600\"";
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let string_literal = match_string_literal(s_bytes, &mut index, &mut str_maps);
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
         match &string_literal {
-            Some(super::Token::StringLiteral {
+            super::Token::StringLiteral {
                 prefix_key,
                 sequence_key,
-            }) => {
+            } => {
                 assert!(prefix_key.is_none());
                 assert_eq!(
                     str_maps.key_to_byte_vec.get(*sequence_key).unwrap(),
@@ -1805,7 +1915,7 @@ mod tests {
             }
             _ => panic!(),
         }
-        assert!(string_literal.is_some());
+        Ok(())
     }
     #[test]
     fn test_lexer() -> Result<(), String> {
