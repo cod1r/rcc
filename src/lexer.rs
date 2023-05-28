@@ -185,34 +185,11 @@ impl ConstantChar {
         if byte_vec.len() > 4 {
             return Err(format!("character constant has too many bytes"));
         }
-        let Ok(cc_str) = String::from_utf8(byte_vec) else { unreachable!() };
-        match u32::from_str_radix(cc_str.as_str(), 10) {
-            Ok(v) => Ok(v),
-            Err(parse_int_error) => {
-                match *parse_int_error.kind() {
-                    std::num::IntErrorKind::Empty => {
-                        return Err(format!(
-                            "Attempted to parse an empty string into a hex digit"
-                        ));
-                    }
-                    std::num::IntErrorKind::InvalidDigit => {
-                        return Err(format!(
-                            "Attempted to parse an invalid string into an hex digit"
-                        ));
-                    }
-                    std::num::IntErrorKind::PosOverflow => {
-                        return Err(format!("Attempted to parse a string that is too positive to fit into an hex digit"));
-                    }
-                    std::num::IntErrorKind::NegOverflow => {
-                        return Err(format!("Attempted to parse a string that is too negative to fit into an hex digit"));
-                    }
-                    std::num::IntErrorKind::Zero => {
-                        return Err(format!("Value parsed was zero but should not be"));
-                    }
-                    _ => unreachable!("Probably new parse int error enum variant"),
-                }
-            }
+        let mut val: u32 = 0;
+        for index in (0..byte_vec.len()).rev() {
+            val |= (byte_vec[index] << ((byte_vec.len() - 1 - index) * 8)) as u32;
         }
+        Ok(val)
     }
 }
 
@@ -373,6 +350,7 @@ impl StringLiteral {
             }
             byte_index += 1;
         }
+        byte_vec.push(0);
         Ok(byte_vec)
     }
 }
@@ -559,13 +537,33 @@ impl Token {
                 }
                 _ => Some(str_maps.key_to_byte_vec[*value_key].to_vec()),
             },
+            Token::CONSTANT_CHAR(ConstantChar {
+                prefix,
+                sequence_key,
+            }) => {
+                if let Some(prefix_byte) = prefix {
+                    let mut vec = vec![*prefix_byte];
+                    vec.push(b'\'');
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.push(b'\'');
+                    Some(vec)
+                } else {
+                    let mut vec = vec![];
+                    vec.push(b'\'');
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.push(b'\'');
+                    Some(vec)
+                }
+            }
             Token::StringLiteral(StringLiteral {
                 prefix_key,
                 sequence_key,
             }) => {
                 if let Some(pre_key) = prefix_key {
                     let mut vec = str_maps.key_to_byte_vec[*pre_key].to_vec();
+                    vec.push(b'\"');
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.push(b'\"');
                     Some(vec)
                 } else {
                     let mut vec = vec![b'\"'];
