@@ -160,10 +160,10 @@ fn include_directive(
                 .to_string();
                 file_name = Some(string_from_u8);
             }
-            Some(lexer::Token::StringLiteral {
+            Some(lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: _,
                 sequence_key,
-            }) => {
+            })) => {
                 let sequence = &str_maps.key_to_byte_vec[*sequence_key];
                 file_name = Some(String::from_utf8_lossy(sequence).to_string());
             }
@@ -749,7 +749,9 @@ fn eval_constant_expression(
     let mut index = 0;
     while index < tokens.len() {
         match &tokens[index] {
-            lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. } => {
+            lexer::Token::IDENT(_)
+            | lexer::Token::CONSTANT_DEC_INT { .. }
+            | lexer::Token::CONSTANT_CHAR(_) => {
                 let mut token_within = tokens[index];
                 if let lexer::Token::IDENT(ident_key) = &tokens[index] {
                     let ident = &str_maps.key_to_byte_vec[*ident_key];
@@ -915,6 +917,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1013,6 +1016,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                     )
                 ) {
@@ -1190,6 +1194,7 @@ fn eval_constant_expression(
                             | lexer::Token::PUNCT_NOT_BOOL
                             | lexer::Token::PUNCT_TILDE
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                     )
                 ) {
                     //TODO: this can panic if unary is the last token
@@ -1265,6 +1270,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1309,6 +1315,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1348,6 +1355,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1382,6 +1390,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1416,6 +1425,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1450,6 +1460,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1484,6 +1495,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1518,6 +1530,7 @@ fn eval_constant_expression(
                     Some(
                         lexer::Token::IDENT(_)
                             | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1690,32 +1703,41 @@ fn eval_constant_expression(
                         eval_stack.push(*e);
                     }
                     parser::PrimaryInner::Token(t) => {
-                        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-                        if let lexer::Token::CONSTANT_DEC_INT {
-                            value_key,
-                            suffix_key,
-                        } = t
-                        {
-                            // "For the purposes of this token conversion and evaluation,
-                            // all signed integer types and all unsigned integer types act as if they have the same representation
-                            // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
-                            //
-                            // We just 'cheat' by using i128 integer types. That way, regardless
-                            // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
-                            // compare and not have to do any weird casts.
-                            // TODO: add overflow checks...
-                            let value = &str_maps.key_to_byte_vec[value_key];
-                            match String::from_utf8_lossy(value).to_string().parse::<i128>() {
-                                Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
-                                    primary_stack.push(v);
-                                }
-                                _ => {
-                                    return Err(format!(
-                                        "{} cannot be represented as i64 or u64",
-                                        String::from_utf8_lossy(value).to_string()
-                                    ));
+                        assert!(matches!(
+                            t,
+                            lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
+                        ));
+                        match t {
+                            lexer::Token::CONSTANT_DEC_INT {
+                                value_key,
+                                suffix_key,
+                            } => {
+                                // "For the purposes of this token conversion and evaluation,
+                                // all signed integer types and all unsigned integer types act as if they have the same representation
+                                // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
+                                //
+                                // We just 'cheat' by using i128 integer types. That way, regardless
+                                // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
+                                // compare and not have to do any weird casts.
+                                // TODO: add overflow checks...
+                                let value = &str_maps.key_to_byte_vec[value_key];
+                                match String::from_utf8_lossy(value).to_string().parse::<i128>() {
+                                    Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
+                                        primary_stack.push(v);
+                                    }
+                                    _ => {
+                                        return Err(format!(
+                                            "{} cannot be represented as i64 or u64",
+                                            String::from_utf8_lossy(value).to_string()
+                                        ));
+                                    }
                                 }
                             }
+                            lexer::Token::CONSTANT_CHAR(cc) => {
+                                let parsed_val = cc.parse_to_value(str_maps)? as i128;
+                                primary_stack.push(parsed_val);
+                            }
+                            _ => unreachable!(),
                         }
                     }
                 },
@@ -2714,10 +2736,10 @@ fn parse_macro_and_replace(
                             }
                             actual_replacement_list.insert(
                                 start_remove_index,
-                                lexer::Token::StringLiteral {
+                                lexer::Token::StringLiteral(lexer::StringLiteral {
                                     prefix_key: None,
                                     sequence_key: str_maps.add_byte_vec(&sequence),
-                                },
+                                }),
                             );
                         } else {
                             actual_replacement_list.remove(token_index);
@@ -3164,10 +3186,10 @@ HI(5 5);"##
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral {
+            vec![lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: None,
                 sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
-            },],
+            }),],
             final_tokens
         );
         Ok(())
@@ -3209,10 +3231,10 @@ char p[] = join(x, y);"##;
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral {
+            vec![lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: None,
                 sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
-            },],
+            }),],
             final_tokens
         );
         Ok(())
@@ -3229,10 +3251,10 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
         let mut tokens = cpp(src, &["./test_c_files"], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
-                lexer::Token::StringLiteral {
+                lexer::Token::StringLiteral(lexer::StringLiteral {
                     prefix_key: None,
                     sequence_key: str_maps.add_byte_vec("hello world".as_bytes())
-                },
+                }),
                 lexer::Token::WHITESPACE,
                 lexer::Token::NEWLINE
             ],
@@ -3621,15 +3643,15 @@ INVOKE(FOO,BAR)"##
             vec![
                 lexer::Token::IDENT(str_maps.add_byte_vec("printf".as_bytes())),
                 lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::StringLiteral {
+                lexer::Token::StringLiteral(lexer::StringLiteral {
                     prefix_key: None,
                     sequence_key: str_maps.add_byte_vec("FOO".as_bytes())
-                },
+                }),
                 lexer::Token::WHITESPACE,
-                lexer::Token::StringLiteral {
+                lexer::Token::StringLiteral(lexer::StringLiteral {
                     prefix_key: None,
                     sequence_key: str_maps.add_byte_vec("BAR".as_bytes())
-                },
+                }),
                 lexer::Token::PUNCT_CLOSE_PAR,
             ],
             final_tokens
@@ -3801,6 +3823,14 @@ PP(/,*)PP2(*,/)"##
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res, true, "1");
         }
+        {
+            let src = r##"'1'"##.as_bytes();
+            let defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            assert_eq!(res, true, "'1'");
+        }
         Ok(())
     }
     #[test]
@@ -3907,6 +3937,22 @@ PP(/,*)PP2(*,/)"##
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res, true, "0 - 1 + !1");
+        {
+            let src = r##"'1' - '1'"##.as_bytes();
+            let defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            assert_eq!(res, false, "'1' - '1'");
+        }
+        {
+            let src = r##"'2' - '1'"##.as_bytes();
+            let defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            assert_eq!(res, true, "'1' - '1'");
+        }
         Ok(())
     }
     #[test]

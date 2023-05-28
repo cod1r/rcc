@@ -37,10 +37,10 @@ fn main() -> Result<(), String> {
         let define = cpp::Define {
             parameters: None,
             var_arg: false,
-            replacement_list: vec![lexer::Token::StringLiteral {
+            replacement_list: vec![lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: None,
                 sequence_key: str_maps.add_byte_vec(file.as_bytes()),
-            }],
+            })],
         };
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
         match std::fs::read(file) {
