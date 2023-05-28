@@ -9,7 +9,7 @@ fn main() -> Result<(), String> {
     let args = env::args();
     let mut files = Vec::new();
     for arg in args {
-        if arg.ends_with(".c") && arg.len() > 2 && !files.contains(&arg) {
+        if (arg.ends_with(".c") || arg.ends_with(".h")) && arg.len() > 2 && !files.contains(&arg) {
             files.push(arg);
         }
     }
