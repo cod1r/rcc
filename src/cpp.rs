@@ -54,6 +54,7 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
             byte_index += 1;
             while byte_index < bytes.len() && bytes[byte_index] != start {
                 comments_removed.push(bytes[byte_index]);
+                // for escaped ' and "
                 if byte_index + 1 < bytes.len() && bytes[byte_index] == b'\\' {
                     comments_removed.push(bytes[byte_index + 1]);
                     byte_index += 1;
@@ -63,6 +64,7 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
             if byte_index < bytes.len() && bytes[byte_index] == start {
                 comments_removed.push(bytes[byte_index]);
                 byte_index += 1;
+                continue;
             } else {
                 return Err(format!("no matching ending quote"));
             }
