@@ -1,4 +1,6 @@
+use crate::cpp::{self};
 use crate::lexer::{self};
+use std::collections::HashMap;
 #[derive(Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
@@ -201,4 +203,1760 @@ impl Expr {
             Expr::Conditional(_) => u8::MAX - 14,
         }
     }
+}
+macro_rules! case_where_it_could_be_unary_or_additive {
+    ($parserTypeVar:ident, $rightExprVar:ident, $token:expr) => {
+        if $parserTypeVar.second.is_none() {
+            $rightExprVar = Some(Expr::Unary(Unary {
+                op: match $token {
+                    lexer::Token::PUNCT_PLUS => UnaryOp::Add,
+                    lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
+                    lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
+                    lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
+                    _ => unreachable!(),
+                },
+                first: None,
+            }));
+        } else {
+            $rightExprVar = Some(Expr::Additive(Additive {
+                op: match $token {
+                    lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
+                    lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                    _ => unreachable!(),
+                },
+                first: None,
+                second: None,
+            }));
+        }
+    };
+}
+/*
+   Expr::Primary
+   Expr::PostFix
+   Expr::Unary
+   Expr::Cast
+   Expr::Multiplicative
+   Expr::Additive
+   Expr::BitShift
+   Expr::Relational
+   Expr::Equality
+   Expr::BitAND
+   Expr::BitXOR
+   Expr::BitOR
+   Expr::LogicalAND
+   Expr::LogicalOR
+   Expr::Conditional
+*/
+fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
+    assert!(right.priority() > left.priority());
+    match left {
+        Expr::Unary(u) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(u.first.is_none());
+            }
+            _ => unreachable!(),
+        },
+        Expr::Multiplicative(m) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(m.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(m.second.is_none());
+            }
+            _ => unreachable!(),
+        },
+        Expr::Additive(a) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(a.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(a.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = a.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::BitShift(bs) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(bs.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(bs.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = bs.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = bs.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::Relational(r) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(r.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(r.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = r.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = r.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = r.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::Equality(e) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(e.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(e.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = e.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = e.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = e.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = e.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::BitAND(ba) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(ba.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(ba.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = ba.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = ba.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = ba.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = ba.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = ba.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::BitXOR(bx) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(bx.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(bx.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = bx.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = bx.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = bx.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = bx.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = bx.second.clone();
+            }
+            Expr::BitAND(ba) => {
+                assert!(ba.first.is_none());
+                ba.first = bx.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::BitOR(bo) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(bo.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(bo.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = bo.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = bo.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = bo.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = bo.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = bo.second.clone();
+            }
+            Expr::BitAND(ba) => {
+                assert!(ba.first.is_none());
+                ba.first = bo.second.clone();
+            }
+            Expr::BitXOR(bx) => {
+                assert!(bx.first.is_none());
+                bx.first = bo.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::LogicalAND(la) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(la.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(la.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = la.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = la.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = la.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = la.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = la.second.clone();
+            }
+            Expr::BitAND(ba) => {
+                assert!(ba.first.is_none());
+                ba.first = la.second.clone();
+            }
+            Expr::BitXOR(bx) => {
+                assert!(bx.first.is_none());
+                bx.first = la.second.clone();
+            }
+            Expr::BitOR(bo) => {
+                assert!(bo.first.is_none());
+                bo.first = la.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::LogicalOR(lo) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(lo.second.is_none());
+            }
+            Expr::Unary(_) => {
+                assert!(lo.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = lo.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = lo.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = lo.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = lo.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = lo.second.clone();
+            }
+            Expr::BitAND(ba) => {
+                assert!(ba.first.is_none());
+                ba.first = lo.second.clone();
+            }
+            Expr::BitXOR(bx) => {
+                assert!(bx.first.is_none());
+                bx.first = lo.second.clone();
+            }
+            Expr::BitOR(bo) => {
+                assert!(bo.first.is_none());
+                bo.first = lo.second.clone();
+            }
+            Expr::LogicalAND(la) => {
+                assert!(la.first.is_none());
+                la.first = lo.second.clone();
+            }
+            _ => unreachable!(),
+        },
+        Expr::Conditional(c) => {
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
+            match right {
+                Expr::Primary(p) => {
+                    assert!(p.is_some());
+                    assert!(c.third.is_none());
+                }
+                Expr::Unary(u) => {
+                    assert!(c.third.is_none());
+                }
+                Expr::Multiplicative(m) => {
+                    assert!(m.first.is_none());
+                    m.first = c.third.clone();
+                }
+                Expr::Additive(a) => {
+                    assert!(a.first.is_none());
+                    a.first = c.third.clone();
+                }
+                Expr::BitShift(bs) => {
+                    assert!(bs.first.is_none());
+                    bs.first = c.third.clone();
+                }
+                Expr::Relational(r) => {
+                    assert!(r.first.is_none());
+                    r.first = c.third.clone();
+                }
+                Expr::Equality(e) => {
+                    assert!(e.first.is_none());
+                    e.first = c.third.clone();
+                }
+                Expr::BitAND(ba) => {
+                    assert!(ba.first.is_none());
+                    ba.first = c.third.clone();
+                }
+                Expr::BitXOR(bx) => {
+                    assert!(bx.first.is_none());
+                    bx.first = c.third.clone();
+                }
+                Expr::BitOR(bo) => {
+                    assert!(bo.first.is_none());
+                    bo.first = c.third.clone();
+                }
+                Expr::LogicalAND(la) => {
+                    assert!(la.first.is_none());
+                    la.first = c.third.clone();
+                }
+                Expr::LogicalOR(lo) => {
+                    assert!(lo.first.is_none());
+                    lo.first = c.third.clone();
+                }
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
+    assert!(left.priority() >= right.priority());
+    let boxed = Some(Box::new(left.clone()));
+    match right {
+        Expr::Multiplicative(m) => {
+            m.first = boxed;
+        }
+        Expr::Additive(a) => {
+            a.first = boxed;
+        }
+        Expr::BitShift(bs) => {
+            bs.first = boxed;
+        }
+        Expr::Relational(r) => {
+            r.first = boxed;
+        }
+        Expr::Equality(e) => {
+            e.first = boxed;
+        }
+        Expr::BitAND(ba) => {
+            ba.first = boxed;
+        }
+        Expr::BitXOR(bx) => {
+            bx.first = boxed;
+        }
+        Expr::BitOR(bo) => {
+            bo.first = boxed;
+        }
+        Expr::LogicalAND(la) => {
+            la.first = boxed;
+        }
+        Expr::LogicalOR(lo) => {
+            lo.first = boxed;
+        }
+        Expr::Conditional(c) => {
+            unreachable!()
+        }
+        _ => unreachable!(),
+    }
+}
+
+//Notes:
+//The expression that controls conditional inclusion shall be an integer constant expression
+//Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
+//All macro identifiers are evaluated as defined or not defined.
+// TODO: rewrite this. It works but is WAYY too convoluted.
+pub fn eval_constant_expression(
+    tokens: &[lexer::Token],
+    defines: &HashMap<usize, cpp::Define>,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<i128, String> {
+    //let START_TIMER = std::time::Instant::now();
+    if tokens
+        .iter()
+        .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
+        .count()
+        == 0
+    {
+        return Err(format!("empty expression given"));
+    }
+    if let Some(not_allowed_t) = tokens.iter().find(|t| {
+        matches!(
+            t,
+            lexer::Token::PUNCT_ASSIGNMENT
+                | lexer::Token::PUNCT_INCREMENT
+                | lexer::Token::PUNCT_DECREMENT
+                | lexer::Token::PUNCT_OPEN_CURLY
+                | lexer::Token::PUNCT_CLOSE_CURLY
+                | lexer::Token::PUNCT_OPEN_SQR
+                | lexer::Token::PUNCT_CLOSE_SQR
+                | lexer::Token::CONSTANT_DEC_FLOAT { .. }
+                | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
+                | lexer::Token::PUNCT_COMMA
+                | lexer::Token::StringLiteral { .. }
+                | lexer::Token::PUNCT_ARROW
+                | lexer::Token::PUNCT_ADD_ASSIGN
+                | lexer::Token::PUNCT_DIV_ASSIGN
+                | lexer::Token::PUNCT_SUB_ASSIGN
+                | lexer::Token::PUNCT_MULT_ASSIGN
+                | lexer::Token::PUNCT_MODULO_ASSIGN
+                | lexer::Token::PUNCT_AND_BIT_ASSIGN
+                | lexer::Token::PUNCT_OR_BIT_ASSIGN
+                | lexer::Token::PUNCT_XOR_BIT_ASSIGN
+                | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
+                | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
+        )
+    }) {
+        return Err(format!(
+            "{:?}'s are not allowed in constant expressions",
+            not_allowed_t
+        ));
+    }
+    let mut parenth_balance = Vec::<lexer::Token>::with_capacity(tokens.len());
+    for par_bal_index in 0..tokens.len() {
+        match tokens[par_bal_index] {
+            lexer::Token::PUNCT_OPEN_PAR => {
+                parenth_balance.push(tokens[par_bal_index]);
+            }
+            lexer::Token::PUNCT_CLOSE_PAR => {
+                if let Some(lexer::Token::PUNCT_OPEN_PAR) = parenth_balance.last() {
+                    parenth_balance.pop();
+                } else {
+                    return Err(String::from("parentheses in expression not balanced"));
+                }
+            }
+            _ => {}
+        }
+    }
+    // TODO: describe our algorithm in comments below
+    // or we will forget how any of this shit works
+    if !parenth_balance.is_empty() {
+        return Err(String::from("parentheses in expression not balanced"));
+    }
+    let mut stack = Vec::<Expr>::new();
+    // if our current expression is 'complete' as in it has all it
+    // needs to be defined as whatever type of expression it is, we
+    // need to look at our expression stack to see if any expression
+    // uses this curr_expr as a sub-expression.
+    // There should be no cases where we have an expression on the
+    // stack that is complete and curr_expr also being complete.
+    //
+    // In the case where curr_expr would use an expression on the stack
+    // as a sub expression, we would pop off the expression on the
+    // stack and put it as a sub expression in the curr_expr.
+    //
+    // curr_expr would be the end result of constructing the expression
+    // tree
+    //
+    //
+    // postfix and cast expressions aren't needed.
+    // (postfix_expr -) isn't an expression that we would construct as we would just construct a
+    // additive expression anyways
+    let mut curr_expr: Option<Expr> = None;
+    let mut left_expression: Option<Expr> = None;
+    let mut right_expression: Option<Expr> = None;
+    let mut index = 0;
+    while index < tokens.len() {
+        match &tokens[index] {
+            lexer::Token::IDENT(_)
+            | lexer::Token::CONSTANT_DEC_INT { .. }
+            | lexer::Token::CONSTANT_CHAR(_) => {
+                let mut token_within = tokens[index];
+                let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
+                if curr_expr.is_none() {
+                    curr_expr = Some(primary);
+                } else {
+                    match &mut curr_expr {
+                        Some(Expr::Additive(a)) => {
+                            assert!(a.first.is_some());
+                            a.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Unary(u)) => {
+                            assert!(u.first.is_none());
+                            u.first = Some(Box::new(primary));
+                        }
+                        Some(Expr::LogicalOR(lo)) => {
+                            assert!(lo.first.is_some());
+                            lo.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::LogicalAND(la)) => {
+                            assert!(la.first.is_some());
+                            la.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitOR(bo)) => {
+                            assert!(bo.first.is_some());
+                            bo.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitXOR(bx)) => {
+                            assert!(bx.first.is_some());
+                            bx.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitAND(ba)) => {
+                            assert!(ba.first.is_some());
+                            ba.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Equality(e)) => {
+                            assert!(e.first.is_some());
+                            e.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Relational(r)) => {
+                            assert!(r.first.is_some());
+                            r.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitShift(bs)) => {
+                            assert!(bs.first.is_some());
+                            bs.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Multiplicative(m)) => {
+                            assert!(m.first.is_some());
+                            m.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Conditional(c)) => {
+                            if c.first.is_none() {
+                                c.first = Some(Box::new(primary));
+                            } else if c.second.is_none() {
+                                c.second = Some(Box::new(primary));
+                            } else if c.third.is_none() {
+                                c.third = Some(Box::new(primary));
+                            }
+                        }
+                        _ => return Err(format!("err at index: {}", index)),
+                    }
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_MULT
+                            | lexer::Token::PUNCT_DIV
+                            | lexer::Token::PUNCT_MODULO
+                            | lexer::Token::PUNCT_BITSHFT_LEFT
+                            | lexer::Token::PUNCT_BITSHFT_RIGHT
+                            | lexer::Token::PUNCT_LESS_THAN
+                            | lexer::Token::PUNCT_LESS_THAN_EQ
+                            | lexer::Token::PUNCT_GREATER_THAN
+                            | lexer::Token::PUNCT_GREATER_THAN_EQ
+                            | lexer::Token::PUNCT_EQ_BOOL
+                            | lexer::Token::PUNCT_NOT_EQ_BOOL
+                            | lexer::Token::PUNCT_AND_BIT
+                            | lexer::Token::PUNCT_XOR_BIT
+                            | lexer::Token::PUNCT_OR_BIT
+                            | lexer::Token::PUNCT_AND_BOOL
+                            | lexer::Token::PUNCT_OR_BOOL
+                            | lexer::Token::PUNCT_CLOSE_PAR
+                            | lexer::Token::PUNCT_QUESTION_MARK
+                            | lexer::Token::PUNCT_COLON
+                    ) | None
+                ) {
+                    return Err(format!("unexpected operator: {:?}", tokens));
+                }
+            }
+            lexer::Token::PUNCT_OPEN_PAR => {
+                if let Some(expr) = curr_expr {
+                    stack.push(expr);
+                }
+                stack.push(Expr::Primary(None));
+                curr_expr = None;
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "expected '-', '(', or an identifier/integer constant: {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_CLOSE_PAR => {
+                // thought process here is that we want to pop until we hit the opening parenthesis
+                // that created the primary expression.
+                //  -- Side Note: if there is a unary operator before the opening parenthesis, we
+                //     need to keep going until we pop the unary operator
+                // if we do not encounter the primary expression, we treat other expressions as
+                // having a lower priority (it has to be because that's the only reason our 'stack'
+                // exists) which means that we set curr_expr to that expression with that
+                // expression having the old curr_expr as a child in the expression tree
+                let mut popped_opening_parenth_already = false;
+                while let Some(mut e) = stack.pop() {
+                    match e {
+                        Expr::Primary(ref mut p) => {
+                            *p = Some(PrimaryInner::new_p_expr(curr_expr.unwrap()));
+                            curr_expr = Some(e);
+                            if !matches!(stack.last(), Some(Expr::Unary(_))) {
+                                break;
+                            } else {
+                                popped_opening_parenth_already = true;
+                            }
+                        }
+                        Expr::Unary(ref mut u) => {
+                            u.first = Some(Box::new(curr_expr.unwrap()));
+                            curr_expr = Some(e);
+                            if popped_opening_parenth_already {
+                                break;
+                            }
+                        }
+                        _ => {
+                            assert!(e.priority() <= curr_expr.clone().unwrap().priority());
+                            let unwrapped = Some(Box::new(curr_expr.unwrap()));
+                            match e {
+                                Expr::Unary(ref mut u) => {
+                                    u.first = unwrapped;
+                                }
+                                Expr::Multiplicative(ref mut m) => {
+                                    m.second = unwrapped;
+                                }
+                                Expr::Additive(ref mut a) => {
+                                    a.second = unwrapped;
+                                }
+                                Expr::BitShift(ref mut bs) => {
+                                    bs.second = unwrapped;
+                                }
+                                Expr::Relational(ref mut r) => {
+                                    r.second = unwrapped;
+                                }
+                                Expr::Equality(ref mut e) => {
+                                    e.second = unwrapped;
+                                }
+                                Expr::BitAND(ref mut ba) => {
+                                    ba.second = unwrapped;
+                                }
+                                Expr::BitXOR(ref mut bx) => {
+                                    bx.second = unwrapped;
+                                }
+                                Expr::BitOR(ref mut bo) => {
+                                    bo.second = unwrapped;
+                                }
+                                Expr::LogicalAND(ref mut la) => {
+                                    la.second = unwrapped;
+                                }
+                                Expr::LogicalOR(ref mut lo) => {
+                                    lo.second = unwrapped;
+                                }
+                                Expr::Conditional(ref mut c) => {
+                                    c.third = unwrapped;
+                                }
+                                _ => unreachable!(),
+                            }
+                            curr_expr = Some(e);
+                        }
+                    }
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator ')': {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_PLUS
+            | lexer::Token::PUNCT_MINUS
+            | lexer::Token::PUNCT_NOT_BOOL
+            | lexer::Token::PUNCT_TILDE => {
+                left_expression = curr_expr;
+                match &left_expression {
+                    Some(Expr::Primary(p)) => {
+                        // if a '~' or '!' follow a primary expression, that is not allowed.
+                        match tokens[index] {
+                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                                return Err(format!("unexpected {:?} token", tokens[index]));
+                            }
+                            _ => {}
+                        }
+                        right_expression = Some(Expr::Additive(Additive {
+                            op: match tokens[index] {
+                                lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
+                                lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                                _ => unreachable!("{:?}", tokens[index]),
+                            },
+                            first: None,
+                            second: None,
+                        }));
+                        curr_expr = None;
+                    }
+                    None => {
+                        curr_expr = Some(Expr::Unary(Unary {
+                            op: match tokens[index] {
+                                lexer::Token::PUNCT_PLUS => UnaryOp::Add,
+                                lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
+                                lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
+                                lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
+                                _ => unreachable!(),
+                            },
+                            first: None,
+                        }));
+                    }
+                    Some(Expr::Unary(Unary { op: _, first })) => {
+                        if first.is_none() {
+                            stack.push(left_expression.clone().unwrap());
+                            curr_expr = Some(Expr::Unary(Unary {
+                                op: match tokens[index] {
+                                    lexer::Token::PUNCT_PLUS => UnaryOp::Add,
+                                    lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
+                                    lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
+                                    lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                            }));
+                        } else {
+                            // if a '~' or '!' follow a unary expression, that is not allowed.
+                            match tokens[index] {
+                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                                    return Err(format!("unexpected {:?} token", tokens[index]));
+                                }
+                                _ => {}
+                            }
+                            right_expression = Some(Expr::Additive(Additive {
+                                op: match tokens[index] {
+                                    lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
+                                    lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                                    _ => unreachable!("{:?}", tokens[index]),
+                                },
+                                first: None,
+                                second: None,
+                            }));
+                            curr_expr = None;
+                        }
+                    }
+                    Some(Expr::Multiplicative(m)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            m,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::Additive(a)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            a,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::BitShift(bs)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bs,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::Relational(r)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            r,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::Equality(e)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            e,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::BitAND(ba)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            ba,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::BitXOR(bx)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bx,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::BitOR(bo)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            bo,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::LogicalAND(la)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            la,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    Some(Expr::LogicalOR(lo)) => {
+                        case_where_it_could_be_unary_or_additive!(
+                            lo,
+                            right_expression,
+                            tokens[index]
+                        );
+                        curr_expr = None;
+                    }
+                    _ => unreachable!(),
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                    )
+                ) {
+                    //TODO: this can panic if unary is the last token
+                    return Err(format!(
+                        "not allowed token after operators '+', '-', '!', '~': {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::Multiplicative(Multiplicative {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
+                        lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
+                        lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operators '*', '/', and '%': {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_BITSHFT_RIGHT | lexer::Token::PUNCT_BITSHFT_LEFT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::BitShift(BitShift {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_BITSHFT_LEFT => BitShiftOp::Left,
+                        lexer::Token::PUNCT_BITSHFT_RIGHT => BitShiftOp::Right,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operators '<<' and '>>': {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_LESS_THAN
+            | lexer::Token::PUNCT_LESS_THAN_EQ
+            | lexer::Token::PUNCT_GREATER_THAN
+            | lexer::Token::PUNCT_GREATER_THAN_EQ => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::Relational(Relational {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_LESS_THAN => RelationalOp::LessThan,
+                        lexer::Token::PUNCT_LESS_THAN_EQ => RelationalOp::LessThanEq,
+                        lexer::Token::PUNCT_GREATER_THAN => RelationalOp::GreaterThan,
+                        lexer::Token::PUNCT_GREATER_THAN_EQ => RelationalOp::GreaterThanEq,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operators '<', '<=', '>', '>=', {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::Equality(Equality {
+                    op: match tokens[index] {
+                        lexer::Token::PUNCT_EQ_BOOL => EqualityOp::Equal,
+                        lexer::Token::PUNCT_NOT_EQ_BOOL => EqualityOp::NotEqual,
+                        _ => unreachable!(),
+                    },
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operators '==', '!=', {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_AND_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::BitAND(BitAND {
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator '&' {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_XOR_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::BitXOR(BitXOR {
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator '^' {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_OR_BIT => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::BitOR(BitOR {
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator '|' {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_AND_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::LogicalAND(LogicalAND {
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator '&&' {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_OR_BOOL => {
+                if curr_expr.is_none() {
+                    return Err(format!("unexpected token: {:?}", tokens[index]));
+                }
+                left_expression = curr_expr;
+                curr_expr = None;
+                right_expression = Some(Expr::LogicalOR(LogicalOR {
+                    first: None,
+                    second: None,
+                }));
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(index),
+                    Some(
+                        lexer::Token::IDENT(_)
+                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                            | lexer::Token::CONSTANT_CHAR(_)
+                            | lexer::Token::PUNCT_OPEN_PAR
+                            | lexer::Token::PUNCT_PLUS
+                            | lexer::Token::PUNCT_MINUS
+                            | lexer::Token::PUNCT_NOT_BOOL
+                            | lexer::Token::PUNCT_TILDE
+                    )
+                ) {
+                    return Err(format!(
+                        "not allowed token after operator '||', {:?}",
+                        tokens[index]
+                    ));
+                }
+            }
+            lexer::Token::PUNCT_QUESTION_MARK => {
+                if let Some(expr) = curr_expr {
+                    let expr_cond = Expr::Conditional(Conditional {
+                        first: Some(Box::new(expr)),
+                        second: None,
+                        third: None,
+                    });
+                    stack.push(expr_cond);
+                    curr_expr = None;
+                } else {
+                    return Err(String::from(
+                        "missing first operator for conditional expression",
+                    ));
+                }
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+            }
+            lexer::Token::PUNCT_COLON => {
+                if curr_expr.is_none() {
+                    return Err(format!("expected expression before ':'"));
+                }
+                while let Some(mut expr) = stack.pop() {
+                    let unwrapped = Some(Box::new(curr_expr.unwrap()));
+                    match expr {
+                        Expr::Unary(ref mut u) => {
+                            u.first = unwrapped;
+                        }
+                        Expr::Multiplicative(ref mut m) => {
+                            m.second = unwrapped;
+                        }
+                        Expr::Additive(ref mut a) => {
+                            a.second = unwrapped;
+                        }
+                        Expr::BitShift(ref mut bs) => {
+                            bs.second = unwrapped;
+                        }
+                        Expr::Relational(ref mut r) => {
+                            r.second = unwrapped;
+                        }
+                        Expr::Equality(ref mut e) => {
+                            e.second = unwrapped;
+                        }
+                        Expr::BitAND(ref mut ba) => {
+                            ba.second = unwrapped;
+                        }
+                        Expr::BitXOR(ref mut bx) => {
+                            bx.second = unwrapped;
+                        }
+                        Expr::BitOR(ref mut bo) => {
+                            bo.second = unwrapped;
+                        }
+                        Expr::LogicalAND(ref mut la) => {
+                            la.second = unwrapped;
+                        }
+                        Expr::LogicalOR(ref mut lo) => {
+                            lo.second = unwrapped;
+                        }
+                        Expr::Conditional(ref mut c) => {
+                            c.second = unwrapped;
+                            curr_expr = Some(expr);
+                            break;
+                        }
+                        _ => unreachable!(),
+                    }
+                    curr_expr = Some(expr);
+                }
+                if !matches!(curr_expr, Some(Expr::Conditional(_))) {
+                    return Err(format!("unexpected ':'. ':' are used in conditional expressions (<expr> ? <expr> : <expr>)"));
+                }
+                stack.push(curr_expr.unwrap());
+                curr_expr = None;
+                loop {
+                    index += 1;
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                        break;
+                    }
+                }
+            }
+            lexer::Token::WHITESPACE => {
+                index += 1;
+            }
+            _ => return Err(format!("unknown token: {:?}", tokens[index])),
+        }
+        if left_expression.is_some() && right_expression.is_some() {
+            let mut left = left_expression.unwrap();
+            let mut right = right_expression.unwrap();
+            if left.priority() >= right.priority() {
+                left_has_higher_eq_priority(&mut left, &mut right);
+            } else {
+                right_has_higher_priority(&mut left, &mut right);
+                stack.push(left);
+            }
+            curr_expr = Some(right);
+            left_expression = None;
+            right_expression = None;
+        }
+    }
+    while let Some(mut expr) = stack.pop() {
+        assert!(curr_expr.is_some());
+        let unwrapped = Some(Box::new(curr_expr.unwrap()));
+        match expr {
+            Expr::Unary(ref mut u) => {
+                u.first = unwrapped;
+            }
+            Expr::Multiplicative(ref mut m) => {
+                m.second = unwrapped;
+            }
+            Expr::Additive(ref mut a) => {
+                a.second = unwrapped;
+            }
+            Expr::BitShift(ref mut bs) => {
+                bs.second = unwrapped;
+            }
+            Expr::Relational(ref mut r) => {
+                r.second = unwrapped;
+            }
+            Expr::Equality(ref mut e) => {
+                e.second = unwrapped;
+            }
+            Expr::BitAND(ref mut ba) => {
+                ba.second = unwrapped;
+            }
+            Expr::BitXOR(ref mut bx) => {
+                bx.second = unwrapped;
+            }
+            Expr::BitOR(ref mut bo) => {
+                bo.second = unwrapped;
+            }
+            Expr::LogicalAND(ref mut la) => {
+                la.second = unwrapped;
+            }
+            Expr::LogicalOR(ref mut lo) => {
+                lo.second = unwrapped;
+            }
+            Expr::Conditional(ref mut c) => {
+                assert!(c.first.is_some() && c.second.is_some());
+                c.third = unwrapped;
+            }
+            _ => unreachable!("{}", expr.priority()),
+        }
+        curr_expr = Some(expr);
+    }
+    // where we start evaluating the expression tree
+    // TODO: remove duplicate structure of code.
+    let mut eval_stack = Vec::<Expr>::new();
+    let mut primary_stack = Vec::<i128>::new();
+    if curr_expr.is_some() {
+        eval_stack.push(curr_expr.unwrap());
+        while let Some(mut top_expr) = eval_stack.pop() {
+            match top_expr {
+                Expr::Primary(ref mut p) => match p.clone().unwrap() {
+                    PrimaryInner::Expr(e) => {
+                        eval_stack.push(*e);
+                    }
+                    PrimaryInner::Token(t) => {
+                        assert!(matches!(
+                            t,
+                            lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
+                        ));
+                        match t {
+                            lexer::Token::CONSTANT_DEC_INT {
+                                value_key,
+                                suffix_key,
+                            } => {
+                                // "For the purposes of this token conversion and evaluation,
+                                // all signed integer types and all unsigned integer types act as if they have the same representation
+                                // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
+                                //
+                                // We just 'cheat' by using i128 integer types. That way, regardless
+                                // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
+                                // compare and not have to do any weird casts.
+                                // TODO: add overflow checks...
+                                let value = &str_maps.key_to_byte_vec[value_key];
+                                match String::from_utf8_lossy(value).to_string().parse::<i128>() {
+                                    Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
+                                        primary_stack.push(v);
+                                    }
+                                    _ => {
+                                        return Err(format!(
+                                            "{} cannot be represented as i64 or u64",
+                                            String::from_utf8_lossy(value).to_string()
+                                        ));
+                                    }
+                                }
+                            }
+                            lexer::Token::CONSTANT_CHAR(cc) => {
+                                let parsed_val = cc.parse_to_value(str_maps)? as i128;
+                                primary_stack.push(parsed_val);
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                },
+                Expr::Unary(ref mut u) => {
+                    if let Some(first) = &mut u.first {
+                        let first_clone = *first.clone();
+                        u.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(first_clone);
+                    } else {
+                        assert!(!primary_stack.is_empty());
+                        let one = primary_stack.pop().unwrap();
+                        match u.op {
+                            UnaryOp::Add => {
+                                primary_stack.push(one);
+                            }
+                            UnaryOp::Sub => {
+                                primary_stack.push(-one);
+                            }
+                            UnaryOp::BitNOT => {
+                                primary_stack.push(!one);
+                            }
+                            UnaryOp::LogicalNOT => {
+                                primary_stack.push(if one == 0 { 1 } else { 0 });
+                            }
+                            UnaryOp::Ampersand | UnaryOp::Deref => {
+                                unreachable!()
+                            }
+                        }
+                    }
+                }
+                Expr::Multiplicative(ref mut m) => {
+                    if let Some(left) = &mut m.first {
+                        let left_clone = *left.clone();
+                        m.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut m.second {
+                        let right_clone = *right.clone();
+                        m.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match m.op {
+                            MultiplicativeOps::Mult => {
+                                primary_stack.push(left * right);
+                            }
+                            MultiplicativeOps::Div | MultiplicativeOps::Mod => {
+                                if right == 0 {
+                                    return Err(String::from("cannot divide by zero"));
+                                }
+                                match m.op {
+                                    MultiplicativeOps::Div => {
+                                        primary_stack.push(left / right);
+                                    }
+                                    MultiplicativeOps::Mod => {
+                                        primary_stack.push(left % right);
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                        }
+                    }
+                }
+                Expr::Additive(ref mut a) => {
+                    if let Some(left) = &mut a.first {
+                        let left_clone = *left.clone();
+                        a.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut a.second {
+                        let right_clone = *right.clone();
+                        a.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match a.op {
+                            AdditiveOps::Add => {
+                                primary_stack.push(left + right);
+                            }
+                            AdditiveOps::Sub => {
+                                primary_stack.push(left - right);
+                            }
+                        }
+                    }
+                }
+                Expr::BitShift(ref mut bs) => {
+                    if let Some(left) = &mut bs.first {
+                        let left_clone = *left.clone();
+                        bs.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bs.second {
+                        let right_clone = *right.clone();
+                        bs.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match bs.op {
+                            BitShiftOp::Left => {
+                                primary_stack.push(left << right);
+                            }
+                            BitShiftOp::Right => {
+                                primary_stack.push(left >> right);
+                            }
+                        }
+                    }
+                }
+                Expr::Relational(ref mut r) => {
+                    if let Some(left) = &mut r.first {
+                        let left_clone = *left.clone();
+                        r.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut r.second {
+                        let right_clone = *right.clone();
+                        r.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match r.op {
+                            RelationalOp::LessThan => {
+                                primary_stack.push(if left < right { 1 } else { 0 });
+                            }
+                            RelationalOp::LessThanEq => {
+                                primary_stack.push(if left <= right { 1 } else { 0 });
+                            }
+                            RelationalOp::GreaterThan => {
+                                primary_stack.push(if left > right { 1 } else { 0 });
+                            }
+                            RelationalOp::GreaterThanEq => {
+                                primary_stack.push(if left >= right { 1 } else { 0 });
+                            }
+                        }
+                    }
+                }
+                Expr::Equality(ref mut e) => {
+                    if let Some(left) = &mut e.first {
+                        let left_clone = *left.clone();
+                        e.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut e.second {
+                        let right_clone = *right.clone();
+                        e.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        match e.op {
+                            EqualityOp::Equal => {
+                                primary_stack.push(if left == right { 1 } else { 0 });
+                            }
+                            EqualityOp::NotEqual => {
+                                primary_stack.push(if left != right { 1 } else { 0 });
+                            }
+                        }
+                    }
+                }
+                Expr::BitAND(ref mut ba) => {
+                    if let Some(left) = &mut ba.first {
+                        let left_clone = *left.clone();
+                        ba.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut ba.second {
+                        let right_clone = *right.clone();
+                        ba.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        primary_stack.push(if (left & right) != 0 { 1 } else { 0 });
+                    }
+                }
+                Expr::BitXOR(ref mut bx) => {
+                    if let Some(left) = &mut bx.first {
+                        let left_clone = *left.clone();
+                        bx.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bx.second {
+                        let right_clone = *right.clone();
+                        bx.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
+                    }
+                }
+                Expr::BitOR(ref mut bo) => {
+                    if let Some(left) = &mut bo.first {
+                        let left_clone = *left.clone();
+                        bo.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut bo.second {
+                        let right_clone = *right.clone();
+                        bo.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
+                    }
+                }
+                Expr::LogicalAND(ref mut la) => {
+                    if let Some(left) = &mut la.first {
+                        let left_clone = *left.clone();
+                        la.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut la.second {
+                        let right_clone = *right.clone();
+                        la.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        primary_stack.push(if left != 0 && right != 0 { 1 } else { 0 });
+                    }
+                }
+                Expr::LogicalOR(ref mut lo) => {
+                    if let Some(left) = &mut lo.first {
+                        let left_clone = *left.clone();
+                        lo.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(left_clone);
+                    } else if let Some(right) = &mut lo.second {
+                        let right_clone = *right.clone();
+                        lo.second = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(right_clone);
+                    } else {
+                        assert!(primary_stack.len() >= 2);
+                        let right = primary_stack.pop().unwrap();
+                        let left = primary_stack.pop().unwrap();
+                        primary_stack.push(if left != 0 || right != 0 { 1 } else { 0 });
+                    }
+                }
+                Expr::Conditional(ref mut c) => {
+                    if let Some(first) = &mut c.first {
+                        let first_clone = *first.clone();
+                        c.first = None;
+                        eval_stack.push(top_expr);
+                        eval_stack.push(first_clone);
+                    } else {
+                        assert!(!primary_stack.is_empty());
+                        let top = primary_stack.pop().unwrap();
+                        if top != 0 {
+                            let second = c.second.clone().unwrap();
+                            eval_stack.push(*second);
+                        } else {
+                            let third = c.third.clone().unwrap();
+                            eval_stack.push(*third);
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+    //eprintln!("END TIME: {}", (std::time::Instant::now() - START_TIMER).as_nanos());
+    assert!(primary_stack.len() == 1);
+    Ok(*primary_stack.last().unwrap())
 }

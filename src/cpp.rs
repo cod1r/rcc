@@ -4,33 +4,6 @@ use std::io::Write;
 use crate::lexer::{self};
 use crate::parser::expressions::{self};
 
-macro_rules! case_where_it_could_be_unary_or_additive {
-    ($parserTypeVar:ident, $rightExprVar:ident, $token:expr) => {
-        if $parserTypeVar.second.is_none() {
-            $rightExprVar = Some(expressions::Expr::Unary(expressions::Unary {
-                op: match $token {
-                    lexer::Token::PUNCT_PLUS => expressions::UnaryOp::Add,
-                    lexer::Token::PUNCT_MINUS => expressions::UnaryOp::Sub,
-                    lexer::Token::PUNCT_NOT_BOOL => expressions::UnaryOp::LogicalNOT,
-                    lexer::Token::PUNCT_TILDE => expressions::UnaryOp::BitNOT,
-                    _ => unreachable!(),
-                },
-                first: None,
-            }));
-        } else {
-            $rightExprVar = Some(expressions::Expr::Additive(expressions::Additive {
-                op: match $token {
-                    lexer::Token::PUNCT_PLUS => expressions::AdditiveOps::Add,
-                    lexer::Token::PUNCT_MINUS => expressions::AdditiveOps::Sub,
-                    _ => unreachable!(),
-                },
-                first: None,
-                second: None,
-            }));
-        }
-    };
-}
-
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
     pub parameters: Option<Vec<usize>>,
@@ -195,1747 +168,7 @@ fn include_directive(
     Err(String::from("file not found"))
 }
 
-/*
-   Expr::Primary
-   Expr::PostFix
-   Expr::Unary
-   Expr::Cast
-   Expr::Multiplicative
-   Expr::Additive
-   Expr::BitShift
-   Expr::Relational
-   Expr::Equality
-   Expr::BitAND
-   Expr::BitXOR
-   Expr::BitOR
-   Expr::LogicalAND
-   Expr::LogicalOR
-   Expr::Conditional
-*/
-fn right_has_higher_priority(left: &mut expressions::Expr, right: &mut expressions::Expr) {
-    assert!(right.priority() > left.priority());
-    match left {
-        expressions::Expr::Unary(u) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(u.first.is_none());
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::Multiplicative(m) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(m.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(m.second.is_none());
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::Additive(a) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(a.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(a.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = a.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::BitShift(bs) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(bs.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(bs.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = bs.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = bs.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::Relational(r) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(r.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(r.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = r.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = r.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = r.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::Equality(e) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(e.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(e.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = e.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = e.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = e.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = e.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::BitAND(ba) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(ba.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(ba.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = ba.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = ba.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = ba.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = ba.second.clone();
-            }
-            expressions::Expr::Equality(e) => {
-                assert!(e.first.is_none());
-                e.first = ba.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::BitXOR(bx) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(bx.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(bx.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = bx.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = bx.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = bx.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = bx.second.clone();
-            }
-            expressions::Expr::Equality(e) => {
-                assert!(e.first.is_none());
-                e.first = bx.second.clone();
-            }
-            expressions::Expr::BitAND(ba) => {
-                assert!(ba.first.is_none());
-                ba.first = bx.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::BitOR(bo) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(bo.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(bo.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = bo.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = bo.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = bo.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = bo.second.clone();
-            }
-            expressions::Expr::Equality(e) => {
-                assert!(e.first.is_none());
-                e.first = bo.second.clone();
-            }
-            expressions::Expr::BitAND(ba) => {
-                assert!(ba.first.is_none());
-                ba.first = bo.second.clone();
-            }
-            expressions::Expr::BitXOR(bx) => {
-                assert!(bx.first.is_none());
-                bx.first = bo.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::LogicalAND(la) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(la.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(la.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = la.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = la.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = la.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = la.second.clone();
-            }
-            expressions::Expr::Equality(e) => {
-                assert!(e.first.is_none());
-                e.first = la.second.clone();
-            }
-            expressions::Expr::BitAND(ba) => {
-                assert!(ba.first.is_none());
-                ba.first = la.second.clone();
-            }
-            expressions::Expr::BitXOR(bx) => {
-                assert!(bx.first.is_none());
-                bx.first = la.second.clone();
-            }
-            expressions::Expr::BitOR(bo) => {
-                assert!(bo.first.is_none());
-                bo.first = la.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::LogicalOR(lo) => match right {
-            expressions::Expr::Primary(p) => {
-                assert!(p.is_some());
-                assert!(lo.second.is_none());
-            }
-            expressions::Expr::Unary(_) => {
-                assert!(lo.second.is_none());
-            }
-            expressions::Expr::Multiplicative(m) => {
-                assert!(m.first.is_none());
-                m.first = lo.second.clone();
-            }
-            expressions::Expr::Additive(a) => {
-                assert!(a.first.is_none());
-                a.first = lo.second.clone();
-            }
-            expressions::Expr::BitShift(bs) => {
-                assert!(bs.first.is_none());
-                bs.first = lo.second.clone();
-            }
-            expressions::Expr::Relational(r) => {
-                assert!(r.first.is_none());
-                r.first = lo.second.clone();
-            }
-            expressions::Expr::Equality(e) => {
-                assert!(e.first.is_none());
-                e.first = lo.second.clone();
-            }
-            expressions::Expr::BitAND(ba) => {
-                assert!(ba.first.is_none());
-                ba.first = lo.second.clone();
-            }
-            expressions::Expr::BitXOR(bx) => {
-                assert!(bx.first.is_none());
-                bx.first = lo.second.clone();
-            }
-            expressions::Expr::BitOR(bo) => {
-                assert!(bo.first.is_none());
-                bo.first = lo.second.clone();
-            }
-            expressions::Expr::LogicalAND(la) => {
-                assert!(la.first.is_none());
-                la.first = lo.second.clone();
-            }
-            _ => unreachable!(),
-        },
-        expressions::Expr::Conditional(c) => {
-            assert!(c.first.is_some());
-            assert!(c.second.is_some());
-            match right {
-                expressions::Expr::Primary(p) => {
-                    assert!(p.is_some());
-                    assert!(c.third.is_none());
-                }
-                expressions::Expr::Unary(u) => {
-                    assert!(c.third.is_none());
-                }
-                expressions::Expr::Multiplicative(m) => {
-                    assert!(m.first.is_none());
-                    m.first = c.third.clone();
-                }
-                expressions::Expr::Additive(a) => {
-                    assert!(a.first.is_none());
-                    a.first = c.third.clone();
-                }
-                expressions::Expr::BitShift(bs) => {
-                    assert!(bs.first.is_none());
-                    bs.first = c.third.clone();
-                }
-                expressions::Expr::Relational(r) => {
-                    assert!(r.first.is_none());
-                    r.first = c.third.clone();
-                }
-                expressions::Expr::Equality(e) => {
-                    assert!(e.first.is_none());
-                    e.first = c.third.clone();
-                }
-                expressions::Expr::BitAND(ba) => {
-                    assert!(ba.first.is_none());
-                    ba.first = c.third.clone();
-                }
-                expressions::Expr::BitXOR(bx) => {
-                    assert!(bx.first.is_none());
-                    bx.first = c.third.clone();
-                }
-                expressions::Expr::BitOR(bo) => {
-                    assert!(bo.first.is_none());
-                    bo.first = c.third.clone();
-                }
-                expressions::Expr::LogicalAND(la) => {
-                    assert!(la.first.is_none());
-                    la.first = c.third.clone();
-                }
-                expressions::Expr::LogicalOR(lo) => {
-                    assert!(lo.first.is_none());
-                    lo.first = c.third.clone();
-                }
-                _ => unreachable!(),
-            }
-        }
-        _ => unreachable!(),
-    }
-}
 
-fn left_has_higher_eq_priority(left: &mut expressions::Expr, right: &mut expressions::Expr) {
-    assert!(left.priority() >= right.priority());
-    let boxed = Some(Box::new(left.clone()));
-    match right {
-        expressions::Expr::Multiplicative(m) => {
-            m.first = boxed;
-        }
-        expressions::Expr::Additive(a) => {
-            a.first = boxed;
-        }
-        expressions::Expr::BitShift(bs) => {
-            bs.first = boxed;
-        }
-        expressions::Expr::Relational(r) => {
-            r.first = boxed;
-        }
-        expressions::Expr::Equality(e) => {
-            e.first = boxed;
-        }
-        expressions::Expr::BitAND(ba) => {
-            ba.first = boxed;
-        }
-        expressions::Expr::BitXOR(bx) => {
-            bx.first = boxed;
-        }
-        expressions::Expr::BitOR(bo) => {
-            bo.first = boxed;
-        }
-        expressions::Expr::LogicalAND(la) => {
-            la.first = boxed;
-        }
-        expressions::Expr::LogicalOR(lo) => {
-            lo.first = boxed;
-        }
-        expressions::Expr::Conditional(c) => {
-            unreachable!()
-        }
-        _ => unreachable!(),
-    }
-}
-
-//Notes:
-//The expression that controls conditional inclusion shall be an integer constant expression
-//Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
-//All macro identifiers are evaluated as defined or not defined.
-// TODO: rewrite this. It works but is WAYY too convoluted.
-fn eval_constant_expression(
-    tokens: &[lexer::Token],
-    defines: &HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<i128, String> {
-    //let START_TIMER = std::time::Instant::now();
-    if tokens
-        .iter()
-        .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
-        .count()
-        == 0
-    {
-        return Err(format!("empty expression given"));
-    }
-    if let Some(not_allowed_t) = tokens.iter().find(|t| {
-        matches!(
-            t,
-            lexer::Token::PUNCT_ASSIGNMENT
-                | lexer::Token::PUNCT_INCREMENT
-                | lexer::Token::PUNCT_DECREMENT
-                | lexer::Token::PUNCT_OPEN_CURLY
-                | lexer::Token::PUNCT_CLOSE_CURLY
-                | lexer::Token::PUNCT_OPEN_SQR
-                | lexer::Token::PUNCT_CLOSE_SQR
-                | lexer::Token::CONSTANT_DEC_FLOAT { .. }
-                | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
-                | lexer::Token::PUNCT_COMMA
-                | lexer::Token::StringLiteral { .. }
-                | lexer::Token::PUNCT_ARROW
-                | lexer::Token::PUNCT_ADD_ASSIGN
-                | lexer::Token::PUNCT_DIV_ASSIGN
-                | lexer::Token::PUNCT_SUB_ASSIGN
-                | lexer::Token::PUNCT_MULT_ASSIGN
-                | lexer::Token::PUNCT_MODULO_ASSIGN
-                | lexer::Token::PUNCT_AND_BIT_ASSIGN
-                | lexer::Token::PUNCT_OR_BIT_ASSIGN
-                | lexer::Token::PUNCT_XOR_BIT_ASSIGN
-                | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
-                | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
-        )
-    }) {
-        return Err(format!(
-            "{:?}'s are not allowed in constant expressions",
-            not_allowed_t
-        ));
-    }
-    let mut parenth_balance = Vec::<lexer::Token>::with_capacity(tokens.len());
-    for par_bal_index in 0..tokens.len() {
-        match tokens[par_bal_index] {
-            lexer::Token::PUNCT_OPEN_PAR => {
-                parenth_balance.push(tokens[par_bal_index]);
-            }
-            lexer::Token::PUNCT_CLOSE_PAR => {
-                if let Some(lexer::Token::PUNCT_OPEN_PAR) = parenth_balance.last() {
-                    parenth_balance.pop();
-                } else {
-                    return Err(String::from("parentheses in expression not balanced"));
-                }
-            }
-            _ => {}
-        }
-    }
-    // TODO: describe our algorithm in comments below
-    // or we will forget how any of this shit works
-    if !parenth_balance.is_empty() {
-        return Err(String::from("parentheses in expression not balanced"));
-    }
-    let mut stack = Vec::<expressions::Expr>::new();
-    // if our current expression is 'complete' as in it has all it
-    // needs to be defined as whatever type of expression it is, we
-    // need to look at our expression stack to see if any expression
-    // uses this curr_expr as a sub-expression.
-    // There should be no cases where we have an expression on the
-    // stack that is complete and curr_expr also being complete.
-    //
-    // In the case where curr_expr would use an expression on the stack
-    // as a sub expression, we would pop off the expression on the
-    // stack and put it as a sub expression in the curr_expr.
-    //
-    // curr_expr would be the end result of constructing the expression
-    // tree
-    //
-    //
-    // postfix and cast expressions aren't needed.
-    // (postfix_expr -) isn't an expression that we would construct as we would just construct a
-    // additive expression anyways
-    let mut curr_expr: Option<expressions::Expr> = None;
-    let mut left_expression: Option<expressions::Expr> = None;
-    let mut right_expression: Option<expressions::Expr> = None;
-    let mut index = 0;
-    while index < tokens.len() {
-        match &tokens[index] {
-            lexer::Token::IDENT(_)
-            | lexer::Token::CONSTANT_DEC_INT { .. }
-            | lexer::Token::CONSTANT_CHAR(_) => {
-                let mut token_within = tokens[index];
-                let primary = expressions::Expr::Primary(Some(
-                    expressions::PrimaryInner::new_p_token(token_within)?,
-                ));
-                if curr_expr.is_none() {
-                    curr_expr = Some(primary);
-                } else {
-                    match &mut curr_expr {
-                        Some(expressions::Expr::Additive(a)) => {
-                            assert!(a.first.is_some());
-                            a.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::Unary(u)) => {
-                            assert!(u.first.is_none());
-                            u.first = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::LogicalOR(lo)) => {
-                            assert!(lo.first.is_some());
-                            lo.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::LogicalAND(la)) => {
-                            assert!(la.first.is_some());
-                            la.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::BitOR(bo)) => {
-                            assert!(bo.first.is_some());
-                            bo.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::BitXOR(bx)) => {
-                            assert!(bx.first.is_some());
-                            bx.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::BitAND(ba)) => {
-                            assert!(ba.first.is_some());
-                            ba.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::Equality(e)) => {
-                            assert!(e.first.is_some());
-                            e.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::Relational(r)) => {
-                            assert!(r.first.is_some());
-                            r.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::BitShift(bs)) => {
-                            assert!(bs.first.is_some());
-                            bs.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::Multiplicative(m)) => {
-                            assert!(m.first.is_some());
-                            m.second = Some(Box::new(primary));
-                        }
-                        Some(expressions::Expr::Conditional(c)) => {
-                            if c.first.is_none() {
-                                c.first = Some(Box::new(primary));
-                            } else if c.second.is_none() {
-                                c.second = Some(Box::new(primary));
-                            } else if c.third.is_none() {
-                                c.third = Some(Box::new(primary));
-                            }
-                        }
-                        _ => return Err(format!("err at index: {}", index)),
-                    }
-                }
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_DIV
-                            | lexer::Token::PUNCT_MODULO
-                            | lexer::Token::PUNCT_BITSHFT_LEFT
-                            | lexer::Token::PUNCT_BITSHFT_RIGHT
-                            | lexer::Token::PUNCT_LESS_THAN
-                            | lexer::Token::PUNCT_LESS_THAN_EQ
-                            | lexer::Token::PUNCT_GREATER_THAN
-                            | lexer::Token::PUNCT_GREATER_THAN_EQ
-                            | lexer::Token::PUNCT_EQ_BOOL
-                            | lexer::Token::PUNCT_NOT_EQ_BOOL
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::PUNCT_XOR_BIT
-                            | lexer::Token::PUNCT_OR_BIT
-                            | lexer::Token::PUNCT_AND_BOOL
-                            | lexer::Token::PUNCT_OR_BOOL
-                            | lexer::Token::PUNCT_CLOSE_PAR
-                            | lexer::Token::PUNCT_QUESTION_MARK
-                            | lexer::Token::PUNCT_COLON
-                    ) | None
-                ) {
-                    return Err(format!("unexpected operator: {:?}", tokens));
-                }
-            }
-            lexer::Token::PUNCT_OPEN_PAR => {
-                if let Some(expr) = curr_expr {
-                    stack.push(expr);
-                }
-                stack.push(expressions::Expr::Primary(None));
-                curr_expr = None;
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "expected '-', '(', or an identifier/integer constant: {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_CLOSE_PAR => {
-                // thought process here is that we want to pop until we hit the opening parenthesis
-                // that created the primary expression.
-                //  -- Side Note: if there is a unary operator before the opening parenthesis, we
-                //     need to keep going until we pop the unary operator
-                // if we do not encounter the primary expression, we treat other expressions as
-                // having a lower priority (it has to be because that's the only reason our 'stack'
-                // exists) which means that we set curr_expr to that expression with that
-                // expression having the old curr_expr as a child in the expression tree
-                let mut popped_opening_parenth_already = false;
-                while let Some(mut e) = stack.pop() {
-                    match e {
-                        expressions::Expr::Primary(ref mut p) => {
-                            *p = Some(expressions::PrimaryInner::new_p_expr(curr_expr.unwrap()));
-                            curr_expr = Some(e);
-                            if !matches!(stack.last(), Some(expressions::Expr::Unary(_))) {
-                                break;
-                            } else {
-                                popped_opening_parenth_already = true;
-                            }
-                        }
-                        expressions::Expr::Unary(ref mut u) => {
-                            u.first = Some(Box::new(curr_expr.unwrap()));
-                            curr_expr = Some(e);
-                            if popped_opening_parenth_already {
-                                break;
-                            }
-                        }
-                        _ => {
-                            assert!(e.priority() <= curr_expr.clone().unwrap().priority());
-                            let unwrapped = Some(Box::new(curr_expr.unwrap()));
-                            match e {
-                                expressions::Expr::Unary(ref mut u) => {
-                                    u.first = unwrapped;
-                                }
-                                expressions::Expr::Multiplicative(ref mut m) => {
-                                    m.second = unwrapped;
-                                }
-                                expressions::Expr::Additive(ref mut a) => {
-                                    a.second = unwrapped;
-                                }
-                                expressions::Expr::BitShift(ref mut bs) => {
-                                    bs.second = unwrapped;
-                                }
-                                expressions::Expr::Relational(ref mut r) => {
-                                    r.second = unwrapped;
-                                }
-                                expressions::Expr::Equality(ref mut e) => {
-                                    e.second = unwrapped;
-                                }
-                                expressions::Expr::BitAND(ref mut ba) => {
-                                    ba.second = unwrapped;
-                                }
-                                expressions::Expr::BitXOR(ref mut bx) => {
-                                    bx.second = unwrapped;
-                                }
-                                expressions::Expr::BitOR(ref mut bo) => {
-                                    bo.second = unwrapped;
-                                }
-                                expressions::Expr::LogicalAND(ref mut la) => {
-                                    la.second = unwrapped;
-                                }
-                                expressions::Expr::LogicalOR(ref mut lo) => {
-                                    lo.second = unwrapped;
-                                }
-                                expressions::Expr::Conditional(ref mut c) => {
-                                    c.third = unwrapped;
-                                }
-                                _ => unreachable!(),
-                            }
-                            curr_expr = Some(e);
-                        }
-                    }
-                }
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator ')': {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_PLUS
-            | lexer::Token::PUNCT_MINUS
-            | lexer::Token::PUNCT_NOT_BOOL
-            | lexer::Token::PUNCT_TILDE => {
-                left_expression = curr_expr;
-                match &left_expression {
-                    Some(expressions::Expr::Primary(p)) => {
-                        // if a '~' or '!' follow a primary expression, that is not allowed.
-                        match tokens[index] {
-                            lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
-                                return Err(format!("unexpected {:?} token", tokens[index]));
-                            }
-                            _ => {}
-                        }
-                        right_expression =
-                            Some(expressions::Expr::Additive(expressions::Additive {
-                                op: match tokens[index] {
-                                    lexer::Token::PUNCT_PLUS => expressions::AdditiveOps::Add,
-                                    lexer::Token::PUNCT_MINUS => expressions::AdditiveOps::Sub,
-                                    _ => unreachable!("{:?}", tokens[index]),
-                                },
-                                first: None,
-                                second: None,
-                            }));
-                        curr_expr = None;
-                    }
-                    None => {
-                        curr_expr = Some(expressions::Expr::Unary(expressions::Unary {
-                            op: match tokens[index] {
-                                lexer::Token::PUNCT_PLUS => expressions::UnaryOp::Add,
-                                lexer::Token::PUNCT_MINUS => expressions::UnaryOp::Sub,
-                                lexer::Token::PUNCT_NOT_BOOL => expressions::UnaryOp::LogicalNOT,
-                                lexer::Token::PUNCT_TILDE => expressions::UnaryOp::BitNOT,
-                                _ => unreachable!(),
-                            },
-                            first: None,
-                        }));
-                    }
-                    Some(expressions::Expr::Unary(expressions::Unary { op: _, first })) => {
-                        if first.is_none() {
-                            stack.push(left_expression.clone().unwrap());
-                            curr_expr = Some(expressions::Expr::Unary(expressions::Unary {
-                                op: match tokens[index] {
-                                    lexer::Token::PUNCT_PLUS => expressions::UnaryOp::Add,
-                                    lexer::Token::PUNCT_MINUS => expressions::UnaryOp::Sub,
-                                    lexer::Token::PUNCT_NOT_BOOL => {
-                                        expressions::UnaryOp::LogicalNOT
-                                    }
-                                    lexer::Token::PUNCT_TILDE => expressions::UnaryOp::BitNOT,
-                                    _ => unreachable!(),
-                                },
-                                first: None,
-                            }));
-                        } else {
-                            // if a '~' or '!' follow a unary expression, that is not allowed.
-                            match tokens[index] {
-                                lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
-                                    return Err(format!("unexpected {:?} token", tokens[index]));
-                                }
-                                _ => {}
-                            }
-                            right_expression =
-                                Some(expressions::Expr::Additive(expressions::Additive {
-                                    op: match tokens[index] {
-                                        lexer::Token::PUNCT_PLUS => expressions::AdditiveOps::Add,
-                                        lexer::Token::PUNCT_MINUS => expressions::AdditiveOps::Sub,
-                                        _ => unreachable!("{:?}", tokens[index]),
-                                    },
-                                    first: None,
-                                    second: None,
-                                }));
-                            curr_expr = None;
-                        }
-                    }
-                    Some(expressions::Expr::Multiplicative(m)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            m,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::Additive(a)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            a,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::BitShift(bs)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            bs,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::Relational(r)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            r,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::Equality(e)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            e,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::BitAND(ba)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            ba,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::BitXOR(bx)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            bx,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::BitOR(bo)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            bo,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::LogicalAND(la)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            la,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    Some(expressions::Expr::LogicalOR(lo)) => {
-                        case_where_it_could_be_unary_or_additive!(
-                            lo,
-                            right_expression,
-                            tokens[index]
-                        );
-                        curr_expr = None;
-                    }
-                    _ => unreachable!(),
-                }
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                    )
-                ) {
-                    //TODO: this can panic if unary is the last token
-                    return Err(format!(
-                        "not allowed token after operators '+', '-', '!', '~': {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::Multiplicative(
-                    expressions::Multiplicative {
-                        op: match tokens[index] {
-                            lexer::Token::PUNCT_MULT => expressions::MultiplicativeOps::Mult,
-                            lexer::Token::PUNCT_DIV => expressions::MultiplicativeOps::Div,
-                            lexer::Token::PUNCT_MODULO => expressions::MultiplicativeOps::Mod,
-                            _ => unreachable!(),
-                        },
-                        first: None,
-                        second: None,
-                    },
-                ));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operators '*', '/', and '%': {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_BITSHFT_RIGHT | lexer::Token::PUNCT_BITSHFT_LEFT => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::BitShift(expressions::BitShift {
-                    op: match tokens[index] {
-                        lexer::Token::PUNCT_BITSHFT_LEFT => expressions::BitShiftOp::Left,
-                        lexer::Token::PUNCT_BITSHFT_RIGHT => expressions::BitShiftOp::Right,
-                        _ => unreachable!(),
-                    },
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operators '<<' and '>>': {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_LESS_THAN
-            | lexer::Token::PUNCT_LESS_THAN_EQ
-            | lexer::Token::PUNCT_GREATER_THAN
-            | lexer::Token::PUNCT_GREATER_THAN_EQ => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::Relational(expressions::Relational {
-                    op: match tokens[index] {
-                        lexer::Token::PUNCT_LESS_THAN => expressions::RelationalOp::LessThan,
-                        lexer::Token::PUNCT_LESS_THAN_EQ => expressions::RelationalOp::LessThanEq,
-                        lexer::Token::PUNCT_GREATER_THAN => expressions::RelationalOp::GreaterThan,
-                        lexer::Token::PUNCT_GREATER_THAN_EQ => {
-                            expressions::RelationalOp::GreaterThanEq
-                        }
-                        _ => unreachable!(),
-                    },
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operators '<', '<=', '>', '>=', {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::Equality(expressions::Equality {
-                    op: match tokens[index] {
-                        lexer::Token::PUNCT_EQ_BOOL => expressions::EqualityOp::Equal,
-                        lexer::Token::PUNCT_NOT_EQ_BOOL => expressions::EqualityOp::NotEqual,
-                        _ => unreachable!(),
-                    },
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operators '==', '!=', {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_AND_BIT => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::BitAND(expressions::BitAND {
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator '&' {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_XOR_BIT => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::BitXOR(expressions::BitXOR {
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator '^' {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_OR_BIT => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::BitOR(expressions::BitOR {
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator '|' {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_AND_BOOL => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::LogicalAND(expressions::LogicalAND {
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator '&&' {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_OR_BOOL => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(expressions::Expr::LogicalOR(expressions::LogicalOR {
-                    first: None,
-                    second: None,
-                }));
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "not allowed token after operator '||', {:?}",
-                        tokens[index]
-                    ));
-                }
-            }
-            lexer::Token::PUNCT_QUESTION_MARK => {
-                if let Some(expr) = curr_expr {
-                    let expr_cond = expressions::Expr::Conditional(expressions::Conditional {
-                        first: Some(Box::new(expr)),
-                        second: None,
-                        third: None,
-                    });
-                    stack.push(expr_cond);
-                    curr_expr = None;
-                } else {
-                    return Err(String::from(
-                        "missing first operator for conditional expression",
-                    ));
-                }
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-            }
-            lexer::Token::PUNCT_COLON => {
-                if curr_expr.is_none() {
-                    return Err(format!("expected expression before ':'"));
-                }
-                while let Some(mut expr) = stack.pop() {
-                    let unwrapped = Some(Box::new(curr_expr.unwrap()));
-                    match expr {
-                        expressions::Expr::Unary(ref mut u) => {
-                            u.first = unwrapped;
-                        }
-                        expressions::Expr::Multiplicative(ref mut m) => {
-                            m.second = unwrapped;
-                        }
-                        expressions::Expr::Additive(ref mut a) => {
-                            a.second = unwrapped;
-                        }
-                        expressions::Expr::BitShift(ref mut bs) => {
-                            bs.second = unwrapped;
-                        }
-                        expressions::Expr::Relational(ref mut r) => {
-                            r.second = unwrapped;
-                        }
-                        expressions::Expr::Equality(ref mut e) => {
-                            e.second = unwrapped;
-                        }
-                        expressions::Expr::BitAND(ref mut ba) => {
-                            ba.second = unwrapped;
-                        }
-                        expressions::Expr::BitXOR(ref mut bx) => {
-                            bx.second = unwrapped;
-                        }
-                        expressions::Expr::BitOR(ref mut bo) => {
-                            bo.second = unwrapped;
-                        }
-                        expressions::Expr::LogicalAND(ref mut la) => {
-                            la.second = unwrapped;
-                        }
-                        expressions::Expr::LogicalOR(ref mut lo) => {
-                            lo.second = unwrapped;
-                        }
-                        expressions::Expr::Conditional(ref mut c) => {
-                            c.second = unwrapped;
-                            curr_expr = Some(expr);
-                            break;
-                        }
-                        _ => unreachable!(),
-                    }
-                    curr_expr = Some(expr);
-                }
-                if !matches!(curr_expr, Some(expressions::Expr::Conditional(_))) {
-                    return Err(format!("unexpected ':'. ':' are used in conditional expressions (<expr> ? <expr> : <expr>)"));
-                }
-                stack.push(curr_expr.unwrap());
-                curr_expr = None;
-                loop {
-                    index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
-                        break;
-                    }
-                }
-            }
-            lexer::Token::WHITESPACE => {
-                index += 1;
-            }
-            _ => return Err(format!("unknown token: {:?}", tokens[index])),
-        }
-        if left_expression.is_some() && right_expression.is_some() {
-            let mut left = left_expression.unwrap();
-            let mut right = right_expression.unwrap();
-            if left.priority() >= right.priority() {
-                left_has_higher_eq_priority(&mut left, &mut right);
-            } else {
-                right_has_higher_priority(&mut left, &mut right);
-                stack.push(left);
-            }
-            curr_expr = Some(right);
-            left_expression = None;
-            right_expression = None;
-        }
-    }
-    while let Some(mut expr) = stack.pop() {
-        assert!(curr_expr.is_some());
-        let unwrapped = Some(Box::new(curr_expr.unwrap()));
-        match expr {
-            expressions::Expr::Unary(ref mut u) => {
-                u.first = unwrapped;
-            }
-            expressions::Expr::Multiplicative(ref mut m) => {
-                m.second = unwrapped;
-            }
-            expressions::Expr::Additive(ref mut a) => {
-                a.second = unwrapped;
-            }
-            expressions::Expr::BitShift(ref mut bs) => {
-                bs.second = unwrapped;
-            }
-            expressions::Expr::Relational(ref mut r) => {
-                r.second = unwrapped;
-            }
-            expressions::Expr::Equality(ref mut e) => {
-                e.second = unwrapped;
-            }
-            expressions::Expr::BitAND(ref mut ba) => {
-                ba.second = unwrapped;
-            }
-            expressions::Expr::BitXOR(ref mut bx) => {
-                bx.second = unwrapped;
-            }
-            expressions::Expr::BitOR(ref mut bo) => {
-                bo.second = unwrapped;
-            }
-            expressions::Expr::LogicalAND(ref mut la) => {
-                la.second = unwrapped;
-            }
-            expressions::Expr::LogicalOR(ref mut lo) => {
-                lo.second = unwrapped;
-            }
-            expressions::Expr::Conditional(ref mut c) => {
-                assert!(c.first.is_some() && c.second.is_some());
-                c.third = unwrapped;
-            }
-            _ => unreachable!("{}", expr.priority()),
-        }
-        curr_expr = Some(expr);
-    }
-    // where we start evaluating the expression tree
-    // TODO: remove duplicate structure of code.
-    let mut eval_stack = Vec::<expressions::Expr>::new();
-    let mut primary_stack = Vec::<i128>::new();
-    if curr_expr.is_some() {
-        eval_stack.push(curr_expr.unwrap());
-        while let Some(mut top_expr) = eval_stack.pop() {
-            match top_expr {
-                expressions::Expr::Primary(ref mut p) => match p.clone().unwrap() {
-                    expressions::PrimaryInner::Expr(e) => {
-                        eval_stack.push(*e);
-                    }
-                    expressions::PrimaryInner::Token(t) => {
-                        assert!(matches!(
-                            t,
-                            lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
-                        ));
-                        match t {
-                            lexer::Token::CONSTANT_DEC_INT {
-                                value_key,
-                                suffix_key,
-                            } => {
-                                // "For the purposes of this token conversion and evaluation,
-                                // all signed integer types and all unsigned integer types act as if they have the same representation
-                                // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
-                                //
-                                // We just 'cheat' by using i128 integer types. That way, regardless
-                                // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
-                                // compare and not have to do any weird casts.
-                                // TODO: add overflow checks...
-                                let value = &str_maps.key_to_byte_vec[value_key];
-                                match String::from_utf8_lossy(value).to_string().parse::<i128>() {
-                                    Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
-                                        primary_stack.push(v);
-                                    }
-                                    _ => {
-                                        return Err(format!(
-                                            "{} cannot be represented as i64 or u64",
-                                            String::from_utf8_lossy(value).to_string()
-                                        ));
-                                    }
-                                }
-                            }
-                            lexer::Token::CONSTANT_CHAR(cc) => {
-                                let parsed_val = cc.parse_to_value(str_maps)? as i128;
-                                primary_stack.push(parsed_val);
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                },
-                expressions::Expr::Unary(ref mut u) => {
-                    if let Some(first) = &mut u.first {
-                        let first_clone = *first.clone();
-                        u.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(first_clone);
-                    } else {
-                        assert!(!primary_stack.is_empty());
-                        let one = primary_stack.pop().unwrap();
-                        match u.op {
-                            expressions::UnaryOp::Add => {
-                                primary_stack.push(one);
-                            }
-                            expressions::UnaryOp::Sub => {
-                                primary_stack.push(-one);
-                            }
-                            expressions::UnaryOp::BitNOT => {
-                                primary_stack.push(!one);
-                            }
-                            expressions::UnaryOp::LogicalNOT => {
-                                primary_stack.push(if one == 0 { 1 } else { 0 });
-                            }
-                            expressions::UnaryOp::Ampersand | expressions::UnaryOp::Deref => {
-                                unreachable!()
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::Multiplicative(ref mut m) => {
-                    if let Some(left) = &mut m.first {
-                        let left_clone = *left.clone();
-                        m.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut m.second {
-                        let right_clone = *right.clone();
-                        m.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match m.op {
-                            expressions::MultiplicativeOps::Mult => {
-                                primary_stack.push(left * right);
-                            }
-                            expressions::MultiplicativeOps::Div
-                            | expressions::MultiplicativeOps::Mod => {
-                                if right == 0 {
-                                    return Err(String::from("cannot divide by zero"));
-                                }
-                                match m.op {
-                                    expressions::MultiplicativeOps::Div => {
-                                        primary_stack.push(left / right);
-                                    }
-                                    expressions::MultiplicativeOps::Mod => {
-                                        primary_stack.push(left % right);
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::Additive(ref mut a) => {
-                    if let Some(left) = &mut a.first {
-                        let left_clone = *left.clone();
-                        a.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut a.second {
-                        let right_clone = *right.clone();
-                        a.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match a.op {
-                            expressions::AdditiveOps::Add => {
-                                primary_stack.push(left + right);
-                            }
-                            expressions::AdditiveOps::Sub => {
-                                primary_stack.push(left - right);
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::BitShift(ref mut bs) => {
-                    if let Some(left) = &mut bs.first {
-                        let left_clone = *left.clone();
-                        bs.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bs.second {
-                        let right_clone = *right.clone();
-                        bs.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match bs.op {
-                            expressions::BitShiftOp::Left => {
-                                primary_stack.push(left << right);
-                            }
-                            expressions::BitShiftOp::Right => {
-                                primary_stack.push(left >> right);
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::Relational(ref mut r) => {
-                    if let Some(left) = &mut r.first {
-                        let left_clone = *left.clone();
-                        r.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut r.second {
-                        let right_clone = *right.clone();
-                        r.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match r.op {
-                            expressions::RelationalOp::LessThan => {
-                                primary_stack.push(if left < right { 1 } else { 0 });
-                            }
-                            expressions::RelationalOp::LessThanEq => {
-                                primary_stack.push(if left <= right { 1 } else { 0 });
-                            }
-                            expressions::RelationalOp::GreaterThan => {
-                                primary_stack.push(if left > right { 1 } else { 0 });
-                            }
-                            expressions::RelationalOp::GreaterThanEq => {
-                                primary_stack.push(if left >= right { 1 } else { 0 });
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::Equality(ref mut e) => {
-                    if let Some(left) = &mut e.first {
-                        let left_clone = *left.clone();
-                        e.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut e.second {
-                        let right_clone = *right.clone();
-                        e.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match e.op {
-                            expressions::EqualityOp::Equal => {
-                                primary_stack.push(if left == right { 1 } else { 0 });
-                            }
-                            expressions::EqualityOp::NotEqual => {
-                                primary_stack.push(if left != right { 1 } else { 0 });
-                            }
-                        }
-                    }
-                }
-                expressions::Expr::BitAND(ref mut ba) => {
-                    if let Some(left) = &mut ba.first {
-                        let left_clone = *left.clone();
-                        ba.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut ba.second {
-                        let right_clone = *right.clone();
-                        ba.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left & right) != 0 { 1 } else { 0 });
-                    }
-                }
-                expressions::Expr::BitXOR(ref mut bx) => {
-                    if let Some(left) = &mut bx.first {
-                        let left_clone = *left.clone();
-                        bx.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bx.second {
-                        let right_clone = *right.clone();
-                        bx.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
-                    }
-                }
-                expressions::Expr::BitOR(ref mut bo) => {
-                    if let Some(left) = &mut bo.first {
-                        let left_clone = *left.clone();
-                        bo.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bo.second {
-                        let right_clone = *right.clone();
-                        bo.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
-                    }
-                }
-                expressions::Expr::LogicalAND(ref mut la) => {
-                    if let Some(left) = &mut la.first {
-                        let left_clone = *left.clone();
-                        la.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut la.second {
-                        let right_clone = *right.clone();
-                        la.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if left != 0 && right != 0 { 1 } else { 0 });
-                    }
-                }
-                expressions::Expr::LogicalOR(ref mut lo) => {
-                    if let Some(left) = &mut lo.first {
-                        let left_clone = *left.clone();
-                        lo.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut lo.second {
-                        let right_clone = *right.clone();
-                        lo.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if left != 0 || right != 0 { 1 } else { 0 });
-                    }
-                }
-                expressions::Expr::Conditional(ref mut c) => {
-                    if let Some(first) = &mut c.first {
-                        let first_clone = *first.clone();
-                        c.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(first_clone);
-                    } else {
-                        assert!(!primary_stack.is_empty());
-                        let top = primary_stack.pop().unwrap();
-                        if top != 0 {
-                            let second = c.second.clone().unwrap();
-                            eval_stack.push(*second);
-                        } else {
-                            let third = c.third.clone().unwrap();
-                            eval_stack.push(*third);
-                        }
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-    //eprintln!("END TIME: {}", (std::time::Instant::now() - START_TIMER).as_nanos());
-    assert!(primary_stack.len() == 1);
-    Ok(*primary_stack.last().unwrap())
-}
 fn parse_defined_in_if_directive(
     tokens: &[lexer::Token],
     index: usize,
@@ -2233,7 +466,7 @@ fn if_directive(
                     eval_vec_index += 1;
                 }
                 let eval_vec = final_eval_tokens;
-                eval_constant_expression(eval_vec.as_slice(), defines, str_maps)? != 0
+                expressions::eval_constant_expression(eval_vec.as_slice(), defines, str_maps)? != 0
             }
             b"ifdef" => {
                 if eval_vec
@@ -3063,9 +1296,10 @@ mod tests {
 
     use crate::lexer;
     use std::collections::HashMap;
+    use crate::parser::expressions::{self};
 
     use super::{
-        comments, cpp, define_directive, eval_constant_expression, expand_macro, if_directive,
+        comments, cpp, define_directive, expressions::eval_constant_expression, expand_macro, if_directive,
         include_directive, parse_defined_in_if_directive, preprocessing_directives, Define,
     };
     #[test]
@@ -3757,7 +1991,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, false, "(1 + 1) * 0");
         }
         {
@@ -3765,7 +1999,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "1 + (1 * 0)");
         }
         {
@@ -3773,7 +2007,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, false, "((1 + 1) * 0)");
         }
         {
@@ -3781,7 +2015,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "((((1))))");
         }
         {
@@ -3789,7 +2023,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps);
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -3800,7 +2034,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps);
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -3811,7 +2045,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         {
@@ -3819,7 +2053,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "1");
         }
         {
@@ -3827,7 +2061,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "'1'");
         }
         Ok(())
@@ -3838,32 +2072,32 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "!1");
         let src = r##"!0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true, "!0");
         let src = r##"~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true, "~0");
         let src = r##"~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true, "~~~0");
         let src = r##"~~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "~~~~0");
         let src = r##"--------------1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps);
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => {
@@ -3880,23 +2114,23 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 * !1"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 / 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 / 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps);
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => return Err("division by zero not caught".to_string()),
@@ -3904,12 +2138,12 @@ PP(/,*)PP2(*,/)"##
         let src = r##"1 + 1 * 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 * 1 + 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -3919,29 +2153,29 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 - 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"0 - 1 + 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "0 - 1 + 1");
         let src = r##"0 - 1 + !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true, "0 - 1 + !1");
         {
             let src = r##"'1' - '1'"##.as_bytes();
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, false, "'1' - '1'");
         }
         {
@@ -3949,7 +2183,7 @@ PP(/,*)PP2(*,/)"##
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+            let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
             assert_eq!(res != 0, true, "'1' - '1'");
         }
         Ok(())
@@ -3960,17 +2194,17 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >> 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 >> !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -3980,47 +2214,47 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 < 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 < !2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"2 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 > 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 > 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >= 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >= 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -4030,22 +2264,22 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 != 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 != !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 != 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -4055,27 +2289,27 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 & 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 & !0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 & 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 == 0 & 1 == 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -4085,13 +2319,13 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"(1 ^ !0) == 0"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -4101,13 +2335,13 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 | !0 == 0"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true, "1 | !0 == 0");
         Ok(())
     }
@@ -4117,18 +2351,18 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 && 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 && !1"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -4138,17 +2372,17 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -4158,27 +2392,27 @@ PP(/,*)PP2(*,/)"##
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -4196,7 +2430,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
@@ -4209,7 +2443,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
+        let res = expressions::eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
@@ -4219,7 +2453,7 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps);
+        let res = expressions::eval_constant_expression(&tokens, &defines, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => return Err(String::from("empty expression not caught")),
