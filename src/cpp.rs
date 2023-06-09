@@ -612,59 +612,6 @@ fn eval_constant_expression(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<i128, String> {
     //let START_TIMER = std::time::Instant::now();
-    let mut eval_vec_index = 0;
-    let mut final_tokens = Vec::new();
-    while eval_vec_index < tokens.len() {
-        if let lexer::Token::IDENT(curr_id_key) = &tokens[eval_vec_index] {
-            let curr_id = &str_maps.key_to_byte_vec[*curr_id_key];
-            if *curr_id != *b"defined" {
-                eval_vec_index = expand_macro(
-                    &tokens,
-                    eval_vec_index,
-                    defines,
-                    str_maps,
-                    &mut final_tokens,
-                )?;
-            } else {
-                let start_of_defined = eval_vec_index;
-                eval_vec_index += 1;
-                if matches!(tokens.get(eval_vec_index), Some(lexer::Token::WHITESPACE)) {
-                    eval_vec_index += 1;
-                }
-                match tokens.get(eval_vec_index) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
-                        eval_vec_index += 1;
-                        if matches!(tokens.get(eval_vec_index), Some(lexer::Token::WHITESPACE)) {
-                            eval_vec_index += 1;
-                        }
-                        if matches!(tokens.get(eval_vec_index), Some(lexer::Token::IDENT(_))) {
-                            eval_vec_index += 1;
-                            if matches!(tokens.get(eval_vec_index), Some(lexer::Token::WHITESPACE))
-                            {
-                                eval_vec_index += 1;
-                            }
-                            if matches!(
-                                tokens.get(eval_vec_index),
-                                Some(lexer::Token::PUNCT_CLOSE_PAR)
-                            ) {
-                                eval_vec_index += 1;
-                            }
-                        }
-                    }
-                    Some(lexer::Token::IDENT(_)) => {
-                        eval_vec_index += 1;
-                    }
-                    _ => {}
-                }
-                final_tokens.extend_from_slice(&tokens[start_of_defined..eval_vec_index]);
-            }
-        }
-        if eval_vec_index < tokens.len() {
-            final_tokens.push(tokens[eval_vec_index]);
-        }
-        eval_vec_index += 1;
-    }
-    let tokens = final_tokens;
     if tokens
         .iter()
         .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
@@ -755,56 +702,6 @@ fn eval_constant_expression(
             | lexer::Token::CONSTANT_DEC_INT { .. }
             | lexer::Token::CONSTANT_CHAR(_) => {
                 let mut token_within = tokens[index];
-                if let lexer::Token::IDENT(ident_key) = &tokens[index] {
-                    let ident = &str_maps.key_to_byte_vec[*ident_key];
-                    if *ident == *b"defined" {
-                        let mut defined_index = index + 1;
-                        if let Some(lexer::Token::WHITESPACE | lexer::Token::PUNCT_OPEN_PAR) =
-                            tokens.get(defined_index)
-                        {
-                            defined_index += 1;
-                            if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
-                                defined_index += 1;
-                            }
-                            if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(defined_index) {
-                                defined_index += 1;
-                            }
-                            if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
-                                defined_index += 1;
-                            }
-                            if let Some(lexer::Token::IDENT(identifier_name_key)) =
-                                tokens.get(defined_index)
-                            {
-                                if defines.contains_key(&identifier_name_key) {
-                                    token_within = lexer::Token::CONSTANT_DEC_INT {
-                                        value_key: str_maps.add_byte_vec(&[b'1']),
-                                        suffix_key: None,
-                                    };
-                                    index = defined_index;
-                                } else {
-                                    token_within = lexer::Token::CONSTANT_DEC_INT {
-                                        value_key: str_maps.add_byte_vec(&[b'0']),
-                                        suffix_key: None,
-                                    };
-                                    index = defined_index;
-                                }
-                            } else {
-                                return Err(format!(
-                                    "unexpected token: {:?}",
-                                    tokens[defined_index]
-                                ));
-                            }
-                        } else {
-                            return Err(format!("unexpected token: {:?}", tokens[defined_index]));
-                        }
-                    } else {
-                        assert!(!defines.contains_key(&ident_key));
-                        token_within = lexer::Token::CONSTANT_DEC_INT {
-                            value_key: str_maps.add_byte_vec(&[b'0']),
-                            suffix_key: None,
-                        };
-                    }
-                }
                 let primary = expressions::Expr::Primary(Some(
                     expressions::PrimaryInner::new_p_token(token_within)?,
                 ));
@@ -2039,6 +1936,61 @@ fn eval_constant_expression(
     assert!(primary_stack.len() == 1);
     Ok(*primary_stack.last().unwrap())
 }
+fn parse_defined_in_if_directive(
+    tokens: &[lexer::Token],
+    index: usize,
+    final_eval_tokens: &mut Vec<lexer::Token>,
+    defines: &HashMap<usize, Define>,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<usize, String> {
+    let mut defined_index = index + 1;
+    if let Some(lexer::Token::WHITESPACE | lexer::Token::PUNCT_OPEN_PAR) = tokens.get(defined_index)
+    {
+        let start = defined_index;
+        defined_index += 1;
+        if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
+            defined_index += 1;
+        }
+        if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(defined_index) {
+            defined_index += 1;
+        }
+        if let Some(lexer::Token::WHITESPACE) = tokens.get(defined_index) {
+            defined_index += 1;
+        }
+        if let Some(lexer::Token::IDENT(identifier_name_key)) = tokens.get(defined_index) {
+            defined_index += 1;
+            if defines.contains_key(&identifier_name_key) {
+                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(&[b'1']),
+                    suffix_key: None,
+                });
+            } else {
+                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(&[b'0']),
+                    suffix_key: None,
+                });
+            }
+            if matches!(tokens.get(start), Some(lexer::Token::PUNCT_OPEN_PAR)) {
+                while !matches!(
+                    tokens.get(defined_index),
+                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                ) && defined_index < tokens.len()
+                {
+                    defined_index += 1;
+                }
+                if defined_index == tokens.len() {
+                    return Err(format!("Missing closing parenthesis for defined at: TODO!"));
+                }
+                return Ok(defined_index + 1);
+            }
+        } else {
+            return Err(format!("unexpected token: {:?}", tokens[defined_index]));
+        }
+    } else {
+        return Err(format!("unexpected token: {:?}", tokens[defined_index]));
+    }
+    Ok(defined_index)
+}
 fn if_directive(
     tokens: &mut [lexer::Token],
     index: usize,
@@ -2240,8 +2192,49 @@ fn if_directive(
         ));
         start_looking += 1;
         let eval_vec = &tokens[start_looking..*end];
+
         let truthy = match macro_id.as_slice() {
-            b"if" | b"elif" => eval_constant_expression(eval_vec, defines, str_maps)? != 0,
+            b"if" | b"elif" => {
+                let mut eval_vec_index = 0;
+                let mut final_eval_tokens = Vec::new();
+                while eval_vec_index < eval_vec.len() {
+                    if let lexer::Token::IDENT(curr_id_key) = &eval_vec[eval_vec_index] {
+                        let curr_id = str_maps.key_to_byte_vec[*curr_id_key].clone();
+                        if curr_id != *b"defined" {
+                            if !defines.contains_key(curr_id_key) {
+                                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
+                                    value_key: str_maps.add_byte_vec(&[b'0']),
+                                    suffix_key: None,
+                                });
+                                eval_vec_index += 1;
+                            } else {
+                                eval_vec_index = expand_macro(
+                                    &eval_vec,
+                                    eval_vec_index,
+                                    defines,
+                                    str_maps,
+                                    &mut final_eval_tokens,
+                                )?;
+                            }
+                        } else {
+                            eval_vec_index = parse_defined_in_if_directive(
+                                eval_vec,
+                                eval_vec_index,
+                                &mut final_eval_tokens,
+                                defines,
+                                str_maps,
+                            )?;
+                        }
+                        continue;
+                    }
+                    if eval_vec_index < eval_vec.len() {
+                        final_eval_tokens.push(eval_vec[eval_vec_index]);
+                    }
+                    eval_vec_index += 1;
+                }
+                let eval_vec = final_eval_tokens;
+                eval_constant_expression(eval_vec.as_slice(), defines, str_maps)? != 0
+            }
             b"ifdef" => {
                 if eval_vec
                     .iter()
@@ -3073,7 +3066,7 @@ mod tests {
 
     use super::{
         comments, cpp, define_directive, eval_constant_expression, expand_macro, if_directive,
-        include_directive, preprocessing_directives, Define,
+        include_directive, parse_defined_in_if_directive, preprocessing_directives, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -3121,16 +3114,8 @@ int main() {
         .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
-        let mut final_tokens = Vec::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        include_directive(
-            &mut tokens,
-            0,
-            &["./test_c_files/"],
-            &mut defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let mut final_tokens = Vec::<lexer::Token>::new();
+        let mut tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines, &mut str_maps)?;
         let assert_tokens = [
             lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
             lexer::Token::WHITESPACE,
@@ -4202,13 +4187,29 @@ PP(/,*)PP2(*,/)"##
         let src = r##"defined(HI)"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
+        let mut final_tokens = Vec::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        parse_defined_in_if_directive(
+            tokens.as_slice(),
+            0,
+            &mut final_tokens,
+            &defines,
+            &mut str_maps,
+        )?;
+        let res = eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
+        let mut final_tokens = Vec::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
+        parse_defined_in_if_directive(
+            tokens.as_slice(),
+            0,
+            &mut final_tokens,
+            &defines,
+            &mut str_maps,
+        )?;
+        let res = eval_constant_expression(&final_tokens, &defines, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
@@ -4246,7 +4247,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed for 1 inner test"
             );
         }
@@ -4261,8 +4262,11 @@ PP(/,*)PP2(*,/)"##
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
             assert_eq!(
-                vec![] as Vec<lexer::Token>,
-                tokens,
+                tokens
+                    .iter()
+                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+                    .count(),
+                0,
                 "failed for 2 inner test"
             );
         }
@@ -4285,7 +4289,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed for 3 inner test"
             );
         }
@@ -4300,8 +4304,11 @@ PP(/,*)PP2(*,/)"##
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
             assert_eq!(
-                vec![] as Vec<lexer::Token>,
-                tokens,
+                tokens
+                    .iter()
+                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+                    .count(),
+                0,
                 "failed for 4 inner test"
             );
         }
@@ -4324,7 +4331,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed for 5 inner test"
             );
         }
@@ -4348,7 +4355,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed 6"
             );
         }
@@ -4377,33 +4384,39 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed 7"
             );
         }
-        //        {
-        //            let src = r##"#define add(a,b) a + b
-        //#if add(4,4) < '8'
-        //4
-        //#elif add(1,4) > '0'
-        //5
-        //#endif
-        //"##
-        //            .as_bytes();
-        //            let mut defines = HashMap::new();
-        //            let mut tokens = cpp(src.to_vec(), &["./test_c_files"], &mut defines)?;
-        //            assert_eq!(
-        //                vec![
-        //                    lexer::Token::CONSTANT_DEC_INT {
-        //                        value: "5".to_string(),
-        //                        suffix: None
-        //                    },
-        //                    lexer::Token::NEWLINE,
-        //                ],
-        //                tokens,
-        //                "failed 8"
-        //            );
-        //        }
+        {
+            let src = r##"#define add(a,b) a + b
+#if add(4,4) < '8'
+4
+#elif add(1,4) > '0'
+5
+#endif
+        "##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = cpp(
+                src.to_vec(),
+                &["./test_c_files"],
+                &mut defines,
+                &mut str_maps,
+            )?;
+            assert_eq!(
+                vec![
+                    lexer::Token::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec("4".as_bytes()),
+                        suffix_key: None
+                    },
+                    lexer::Token::NEWLINE,
+                ],
+                tokens[0..2].to_vec(),
+                "failed 8"
+            );
+        }
         {
             let src = r##"#if HI && 1
 4
@@ -4428,7 +4441,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed 9"
             );
         }
@@ -4457,7 +4470,7 @@ PP(/,*)PP2(*,/)"##
                     },
                     lexer::Token::NEWLINE,
                 ],
-                tokens,
+                tokens[0..2].to_vec(),
                 "failed 10"
             );
         }
