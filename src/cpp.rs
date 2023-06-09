@@ -610,7 +610,7 @@ fn eval_constant_expression(
     tokens: &[lexer::Token],
     defines: &HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<bool, String> {
+) -> Result<i128, String> {
     //let START_TIMER = std::time::Instant::now();
     let mut eval_vec_index = 0;
     let mut final_tokens = Vec::new();
@@ -2037,7 +2037,7 @@ fn eval_constant_expression(
     }
     //eprintln!("END TIME: {}", (std::time::Instant::now() - START_TIMER).as_nanos());
     assert!(primary_stack.len() == 1);
-    Ok(*primary_stack.last().unwrap() != 0)
+    Ok(*primary_stack.last().unwrap())
 }
 fn if_directive(
     tokens: &mut [lexer::Token],
@@ -2241,7 +2241,7 @@ fn if_directive(
         start_looking += 1;
         let eval_vec = &tokens[start_looking..*end];
         let truthy = match macro_id.as_slice() {
-            b"if" | b"elif" => eval_constant_expression(eval_vec, defines, str_maps)?,
+            b"if" | b"elif" => eval_constant_expression(eval_vec, defines, str_maps)? != 0,
             b"ifdef" => {
                 if eval_vec
                     .iter()
@@ -3773,7 +3773,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, false, "(1 + 1) * 0");
+            assert_eq!(res != 0, false, "(1 + 1) * 0");
         }
         {
             let src = r##"1 + (1 * 0)"##.as_bytes();
@@ -3781,7 +3781,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "1 + (1 * 0)");
+            assert_eq!(res != 0, true, "1 + (1 * 0)");
         }
         {
             let src = r##"((1 + 1) * 0)"##.as_bytes();
@@ -3789,7 +3789,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, false, "((1 + 1) * 0)");
+            assert_eq!(res != 0, false, "((1 + 1) * 0)");
         }
         {
             let src = r##"((((1))))"##.as_bytes();
@@ -3797,7 +3797,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "((((1))))");
+            assert_eq!(res != 0, true, "((((1))))");
         }
         {
             let src = r##"((((1)))))"##.as_bytes();
@@ -3827,7 +3827,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "0 - (1 + 1)");
+            assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         {
             let src = r##"1"##.as_bytes();
@@ -3835,7 +3835,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "1");
+            assert_eq!(res != 0, true, "1");
         }
         {
             let src = r##"'1'"##.as_bytes();
@@ -3843,7 +3843,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "'1'");
+            assert_eq!(res != 0, true, "'1'");
         }
         Ok(())
     }
@@ -3854,27 +3854,27 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false, "!1");
+        assert_eq!(res != 0, false, "!1");
         let src = r##"!0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true, "!0");
+        assert_eq!(res != 0, true, "!0");
         let src = r##"~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true, "~0");
+        assert_eq!(res != 0, true, "~0");
         let src = r##"~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true, "~~~0");
+        assert_eq!(res != 0, true, "~~~0");
         let src = r##"~~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false, "~~~~0");
+        assert_eq!(res != 0, false, "~~~~0");
         let src = r##"--------------1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
@@ -3896,18 +3896,18 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 * !1"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 / 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 / 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
@@ -3920,12 +3920,12 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 * 1 + 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
@@ -3935,29 +3935,29 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 - 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"0 - 1 + 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false, "0 - 1 + 1");
+        assert_eq!(res != 0, false, "0 - 1 + 1");
         let src = r##"0 - 1 + !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true, "0 - 1 + !1");
+        assert_eq!(res != 0, true, "0 - 1 + !1");
         {
             let src = r##"'1' - '1'"##.as_bytes();
             let defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, false, "'1' - '1'");
+            assert_eq!(res != 0, false, "'1' - '1'");
         }
         {
             let src = r##"'2' - '1'"##.as_bytes();
@@ -3965,7 +3965,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-            assert_eq!(res, true, "'1' - '1'");
+            assert_eq!(res != 0, true, "'1' - '1'");
         }
         Ok(())
     }
@@ -3976,17 +3976,17 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 >> 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 >> !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         Ok(())
     }
     #[test]
@@ -3996,47 +3996,47 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 < 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 < !2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"2 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 > 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 > 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 >= 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 >= 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         Ok(())
     }
     #[test]
@@ -4046,22 +4046,22 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 != 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 != !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 != 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         Ok(())
     }
     #[test]
@@ -4071,27 +4071,27 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 & 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 & !0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 & 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 == 0 & 1 == 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
@@ -4101,13 +4101,13 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"(1 ^ !0) == 0"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         Ok(())
     }
     #[test]
@@ -4117,13 +4117,13 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"1 | !0 == 0"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true, "1 | !0 == 0");
+        assert_eq!(res != 0, true, "1 | !0 == 0");
         Ok(())
     }
     #[test]
@@ -4133,18 +4133,18 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 && 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"1 && !1"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
@@ -4154,17 +4154,17 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 || 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 || 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
@@ -4174,27 +4174,27 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, true);
+        assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false);
+        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
@@ -4204,12 +4204,12 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false, "failed 1");
+        assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression(&tokens, &defines, &mut str_maps)?;
-        assert_eq!(res, false, "failed 2");
+        assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
     #[test]
