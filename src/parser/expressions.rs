@@ -643,7 +643,6 @@ fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
 // TODO: rewrite this. It works but is WAYY too convoluted.
 pub fn eval_constant_expression(
     tokens: &[lexer::Token],
-    defines: &HashMap<usize, cpp::Define>,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<i128, String> {
     //let START_TIMER = std::time::Instant::now();
