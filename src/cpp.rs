@@ -1268,6 +1268,54 @@ pub fn cpp(
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<Vec<lexer::Token>, String> {
+    // trigraphs (part of step 1 in the translation phase)
+    let mut trigraphs_processed = Vec::new();
+    for index in 0..program_str.len() {
+        trigraphs_processed.push(if index + 3 < program_str.len() {
+            match program_str[index..index + 4] {
+                [b'?', b'?', b'='] => {
+                    eprintln!("WARNING: ??= trigraph changed to #");
+                    b'#'
+                },
+                [b'?', b'?', b'('] => {
+                    eprintln!("WARNING: ??( trigraph changed to [");
+                    b'['
+                },
+                [b'?', b'?', b'/'] => {
+                    eprintln!("WARNING: ??/ trigraph changed to \\");
+                    b'\\'
+                },
+                [b'?', b'?', b')'] => {
+                    eprintln!("WARNING: ??) trigraph changed to ]");
+                    b']'
+                },
+                [b'?', b'?', b'`'] => {
+                    eprintln!("WARNING: ??` trigraph changed to ^");
+                    b'^'
+                },
+                [b'?', b'?', b'<'] => {
+                    eprintln!("WARNING: ??< trigraph changed to {{");
+                    b'{'
+                },
+                [b'?', b'?', b'!'] => {
+                    eprintln!("WARNING: ??! trigraph changed to |");
+                    b'|'
+                },
+                [b'?', b'?', b'>'] => {
+                    eprintln!("WARNING: ??> trigraph changed to }}");
+                    b'}'
+                },
+                [b'?', b'?', b'-'] => {
+                    eprintln!("WARNING: ??- trigraph changed to ~");
+                    b'~'
+                },
+                _ => program_str[index],
+            }
+        } else {
+            program_str[index]
+        })
+    }
+    let program_str = trigraphs_processed;
     // step 2 in the translation phase
     let mut backslash_newline_spliced = Vec::with_capacity(program_str.len());
     let mut add_index = 0;
