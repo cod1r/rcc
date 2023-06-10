@@ -81,12 +81,45 @@ fn include_directive(
     final_tokens: &mut Vec<lexer::Token>,
 ) -> Result<usize, String> {
     let mut include_index = index + 1;
+    let mut newline_index = index;
+    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
+        && newline_index < tokens.len()
+    {
+        newline_index += 1;
+    }
+    if !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
+        return Err(format!("no newline after include directive"));
+    }
+    let mut include_tokens = Vec::new();
+    let mut expand_macro_index = index + 1;
+    while expand_macro_index < newline_index {
+        if let Some(lexer::Token::IDENT(key)) = tokens.get(expand_macro_index) {
+            if defines.contains_key(key) {
+                expand_macro_index = expand_macro(
+                    tokens,
+                    expand_macro_index,
+                    defines,
+                    str_maps,
+                    &mut include_tokens,
+                )?;
+                continue;
+            }
+        }
+        if expand_macro_index < newline_index {
+            include_tokens.push(tokens[expand_macro_index]);
+        }
+        expand_macro_index += 1;
+    }
+    let tokens = include_tokens;
+    let mut include_index = 0;
     if matches!(tokens.get(include_index), Some(lexer::Token::WHITESPACE)) {
         include_index += 1;
     }
     let mut file_name = None;
+    let mut look_at_current_dir = false;
     if matches!(tokens.get(include_index), Some(lexer::Token::IDENT(_))) {
         include_index += 1;
+
         if matches!(tokens.get(include_index), Some(lexer::Token::WHITESPACE)) {
             include_index += 1;
         }
@@ -130,29 +163,42 @@ fn include_directive(
                 prefix_key: _,
                 sequence_key,
             })) => {
+                look_at_current_dir = true;
                 let sequence = &str_maps.key_to_byte_vec[*sequence_key];
                 file_name = Some(String::from_utf8_lossy(sequence).to_string());
             }
             _ => {}
         }
     }
+    if let Some(slice) = tokens.get(include_index + 1..) {
+        if slice
+            .iter()
+            .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
+            .count()
+            > 0
+        {
+            eprintln!(
+                "{}",
+                format!(
+                    "Warning: Tokens after {:?} are skipped",
+                    tokens.get(include_index)
+                )
+            );
+        }
+    }
     if let Some(fname) = file_name {
-        for path in include_paths {
+        let mut include_paths = include_paths.to_vec();
+        if look_at_current_dir {
+            include_paths.insert(0, ".");
+        }
+        for path_index in 0..include_paths.len() {
+            let path = include_paths[path_index];
             let full_path_file = path.to_string() + "/" + &fname;
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
                     let mut tokens_from_file =
-                        cpp(file_contents, include_paths, defines, str_maps)?;
+                        cpp(file_contents, include_paths.as_slice(), defines, str_maps)?;
                     final_tokens.extend_from_slice(&tokens_from_file);
-                    let mut newline_index = index;
-                    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
-                        && newline_index < tokens.len()
-                    {
-                        newline_index += 1;
-                    }
-                    if !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
-                        return Err(format!("no newline after include directive"));
-                    }
                     return Ok(newline_index + 1);
                 }
                 Err(_) => {
@@ -1276,39 +1322,39 @@ pub fn cpp(
                 [b'?', b'?', b'='] => {
                     eprintln!("WARNING: ??= trigraph changed to #");
                     b'#'
-                },
+                }
                 [b'?', b'?', b'('] => {
                     eprintln!("WARNING: ??( trigraph changed to [");
                     b'['
-                },
+                }
                 [b'?', b'?', b'/'] => {
                     eprintln!("WARNING: ??/ trigraph changed to \\");
                     b'\\'
-                },
+                }
                 [b'?', b'?', b')'] => {
                     eprintln!("WARNING: ??) trigraph changed to ]");
                     b']'
-                },
+                }
                 [b'?', b'?', b'`'] => {
                     eprintln!("WARNING: ??` trigraph changed to ^");
                     b'^'
-                },
+                }
                 [b'?', b'?', b'<'] => {
                     eprintln!("WARNING: ??< trigraph changed to {{");
                     b'{'
-                },
+                }
                 [b'?', b'?', b'!'] => {
                     eprintln!("WARNING: ??! trigraph changed to |");
                     b'|'
-                },
+                }
                 [b'?', b'?', b'>'] => {
                     eprintln!("WARNING: ??> trigraph changed to }}");
                     b'}'
-                },
+                }
                 [b'?', b'?', b'-'] => {
                     eprintln!("WARNING: ??- trigraph changed to ~");
                     b'~'
-                },
+                }
                 _ => program_str[index],
             }
         } else {
