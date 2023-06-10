@@ -122,11 +122,13 @@ pub struct StructUnionSpecifier {
     pub identifier: Option<usize>,
     pub struct_declaration_list: Vec<StructDeclaration>,
 }
+#[derive(Debug, PartialEq)]
 pub enum Enumerator {
     Enum(usize),
     EnumWithConstantExpr(usize, i128),
 }
 pub struct EnumSpecifier {
+    identifier: Option<usize>,
     enumerator_list: Vec<Enumerator>,
 }
 pub enum TypeSpecifier {
@@ -352,15 +354,38 @@ fn parse_struct_union_specifier(tokens: &[lexer::Token]) -> Result<StructUnionSp
 
 fn parse_enumerator_specifier(
     tokens: &[lexer::Token],
+    start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<EnumSpecifier, String> {
+) -> Result<(usize, EnumSpecifier), String> {
     let mut enum_specifier = EnumSpecifier {
+        identifier: None,
         enumerator_list: Vec::new(),
     };
-    let mut index = 0;
+    let mut index = start_index;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
+        enum_specifier.identifier = Some(*key);
+    }
+    index += 1;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_OPEN_CURLY)) {
+        return Err(format!("Expected opening curly bracket"));
+    }
+    index += 1;
     while index < tokens.len() {
         match tokens[index] {
             lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {}
+            lexer::Token::PUNCT_CLOSE_CURLY => break,
             lexer::Token::IDENT(key) => {
                 let mut assignment_token_index = index + 1;
                 while matches!(
@@ -374,8 +399,10 @@ fn parse_enumerator_specifier(
                     Some(lexer::Token::PUNCT_ASSIGNMENT)
                 ) {
                     let mut ending_index = assignment_token_index + 1;
-                    while !matches!(tokens.get(ending_index), Some(lexer::Token::PUNCT_COMMA))
-                        && ending_index < tokens.len()
+                    while !matches!(
+                        tokens.get(ending_index),
+                        Some(lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_CLOSE_CURLY)
+                    ) && ending_index < tokens.len()
                     {
                         ending_index += 1;
                     }
@@ -390,25 +417,26 @@ fn parse_enumerator_specifier(
                 } else {
                     enum_specifier.enumerator_list.push(Enumerator::Enum(key));
                 }
-                if assignment_token_index < tokens.len()
-                    && !matches!(
-                        tokens.get(assignment_token_index),
-                        Some(lexer::Token::PUNCT_COMMA)
-                    )
-                {
+                if !matches!(
+                    tokens.get(assignment_token_index),
+                    Some(lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_CLOSE_CURLY)
+                ) {
                     return Err(format!(
-                        "Unexpected token: {:?}",
+                        "Unexpected token: {:?}, expected a comma or closing curly bracket",
                         tokens[assignment_token_index]
                     ));
                 }
-                index = assignment_token_index;
+                index = assignment_token_index + 1;
+                if let Some(lexer::Token::PUNCT_CLOSE_CURLY) = tokens.get(assignment_token_index) {
+                    break;
+                }
                 continue;
             }
-            _ => todo!(),
+            _ => return Err(format!("Unexpected token: {:?}", tokens[index])),
         }
         index += 1;
     }
-    Ok(enum_specifier)
+    Ok((index, enum_specifier))
 }
 
 fn parse_type_names(
@@ -487,27 +515,56 @@ fn parse_type_names(
                     enum_index += 1;
                 }
                 if !matches!(tokens.get(enum_index), Some(lexer::Token::PUNCT_OPEN_CURLY)) {
-                    let start = enum_index + 1;
-                    while !matches!(
-                        tokens.get(enum_index),
-                        Some(lexer::Token::PUNCT_CLOSE_CURLY)
-                    ) {
-                        enum_index += 1;
-                    }
-                    if !matches!(
-                        tokens.get(enum_index),
-                        Some(lexer::Token::PUNCT_CLOSE_CURLY)
-                    ) {
-                        return Err(format!("Missing closing curly"));
-                    }
-                    let enum_specifier =
-                        parse_enumerator_specifier(&tokens[start..enum_index], str_maps)?;
-                    specifiers_qualifiers.type_specifiers.push(enum_specifier);
+                    let (new_index, enum_specifier) =
+                        parse_enumerator_specifier(tokens, enum_index + 1, str_maps)?;
+                    index = new_index;
+                    specifiers_qualifiers
+                        .type_specifiers
+                        .push(TypeSpecifier::Enum(enum_specifier));
                 }
             }
-            lexer::Token::KEYWORD_TYPEDEF => {}
+            lexer::Token::IDENT(_) => {}
             _ => {}
         }
     }
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_enumerator_specifier, EnumSpecifier, Enumerator};
+    use crate::lexer::{self};
+    #[test]
+    fn parse_enumerator_specifier_test() -> Result<(), String> {
+        let src = r#"
+        enum HI {
+            YOUR_MOM,
+            HEHE,
+        }
+"#
+        .as_bytes();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
+        let start_index = {
+            let mut index = 0;
+            while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {
+                index += 1;
+            }
+            index + 1
+        };
+        let (_, enum_specifier) =
+            parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
+        assert_eq!(
+            enum_specifier.identifier,
+            Some(str_maps.add_byte_vec("HI".as_bytes()))
+        );
+        assert_eq!(
+            enum_specifier.enumerator_list,
+            vec![
+                Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
+                Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes()))
+            ]
+        );
+        Ok(())
+    }
 }
