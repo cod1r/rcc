@@ -760,28 +760,19 @@ fn match_string_literal(
         prefix_key: None,
         sequence_key: 0,
     });
+    let Token::StringLiteral(StringLiteral { prefix_key, sequence_key }) = &mut token else { unreachable!() };
     if byte_index < program_str_bytes.len()
         && [b'u', b'U', b'L'].contains(&program_str_bytes[byte_index])
     {
-        if byte_index + 1 < program_str_bytes.len() && program_str_bytes[byte_index + 1] == b'8' {
-            if let Token::StringLiteral(StringLiteral {
-                prefix_key,
-                sequence_key: _,
-            }) = &mut token
-            {
-                *prefix_key =
-                    Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 2]));
-            }
+        if byte_index + 1 < program_str_bytes.len()
+            && matches!(program_str_bytes[byte_index..byte_index + 2], [b'u', b'8'])
+        {
+            *prefix_key =
+                Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 2]));
             byte_index += 2;
         } else {
-            if let Token::StringLiteral(StringLiteral {
-                prefix_key,
-                sequence_key: _,
-            }) = &mut token
-            {
-                *prefix_key =
-                    Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 1]));
-            }
+            *prefix_key =
+                Some(str_maps.add_byte_vec(&program_str_bytes[byte_index..byte_index + 1]));
             byte_index += 1;
         }
     }
@@ -829,13 +820,7 @@ fn match_string_literal(
             byte_index += 1;
         }
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'"' {
-            if let Token::StringLiteral(StringLiteral {
-                prefix_key: _,
-                sequence_key,
-            }) = &mut token
-            {
-                *sequence_key = str_maps.add_byte_vec(&program_str_bytes[start_of_seq..byte_index]);
-            }
+            *sequence_key = str_maps.add_byte_vec(&program_str_bytes[start_of_seq..byte_index]);
             byte_index += 1;
             *index = byte_index;
             return Ok(Some(token));
