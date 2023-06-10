@@ -1465,19 +1465,22 @@ fn match_identifier(
     str_maps: &mut ByteVecMaps,
 ) -> Result<Option<Token>, String> {
     let mut byte_index = *index;
-    if byte_index + 1 < program_str_bytes.len()
-        && program_str_bytes[byte_index] == b'\\'
-        && (program_str_bytes[byte_index + 1] == b'U' || program_str_bytes[byte_index + 1] == b'u')
-    {
-        if let Some(ucn) = match_universal_character_name(program_str_bytes, *index)? {
-            byte_index += ucn.len();
+    while byte_index < program_str_bytes.len() {
+        if matches!(
+            program_str_bytes.get(byte_index..byte_index + 2),
+            Some([b'\\', b'U' | b'u'])
+        ) {
+            if let Some(ucn) = match_universal_character_name(program_str_bytes, byte_index)? {
+                byte_index += ucn.len();
+                continue;
+            }
+        } else if program_str_bytes[byte_index].is_ascii_alphanumeric()
+            || program_str_bytes[byte_index] == b'_'
+        {
+            byte_index += 1;
+        } else {
+            break;
         }
-    }
-    while byte_index < program_str_bytes.len()
-        && (program_str_bytes[byte_index].is_ascii_alphanumeric()
-            || program_str_bytes[byte_index] == b'_')
-    {
-        byte_index += 1;
     }
     let bytes = &program_str_bytes[*index..byte_index];
     if !bytes.is_empty() && !bytes[0].is_ascii_digit() && *bytes != *"__func__".as_bytes() {
@@ -1671,9 +1674,10 @@ pub fn lexer(
 #[cfg(test)]
 mod tests {
     use super::{
-        lexer, match_character_constant, match_floating_constant, match_string_literal,
-        ByteVecMaps, ConstantChar, StringLiteral, Token,
+        lexer, match_character_constant, match_floating_constant, match_identifier,
+        match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
+    use crate::lexer::{self};
     use std::collections::HashMap;
     #[test]
     fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {
@@ -1733,7 +1737,19 @@ mod tests {
         );
         Ok(())
     }
-
+    #[test]
+    fn test_match_identifier_universal_character_name_within() -> Result<(), String> {
+        let src = r#"foo\u1234bar"#.as_bytes();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let token = match_identifier(src, &mut 0, &mut str_maps)?;
+        assert_eq!(
+            token,
+            Some(lexer::Token::IDENT(
+                str_maps.add_byte_vec("foo\\u1234bar".as_bytes())
+            ))
+        );
+        Ok(())
+    }
     #[test]
     fn test_match_float_constant_valid_hexadecimal_second_digit_sequence() {
         let s = "0x.0p0";
