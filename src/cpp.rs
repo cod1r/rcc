@@ -80,15 +80,6 @@ fn include_directive(
     str_maps: &mut lexer::ByteVecMaps,
     final_tokens: &mut Vec<lexer::Token>,
 ) -> Result<usize, String> {
-    let mut newline_index = index;
-    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
-        && newline_index < tokens.len()
-    {
-        newline_index += 1;
-    }
-    if !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
-        return Err(format!("no newline after include directive"));
-    }
     let mut include_index = index + 1;
     if matches!(tokens.get(include_index), Some(lexer::Token::WHITESPACE)) {
         include_index += 1;
@@ -153,6 +144,15 @@ fn include_directive(
                     let mut tokens_from_file =
                         cpp(file_contents, include_paths, defines, str_maps)?;
                     final_tokens.extend_from_slice(&tokens_from_file);
+                    let mut newline_index = index;
+                    while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
+                        && newline_index < tokens.len()
+                    {
+                        newline_index += 1;
+                    }
+                    if !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE)) {
+                        return Err(format!("no newline after include directive"));
+                    }
                     return Ok(newline_index + 1);
                 }
                 Err(_) => {
