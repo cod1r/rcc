@@ -788,11 +788,16 @@ fn get_end_of_fn_macro(tokens: &[lexer::Token], index: usize) -> Result<usize, S
     }
     Ok(starting_index)
 }
-fn hash_hash_deletion_and_concat_tokens(replacement_list: &mut Vec<lexer::Token>) {
+fn hash_hash_deletion_and_concat_tokens(
+    replacement_list: &mut Vec<lexer::Token>,
+    hash_hash_from_args: &[usize],
+) {
     let mut hash_hash_process_index = 0;
     while hash_hash_process_index < replacement_list.len() {
         let token = replacement_list[hash_hash_process_index];
-        if let lexer::Token::PUNCT_HASH_HASH = token {
+        if matches!(token, lexer::Token::PUNCT_HASH_HASH)
+            && !hash_hash_from_args.contains(&hash_hash_process_index)
+        {
             let mut left_index = hash_hash_process_index - 1;
             // left_index should never be less than zero because in the define_directive
             // function, we check if ## is at the beginning or end and we trim whitespace.
@@ -827,53 +832,7 @@ fn hash_hash_deletion_and_concat_tokens(replacement_list: &mut Vec<lexer::Token>
         hash_hash_process_index += 1;
     }
 }
-fn combine_tokens_during_macro_replacement(
-    replacement_list: &mut Vec<lexer::Token>,
-    str_maps: &mut lexer::ByteVecMaps,
-) {
-    let mut combine_token_index = 0;
-    let mut combined_sequence = Vec::new();
-    let mut token_type = None;
-    while combine_token_index < replacement_list.len() {
-        while matches!(
-            replacement_list.get(combine_token_index),
-            Some(lexer::Token::IDENT(_) | lexer::Token::CONSTANT_DEC_INT { .. })
-        ) {
-            match replacement_list.get(combine_token_index) {
-                Some(lexer::Token::CONSTANT_DEC_INT {
-                    value_key,
-                    suffix_key,
-                }) => {
-                    if combined_sequence.is_empty() {
-                        token_type = Some(lexer::Token::CONSTANT_DEC_INT {
-                            value_key: *value_key,
-                            suffix_key: *suffix_key,
-                        });
-                        replacement_list.remove(combine_token_index);
-                        break;
-                    }
-                    combined_sequence.extend_from_slice(&str_maps.key_to_byte_vec[*value_key]);
-                }
-                Some(lexer::Token::IDENT(temp_key)) => {
-                    combined_sequence.extend_from_slice(&str_maps.key_to_byte_vec[*temp_key]);
-                }
-                _ => unreachable!(),
-            }
-            replacement_list.remove(combine_token_index);
-        }
-        if let Some(t) = token_type {
-            replacement_list.insert(combine_token_index, t);
-            token_type = None;
-        } else if !combined_sequence.is_empty() {
-            replacement_list.insert(
-                combine_token_index,
-                lexer::Token::IDENT(str_maps.add_byte_vec(&combined_sequence)),
-            );
-            combined_sequence.clear();
-        }
-        combine_token_index += 1;
-    }
-}
+
 fn parse_macro_and_replace(
     defines: &HashMap<usize, Define>,
     macro_stack: &mut Vec<MacroSection>,
@@ -884,6 +843,7 @@ fn parse_macro_and_replace(
     let Some(first_macro_section) = macro_stack.pop() else { unreachable!() };
     let Some(defines_data) = defines.get(&first_macro_section.macro_key) else { unreachable!() };
     let mut actual_replacement_list = defines_data.replacement_list.clone();
+    let mut hash_hash_from_args = Vec::new();
     if let Some(parameters) = &defines_data.parameters {
         let curr_token_list = replacement_list.clone();
         // we get the arguments passed in
@@ -1037,6 +997,9 @@ fn parse_macro_and_replace(
                                 .count();
                             if count_of_non_whitespace > 0 {
                                 for t in argument {
+                                    if matches!(t, lexer::Token::PUNCT_HASH_HASH) {
+                                        hash_hash_from_args.push(insert_index);
+                                    }
                                     actual_replacement_list.insert(insert_index, *t);
                                     insert_index += 1;
                                 }
@@ -1053,8 +1016,21 @@ fn parse_macro_and_replace(
             token_index += 1;
         }
     }
-    hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list);
-    combine_tokens_during_macro_replacement(&mut actual_replacement_list, str_maps);
+    hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list, &hash_hash_from_args);
+    let mut placemarker_removal_index = 0;
+    while placemarker_removal_index < actual_replacement_list.len() {
+        if let lexer::Token::PLACEMARKER = actual_replacement_list[placemarker_removal_index] {
+            actual_replacement_list.remove(placemarker_removal_index);
+            continue;
+        }
+        placemarker_removal_index += 1;
+    }
+    let mut byte_vec = Vec::new();
+    for t in actual_replacement_list {
+        let Some(inner_byte_vec) = t.to_byte_vec(str_maps) else {unreachable!()};
+        byte_vec.extend_from_slice(inner_byte_vec.as_slice());
+    }
+    let actual_replacement_list = lexer::lexer(byte_vec.as_slice(), true, str_maps)?;
     let end_of_macro = if defines_data.parameters.is_some() {
         get_end_of_fn_macro(&replacement_list, first_macro_section.start)?
     } else {
@@ -1067,14 +1043,6 @@ fn parse_macro_and_replace(
     for t in &actual_replacement_list {
         replacement_list.insert(insert_index, *t);
         insert_index += 1;
-    }
-    let mut placemarker_removal_index = 0;
-    while placemarker_removal_index < replacement_list.len() {
-        if let lexer::Token::PLACEMARKER = replacement_list[placemarker_removal_index] {
-            replacement_list.remove(placemarker_removal_index);
-            continue;
-        }
-        placemarker_removal_index += 1;
     }
     let mut moar_macros_index = first_macro_section.start;
     'outer: while moar_macros_index < replacement_list.len() {
@@ -1436,32 +1404,63 @@ mod tests {
     }
     #[test]
     fn include_test() -> Result<(), String> {
-        let src = r##"#include "hi.h"
+        {
+            let src = r##"#include "hi.h"
 int main() {
 }"##
-        .as_bytes();
-        let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut final_tokens = Vec::<lexer::Token>::new();
-        let mut tokens = cpp(
-            src.to_vec(),
-            &["./test_c_files"],
-            &mut defines,
-            &mut str_maps,
-        )?;
-        let assert_tokens = [
-            lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
-            lexer::Token::WHITESPACE,
-            lexer::Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
-            lexer::Token::PUNCT_OPEN_PAR,
-            lexer::Token::PUNCT_CLOSE_PAR,
-            lexer::Token::WHITESPACE,
-            lexer::Token::PUNCT_OPEN_CURLY,
-            lexer::Token::NEWLINE,
-            lexer::Token::PUNCT_CLOSE_CURLY,
-        ]
-        .to_vec();
-        assert_eq!(assert_tokens, tokens);
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut final_tokens = Vec::<lexer::Token>::new();
+            let mut tokens = cpp(
+                src.to_vec(),
+                &["./test_c_files"],
+                &mut defines,
+                &mut str_maps,
+            )?;
+            let assert_tokens = [
+                lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
+                lexer::Token::WHITESPACE,
+                lexer::Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
+                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_OPEN_CURLY,
+                lexer::Token::NEWLINE,
+                lexer::Token::PUNCT_CLOSE_CURLY,
+            ]
+            .to_vec();
+            assert_eq!(assert_tokens, tokens);
+        }
+        {
+            let src = r##"#define FILE "hi.h"
+#include FILE
+int main() {
+}"##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut final_tokens = Vec::<lexer::Token>::new();
+            let mut tokens = cpp(
+                src.to_vec(),
+                &["./test_c_files"],
+                &mut defines,
+                &mut str_maps,
+            )?;
+            let assert_tokens = [
+                lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
+                lexer::Token::WHITESPACE,
+                lexer::Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
+                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_OPEN_CURLY,
+                lexer::Token::NEWLINE,
+                lexer::Token::PUNCT_CLOSE_CURLY,
+            ]
+            .to_vec();
+            assert_eq!(assert_tokens, tokens);
+        }
         Ok(())
     }
     #[test]
