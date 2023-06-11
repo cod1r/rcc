@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 
 use crate::lexer::{self};
 use crate::parser::expressions::{self};
@@ -80,7 +79,6 @@ fn include_directive(
     str_maps: &mut lexer::ByteVecMaps,
     final_tokens: &mut Vec<lexer::Token>,
 ) -> Result<usize, String> {
-    let mut include_index = index + 1;
     let mut newline_index = index;
     while !matches!(tokens.get(newline_index), Some(lexer::Token::NEWLINE))
         && newline_index < tokens.len()
@@ -436,7 +434,7 @@ fn if_directive(
     let mut seen_elif = false;
     let mut seen_else = false;
     for index_for_structure_index in 0..if_elif_else_structure_index.len() {
-        let (macro_id_bytes, start, end) = &if_elif_else_structure_index[index_for_structure_index];
+        let (macro_id_bytes, _, _) = &if_elif_else_structure_index[index_for_structure_index];
         match macro_id_bytes.as_slice() {
             b"if" | b"ifdef" | b"ifndef" => {
                 if seen_elif || seen_else {
@@ -615,7 +613,6 @@ fn define_directive(
     if let Some([lexer::Token::IDENT(id_key), lexer::Token::PUNCT_OPEN_PAR]) =
         tokens.get(index_of_identifier..index_of_identifier + 2)
     {
-        let id = &str_maps.key_to_byte_vec[*id_key];
         def_data.parameters = Some(Vec::new());
         identifier_of_macro_key = *id_key;
         let mut fn_like_macro_index = index_of_identifier + 2;
@@ -1153,7 +1150,6 @@ fn expand_macro(
     //  any macro sections onto the macro stack)
     //  TODO: I actually do something slightly different to what the spec says due to performance
     //  reasons but the end result is the same so that needs to be documented.
-    let mut val = true;
     while !macro_stack.is_empty() {
         parse_macro_and_replace(
             defines,
