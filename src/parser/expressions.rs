@@ -1,6 +1,4 @@
-use crate::cpp::{self};
 use crate::lexer::{self};
-use std::collections::HashMap;
 #[derive(Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
@@ -545,7 +543,7 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                     assert!(p.is_some());
                     assert!(c.third.is_none());
                 }
-                Expr::Unary(u) => {
+                Expr::Unary(_u) => {
                     assert!(c.third.is_none());
                 }
                 Expr::Multiplicative(m) => {
@@ -629,7 +627,7 @@ fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
         Expr::LogicalOR(lo) => {
             lo.first = boxed;
         }
-        Expr::Conditional(c) => {
+        Expr::Conditional(_c) => {
             unreachable!()
         }
         _ => unreachable!(),
@@ -964,7 +962,7 @@ pub fn eval_constant_expression(
             | lexer::Token::PUNCT_TILDE => {
                 left_expression = curr_expr;
                 match &left_expression {
-                    Some(Expr::Primary(p)) => {
+                    Some(Expr::Primary(_p)) => {
                         // if a '~' or '!' follow a primary expression, that is not allowed.
                         match tokens[index] {
                             lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
@@ -1642,7 +1640,7 @@ pub fn eval_constant_expression(
                         match t {
                             lexer::Token::CONSTANT_DEC_INT {
                                 value_key,
-                                suffix_key,
+                                ..
                             } => {
                                 // "For the purposes of this token conversion and evaluation,
                                 // all signed integer types and all unsigned integer types act as if they have the same representation

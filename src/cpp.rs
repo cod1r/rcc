@@ -26,7 +26,7 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
             byte_index += 1;
             while byte_index < bytes.len() && bytes[byte_index] != start {
                 comments_removed.push(bytes[byte_index]);
-                // for escaped ' and "
+                // for escaped ' and " and any other escaped character
                 if byte_index + 1 < bytes.len() && bytes[byte_index] == b'\\' {
                     comments_removed.push(bytes[byte_index + 1]);
                     byte_index += 1;
