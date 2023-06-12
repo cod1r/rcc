@@ -110,9 +110,9 @@ fn main() -> Result<(), String> {
             })],
         };
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
-        match std::fs::read(file) {
+        match std::fs::read(&file) {
             Ok(contents) => {
-                let tokens = cpp::cpp(contents, include_paths, &mut defines, &mut str_maps)?;
+                let tokens = cpp::cpp(&file, contents, include_paths, &mut defines, &mut str_maps)?;
                 // concatenating adjacent string literals together
                 let tokens = concat_adjacent_strings(tokens.as_slice(), &mut str_maps)?;
                 let mut new_tokens = Vec::new();
