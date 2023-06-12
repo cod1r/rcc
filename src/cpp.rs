@@ -74,6 +74,7 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
 fn include_directive(
     tokens: &[lexer::Token],
     index: usize,
+    curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
@@ -184,37 +185,47 @@ fn include_directive(
             );
         }
     }
-    if let Some(fname) = file_name {
-        let mut include_paths = include_paths.to_vec();
+    if let Some(mut fname) = file_name {
         if look_at_current_dir {
-            let mut chars = fname.char_indices().rev();
-            let char_index_pair = chars.find(|(i, c)| *c == '/');
-            if let Some((i, c)) = char_index_pair {
-                let split = fname.split_at(i);
-                include_paths.push(split.0);
-            } else {
-                include_paths.push(".");
-            }
-        }
-        for path_index in 0..include_paths.len() {
-            let path = include_paths[path_index];
-            let full_path_file = path.to_string() + "/" + &fname;
+            let curr_dir = {
+                let mut split_index = 0;
+                for (i, c) in curr_path.char_indices().rev() {
+                    if c == '/' {
+                        split_index = i;
+                        break;
+                    }
+                }
+                curr_path.split_at(split_index).0
+            };
+            let full_path_file = curr_dir.to_string() + "/" + &fname;
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
                     let mut tokens_from_file =
-                        cpp(file_contents, include_paths.as_slice(), defines, str_maps)?;
+                        cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
                     final_tokens.extend_from_slice(&tokens_from_file);
                     return Ok(newline_index + 1);
                 }
                 Err(_) => {
-                    //eprintln!("fs::read failed for path: {}", full_path_file);
+                    eprintln!("fs::read failed for path: {}", full_path_file);
+                }
+            }
+        } else {
+            for path_index in 0..include_paths.len() {
+                let path = include_paths[path_index];
+                let full_path_file = path.to_string() + "/" + &fname;
+                match std::fs::read(full_path_file.as_str()) {
+                    Ok(file_contents) => {
+                        let mut tokens_from_file =
+                            cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
+                        final_tokens.extend_from_slice(&tokens_from_file);
+                        return Ok(newline_index + 1);
+                    }
+                    Err(_) => {
+                        eprintln!("fs::read failed for path: {}", full_path_file);
+                    }
                 }
             }
         }
-        eprintln!(
-            "{fname} not found relative to any paths in {:?}",
-            include_paths
-        );
     }
     Err(String::from("file not found"))
 }
@@ -1171,6 +1182,7 @@ fn expand_macro(
 }
 fn preprocessing_directives(
     tokens: &mut Vec<lexer::Token>,
+    curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
@@ -1215,6 +1227,7 @@ fn preprocessing_directives(
                                 index = include_directive(
                                     tokens,
                                     index,
+                                    curr_path,
                                     include_paths,
                                     defines,
                                     str_maps,
@@ -1281,6 +1294,7 @@ pub fn output_tokens_stdout(tokens: &[lexer::Token], str_maps: &lexer::ByteVecMa
 // TODO: implement some kind of warning system
 pub fn cpp(
     program_str: Vec<u8>,
+    curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
@@ -1351,7 +1365,13 @@ pub fn cpp(
     let comments_removed = comments(backslash_newline_spliced.as_slice())?;
     let mut lexed_tokens = lexer::lexer(&comments_removed, true, str_maps)?;
     // step 4 in the translation phase
-    preprocessing_directives(&mut lexed_tokens, include_paths, defines, str_maps)?;
+    preprocessing_directives(
+        &mut lexed_tokens,
+        curr_path,
+        include_paths,
+        defines,
+        str_maps,
+    )?;
     Ok(lexed_tokens)
 }
 

@@ -100,7 +100,7 @@ fn main() -> Result<(), String> {
         "/usr/include/linux",
         "/usr/lib/gcc/x86_64-pc-linux-gnu/13.1.1/include",
     ];
-    for file in files {
+    for file in &files {
         let define = cpp::Define {
             parameters: None,
             var_arg: false,
@@ -112,7 +112,15 @@ fn main() -> Result<(), String> {
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
         match std::fs::read(file) {
             Ok(contents) => {
-                let tokens = cpp::cpp(contents, include_paths, &mut defines, &mut str_maps)?;
+                let Ok(pathbuf) = std::fs::canonicalize(file) else { unreachable!() };
+                let path = pathbuf.as_path().to_string_lossy().to_string();
+                let tokens = cpp::cpp(
+                    contents,
+                    path.as_str(),
+                    include_paths,
+                    &mut defines,
+                    &mut str_maps,
+                )?;
                 // concatenating adjacent string literals together
                 let tokens = concat_adjacent_strings(tokens.as_slice(), &mut str_maps)?;
                 let mut new_tokens = Vec::new();
