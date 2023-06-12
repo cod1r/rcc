@@ -201,7 +201,7 @@ fn include_directive(
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
                     let mut tokens_from_file =
-                        cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
+                        cpp(file_contents, full_path_file.as_str(), include_paths, defines, str_maps)?;
                     final_tokens.extend_from_slice(&tokens_from_file);
                     return Ok(newline_index + 1);
                 }
