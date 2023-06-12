@@ -187,7 +187,14 @@ fn include_directive(
     if let Some(fname) = file_name {
         let mut include_paths = include_paths.to_vec();
         if look_at_current_dir {
-            include_paths.insert(0, ".");
+            let mut chars = fname.char_indices().rev();
+            let char_index_pair = chars.find(|(i, c)| *c == '/');
+            if let Some((i, c)) = char_index_pair {
+                let split = fname.split_at(i);
+                include_paths.push(split.0);
+            } else {
+                include_paths.push(".");
+            }
         }
         for path_index in 0..include_paths.len() {
             let path = include_paths[path_index];
