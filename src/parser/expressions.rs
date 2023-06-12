@@ -1638,10 +1638,7 @@ pub fn eval_constant_expression(
                             lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
                         ));
                         match t {
-                            lexer::Token::CONSTANT_DEC_INT {
-                                value_key,
-                                ..
-                            } => {
+                            lexer::Token::CONSTANT_DEC_INT { value_key, .. } => {
                                 // "For the purposes of this token conversion and evaluation,
                                 // all signed integer types and all unsigned integer types act as if they have the same representation
                                 // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
