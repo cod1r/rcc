@@ -116,6 +116,7 @@ fn include_directive(
     }
     let mut file_name = None;
     let mut look_at_current_dir = false;
+    let mut end_of_file_path_index = 0;
     if matches!(tokens.get(include_index), Some(lexer::Token::IDENT(_))) {
         include_index += 1;
 
@@ -157,6 +158,7 @@ fn include_directive(
                 )
                 .to_string();
                 file_name = Some(string_from_u8);
+                end_of_file_path_index = punct_greater_than_index + 1;
             }
             Some(lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: _,
@@ -165,22 +167,25 @@ fn include_directive(
                 look_at_current_dir = true;
                 let sequence = &str_maps.key_to_byte_vec[*sequence_key];
                 file_name = Some(String::from_utf8_lossy(sequence).to_string());
+                end_of_file_path_index = include_index + 1;
             }
             _ => {}
         }
     }
-    if let Some(slice) = tokens.get(include_index + 1..) {
+    if let Some(slice) = tokens.get(end_of_file_path_index + 1..) {
         if slice
             .iter()
             .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
             .count()
             > 0
         {
+            let Some(t) = tokens.get(include_index) else { unreachable!() };
+            let Some(bv) = t.to_byte_vec(str_maps) else { unreachable!() };
             eprintln!(
                 "{}",
                 format!(
-                    "Warning: Tokens after {:?} are skipped",
-                    tokens.get(include_index)
+                    "Warning: Tokens after {} are skipped",
+                    String::from_utf8_lossy(&bv).to_string()
                 )
             );
         }
@@ -200,8 +205,13 @@ fn include_directive(
             let full_path_file = curr_dir.to_string() + "/" + &fname;
             match std::fs::read(full_path_file.as_str()) {
                 Ok(file_contents) => {
-                    let tokens_from_file =
-                        cpp(file_contents, full_path_file.as_str(), include_paths, defines, str_maps)?;
+                    let tokens_from_file = cpp(
+                        file_contents,
+                        full_path_file.as_str(),
+                        include_paths,
+                        defines,
+                        str_maps,
+                    )?;
                     final_tokens.extend_from_slice(&tokens_from_file);
                     return Ok(newline_index + 1);
                 }
