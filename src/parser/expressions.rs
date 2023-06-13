@@ -1648,14 +1648,15 @@ pub fn eval_constant_expression(
                                 // compare and not have to do any weird casts.
                                 // TODO: add overflow checks...
                                 let value = &str_maps.key_to_byte_vec[value_key];
-                                match String::from_utf8_lossy(value).to_string().parse::<i128>() {
+                                let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else { unreachable!() };
+                                match to_be_parsed.parse::<i128>() {
                                     Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
                                         primary_stack.push(v);
                                     }
                                     _ => {
                                         return Err(format!(
                                             "{} cannot be represented as i64 or u64",
-                                            String::from_utf8_lossy(value).to_string()
+                                            to_be_parsed
                                         ));
                                     }
                                 }

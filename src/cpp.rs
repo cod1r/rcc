@@ -140,24 +140,22 @@ fn include_directive(
                 ) {
                     return Err(format!("No '>' for opening '<' in include directive"));
                 }
-                let file_path_tokens = tokens[include_index..punct_greater_than_index]
-                    .iter()
-                    .map(|t| t.to_byte_vec(str_maps));
-                if file_path_tokens.clone().any(|t_opt| t_opt.is_none()) {
-                    return Err(format!(
-                        "include directive contains tokens that cannot be stringified"
-                    ));
+                let mut file_path_bytes = Vec::new();
+                for index in include_index..punct_greater_than_index {
+                    if let Some(bv) = tokens[index].to_byte_vec(str_maps) {
+                        file_path_bytes.extend_from_slice(bv.as_slice());
+                    } else {
+                        return Err(format!("{:?} cannot be to_byte_vec-fied", tokens[index]));
+                    }
                 }
-                let string_from_u8 = String::from_utf8_lossy(
-                    file_path_tokens
-                        .fold(Vec::new(), |mut s: Vec<u8>, t| {
-                            s.extend_from_slice(&t.unwrap());
-                            s
-                        })
-                        .as_slice(),
-                )
-                .to_string();
-                file_name = Some(string_from_u8);
+                match String::from_utf8(file_path_bytes) {
+                    Ok(s) => {
+                        file_name = Some(s);
+                    }
+                    Err(_) => {
+                        return Err(format!("Include directive contains invalid utf8"));
+                    }
+                }
                 end_of_file_path_index = punct_greater_than_index + 1;
             }
             Some(lexer::Token::StringLiteral(lexer::StringLiteral {
@@ -166,7 +164,12 @@ fn include_directive(
             })) => {
                 look_at_current_dir = true;
                 let sequence = &str_maps.key_to_byte_vec[*sequence_key];
-                file_name = Some(String::from_utf8_lossy(sequence).to_string());
+                match String::from_utf8(sequence.to_vec()) {
+                    Ok(s) => file_name = Some(s),
+                    Err(_) => {
+                        return Err(format!("Include directive contains invalid utf8"));
+                    }
+                }
                 end_of_file_path_index = include_index + 1;
             }
             _ => {}
@@ -181,13 +184,8 @@ fn include_directive(
         {
             let Some(t) = tokens.get(include_index) else { unreachable!() };
             let Some(bv) = t.to_byte_vec(str_maps) else { unreachable!() };
-            eprintln!(
-                "{}",
-                format!(
-                    "Warning: Tokens after {} are skipped",
-                    String::from_utf8_lossy(&bv).to_string()
-                )
-            );
+            let Ok(s) = String::from_utf8(bv) else { unreachable!() };
+            eprintln!("Warning: Tokens after {s} are skipped",);
         }
     }
     if let Some(mut fname) = file_name {
@@ -692,10 +690,8 @@ fn define_directive(
             || *identifier_of_macro == *b"__STDC_VERSION__"
             || *identifier_of_macro == *b"__TIME__"
         {
-            return Err(format!(
-                "cannot define '{}' as it is a cpp keyword",
-                String::from_utf8_lossy(identifier_of_macro).to_string()
-            ));
+            let Ok(s) = String::from_utf8(identifier_of_macro.to_vec()) else { unreachable!() };
+            return Err(format!("cannot define '{s}' as it is a cpp keyword",));
         }
         if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) {
             if dd.parameters.is_some() {
@@ -932,7 +928,7 @@ fn parse_macro_and_replace(
             || (defines_data.var_arg && seen_args.len() < parameters.len() + 1)
         {
             let byte_vec = &str_maps.key_to_byte_vec[first_macro_section.macro_key];
-            let macro_str = String::from_utf8_lossy(byte_vec).to_string();
+            let Ok(macro_str) = String::from_utf8(byte_vec.to_vec()) else { unreachable!() };
             return Err(format!(
                 "Wrong number of arguments given to macro {}, num arguments given: {}, num parameters: {}",
                 macro_str, seen_args.len(), parameters.len()
@@ -1287,7 +1283,7 @@ fn preprocessing_directives(
 pub fn output_tokens_stdout(tokens: &[lexer::Token], str_maps: &lexer::ByteVecMaps) {
     print!(
         "{}",
-        String::from_utf8_lossy(
+        String::from_utf8(
             tokens
                 .iter()
                 .map(|t| t.to_byte_vec(str_maps).unwrap())
@@ -1295,9 +1291,8 @@ pub fn output_tokens_stdout(tokens: &[lexer::Token], str_maps: &lexer::ByteVecMa
                     a.extend_from_slice(&e);
                     a
                 })
-                .as_slice()
         )
-        .to_string()
+        .unwrap()
     );
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
@@ -1402,7 +1397,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; // this is me\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8_lossy(&removed).to_string();
+        let stringed = String::from_utf8(&removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\";  \n}\n");
         Ok(())
     }
@@ -1411,7 +1406,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; '// this is me';\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8_lossy(&removed).to_string();
+        let stringed = String::from_utf8(&removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\"; '// this is me';\n}\n");
         Ok(())
     }
@@ -1420,7 +1415,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; \"// this is me\";\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8_lossy(&removed).to_string();
+        let stringed = String::from_utf8(&removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\"; \"// this is me\";\n}\n");
         Ok(())
     }
@@ -1431,7 +1426,7 @@ mod tests {
             */"##;
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8_lossy(&removed).to_string();
+        let stringed = String::from_utf8(&removed).unwrap();
         assert_eq!(stringed, " ");
         Ok(())
     }
