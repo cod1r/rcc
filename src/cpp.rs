@@ -1447,6 +1447,7 @@ int main() {
             let mut final_tokens = Vec::<lexer::Token>::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "./test_c_files/hi.h",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -1476,6 +1477,7 @@ int main() {
             let mut final_tokens = Vec::<lexer::Token>::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "./test_c_files/hi.h",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -1508,6 +1510,7 @@ hi;
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         preprocessing_directives(
             &mut tokens,
+            "./test_c_files/hi2.h",
             &["./test_c_files"],
             &mut defines,
             &mut str_maps,
@@ -1612,7 +1615,7 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
         .to_vec();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut defines = HashMap::new();
-        let mut tokens = cpp(src, &["./test_c_files"], &mut defines, &mut str_maps)?;
+        let mut tokens = cpp(src, "", &["./test_c_files"], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 lexer::Token::StringLiteral(lexer::StringLiteral {
@@ -2293,6 +2296,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -2322,6 +2326,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -2350,6 +2355,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -2379,6 +2385,7 @@ PP(/,*)PP2(*,/)"##
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = cpp(
                 src.to_vec(),
+                "",
                 &["./test_c_files"],
                 &mut defines,
                 &mut str_maps,
@@ -2405,6 +2412,7 @@ PP(/,*)PP2(*,/)"##
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = cpp(
             src.as_bytes().to_vec(),
+            "./test_c_files/pp-acid-test.h",
             &["./test_c_files"],
             &mut defines,
             &mut str_maps,
