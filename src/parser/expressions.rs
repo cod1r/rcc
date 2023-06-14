@@ -161,9 +161,15 @@ pub struct Unary {
 pub struct Cast {}
 #[derive(Clone)]
 pub struct PostFix {}
+#[derive(Clone)]
+pub struct Assignment {
+    pub first: Option<Box<Expr>>,
+    pub second: Option<Box<Expr>>,
+}
 
 #[derive(Clone)]
 pub enum Expr {
+    Assignment(Assignment),
     Conditional(Conditional),
     LogicalOR(LogicalOR),
     LogicalAND(LogicalAND),
@@ -199,6 +205,7 @@ impl Expr {
             Expr::LogicalAND(_) => u8::MAX - 12,
             Expr::LogicalOR(_) => u8::MAX - 13,
             Expr::Conditional(_) => u8::MAX - 14,
+            Expr::Assignment(_) => todo!(),
         }
     }
 }
@@ -589,6 +596,56 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                 _ => unreachable!(),
             }
         }
+        Expr::Assignment(a) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(a.second.is_none());
+            }
+            Expr::Unary(_u) => {
+                assert!(a.second.is_none());
+            }
+            Expr::Multiplicative(m) => {
+                assert!(m.first.is_none());
+                m.first = a.second.clone();
+            }
+            Expr::Additive(a) => {
+                assert!(a.first.is_none());
+                a.first = a.second.clone();
+            }
+            Expr::BitShift(bs) => {
+                assert!(bs.first.is_none());
+                bs.first = a.second.clone();
+            }
+            Expr::Relational(r) => {
+                assert!(r.first.is_none());
+                r.first = a.second.clone();
+            }
+            Expr::Equality(e) => {
+                assert!(e.first.is_none());
+                e.first = a.second.clone();
+            }
+            Expr::BitAND(ba) => {
+                assert!(ba.first.is_none());
+                ba.first = a.second.clone();
+            }
+            Expr::BitXOR(bx) => {
+                assert!(bx.first.is_none());
+                bx.first = a.second.clone();
+            }
+            Expr::BitOR(bo) => {
+                assert!(bo.first.is_none());
+                bo.first = a.second.clone();
+            }
+            Expr::LogicalAND(la) => {
+                assert!(la.first.is_none());
+                la.first = a.second.clone();
+            }
+            Expr::LogicalOR(lo) => {
+                assert!(lo.first.is_none());
+                lo.first = a.second.clone();
+            }
+            _ => unreachable!(),
+        },
         _ => unreachable!(),
     }
 }
@@ -634,16 +691,88 @@ fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
     }
 }
 
+fn parse_handle_primary_expression(
+    tokens: &[lexer::Token],
+    index: usize,
+    curr_expr: &mut Option<Expr>,
+) -> Result<(), String> {
+    let mut token_within = tokens[index];
+    let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
+    if curr_expr.is_none() {
+        *curr_expr = Some(primary);
+    } else {
+        match curr_expr {
+            Some(Expr::Additive(a)) => {
+                assert!(a.first.is_some());
+                a.second = Some(Box::new(primary));
+            }
+            Some(Expr::PostFix(_)) => todo!(),
+            Some(Expr::Cast(_)) => todo!(),
+            Some(Expr::Unary(u)) => {
+                assert!(u.first.is_none());
+                u.first = Some(Box::new(primary));
+            }
+            Some(Expr::LogicalOR(lo)) => {
+                assert!(lo.first.is_some());
+                lo.second = Some(Box::new(primary));
+            }
+            Some(Expr::LogicalAND(la)) => {
+                assert!(la.first.is_some());
+                la.second = Some(Box::new(primary));
+            }
+            Some(Expr::BitOR(bo)) => {
+                assert!(bo.first.is_some());
+                bo.second = Some(Box::new(primary));
+            }
+            Some(Expr::BitXOR(bx)) => {
+                assert!(bx.first.is_some());
+                bx.second = Some(Box::new(primary));
+            }
+            Some(Expr::BitAND(ba)) => {
+                assert!(ba.first.is_some());
+                ba.second = Some(Box::new(primary));
+            }
+            Some(Expr::Equality(e)) => {
+                assert!(e.first.is_some());
+                e.second = Some(Box::new(primary));
+            }
+            Some(Expr::Relational(r)) => {
+                assert!(r.first.is_some());
+                r.second = Some(Box::new(primary));
+            }
+            Some(Expr::BitShift(bs)) => {
+                assert!(bs.first.is_some());
+                bs.second = Some(Box::new(primary));
+            }
+            Some(Expr::Multiplicative(m)) => {
+                assert!(m.first.is_some());
+                m.second = Some(Box::new(primary));
+            }
+            Some(Expr::Conditional(c)) => {
+                if c.first.is_none() {
+                    c.first = Some(Box::new(primary));
+                } else if c.second.is_none() {
+                    c.second = Some(Box::new(primary));
+                } else if c.third.is_none() {
+                    c.third = Some(Box::new(primary));
+                }
+            }
+            Some(Expr::Assignment(a)) => todo!(),
+            _ => return Err(format!("err at index: {}", index)),
+        }
+    }
+    Ok(())
+}
+
 //Notes:
 //The expression that controls conditional inclusion shall be an integer constant expression
 //Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
 //All macro identifiers are evaluated as defined or not defined.
 // TODO: rewrite this. It works but is WAYY too convoluted.
-pub fn eval_constant_expression(
+pub fn eval_constant_expression_integer(
     tokens: &[lexer::Token],
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<i128, String> {
-    //let START_TIMER = std::time::Instant::now();
     if tokens
         .iter()
         .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
@@ -733,68 +862,7 @@ pub fn eval_constant_expression(
             lexer::Token::IDENT(_)
             | lexer::Token::CONSTANT_DEC_INT { .. }
             | lexer::Token::CONSTANT_CHAR(_) => {
-                let mut token_within = tokens[index];
-                let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
-                if curr_expr.is_none() {
-                    curr_expr = Some(primary);
-                } else {
-                    match &mut curr_expr {
-                        Some(Expr::Additive(a)) => {
-                            assert!(a.first.is_some());
-                            a.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::Unary(u)) => {
-                            assert!(u.first.is_none());
-                            u.first = Some(Box::new(primary));
-                        }
-                        Some(Expr::LogicalOR(lo)) => {
-                            assert!(lo.first.is_some());
-                            lo.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::LogicalAND(la)) => {
-                            assert!(la.first.is_some());
-                            la.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::BitOR(bo)) => {
-                            assert!(bo.first.is_some());
-                            bo.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::BitXOR(bx)) => {
-                            assert!(bx.first.is_some());
-                            bx.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::BitAND(ba)) => {
-                            assert!(ba.first.is_some());
-                            ba.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::Equality(e)) => {
-                            assert!(e.first.is_some());
-                            e.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::Relational(r)) => {
-                            assert!(r.first.is_some());
-                            r.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::BitShift(bs)) => {
-                            assert!(bs.first.is_some());
-                            bs.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::Multiplicative(m)) => {
-                            assert!(m.first.is_some());
-                            m.second = Some(Box::new(primary));
-                        }
-                        Some(Expr::Conditional(c)) => {
-                            if c.first.is_none() {
-                                c.first = Some(Box::new(primary));
-                            } else if c.second.is_none() {
-                                c.second = Some(Box::new(primary));
-                            } else if c.third.is_none() {
-                                c.third = Some(Box::new(primary));
-                            }
-                        }
-                        _ => return Err(format!("err at index: {}", index)),
-                    }
-                }
+                parse_handle_primary_expression(tokens, index, &mut curr_expr)?;
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1951,7 +2019,6 @@ pub fn eval_constant_expression(
             }
         }
     }
-    //eprintln!("END TIME: {}", (std::time::Instant::now() - START_TIMER).as_nanos());
     assert!(primary_stack.len() == 1);
     Ok(*primary_stack.last().unwrap())
 }

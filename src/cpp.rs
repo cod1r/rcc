@@ -535,7 +535,7 @@ fn if_directive(
                     eval_vec_index += 1;
                 }
                 let eval_vec = final_eval_tokens;
-                expressions::eval_constant_expression(eval_vec.as_slice(), str_maps)? != 0
+                expressions::eval_constant_expression_integer(eval_vec.as_slice(), str_maps)? != 0
             }
             b"ifdef" => {
                 if eval_vec
@@ -1388,7 +1388,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, cpp, define_directive, expand_macro, expressions::eval_constant_expression,
+        comments, cpp, define_directive, expand_macro, expressions::eval_constant_expression_integer,
         if_directive, include_directive, parse_defined_in_if_directive, preprocessing_directives,
         Define,
     };
@@ -2127,7 +2127,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = expressions::eval_constant_expression(&final_tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let defines = HashMap::new();
@@ -2141,7 +2141,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = expressions::eval_constant_expression(&final_tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
