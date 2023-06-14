@@ -1397,7 +1397,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; // this is me\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8(&removed).unwrap();
+        let stringed = String::from_utf8(removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\";  \n}\n");
         Ok(())
     }
@@ -1406,7 +1406,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; '// this is me';\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8(&removed).unwrap();
+        let stringed = String::from_utf8(removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\"; '// this is me';\n}\n");
         Ok(())
     }
@@ -1415,7 +1415,7 @@ mod tests {
         let src = "int main() {\n\"hi\"; \"// this is me\";\n}\n";
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8(&removed).unwrap();
+        let stringed = String::from_utf8(removed).unwrap();
         assert_eq!(stringed, "int main() {\n\"hi\"; \"// this is me\";\n}\n");
         Ok(())
     }
@@ -1426,7 +1426,7 @@ mod tests {
             */"##;
         let src_bytes = src.as_bytes();
         let removed = comments(src_bytes)?;
-        let stringed = String::from_utf8(&removed).unwrap();
+        let stringed = String::from_utf8(removed).unwrap();
         assert_eq!(stringed, " ");
         Ok(())
     }
