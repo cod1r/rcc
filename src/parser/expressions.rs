@@ -691,6 +691,10 @@ fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
     }
 }
 
+fn parse_expressions(tokens: &[lexer::Token], index: usize) -> Result<Expr, String> {
+    todo!()
+}
+
 fn parse_handle_primary_expression(
     tokens: &[lexer::Token],
     index: usize,
@@ -2032,7 +2036,7 @@ mod tests {
         let src = r##""##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps);
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => return Err(String::from("empty expression not caught")),
@@ -2045,35 +2049,35 @@ mod tests {
             let src = r##"(1 + 1) * 0"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, false, "(1 + 1) * 0");
         }
         {
             let src = r##"1 + (1 * 0)"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "1 + (1 * 0)");
         }
         {
             let src = r##"((1 + 1) * 0)"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, false, "((1 + 1) * 0)");
         }
         {
             let src = r##"((((1))))"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "((((1))))");
         }
         {
             let src = r##"((((1)))))"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps);
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -2083,7 +2087,7 @@ mod tests {
             let src = r##"(((((1))))"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps);
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -2093,21 +2097,21 @@ mod tests {
             let src = r##"0 - (1 + 1)"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         {
             let src = r##"1"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "1");
         }
         {
             let src = r##"'1'"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "'1'");
         }
         Ok(())
@@ -2117,32 +2121,32 @@ mod tests {
         let src = r##"!1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "!1");
         let src = r##"!0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true, "!0");
         let src = r##"~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true, "~0");
         let src = r##"~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true, "~~~0");
         let src = r##"~~~~0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "~~~~0");
         let src = r##"--------------1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps);
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => {
@@ -2158,22 +2162,22 @@ mod tests {
         let src = r##"1 * 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 * !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 / 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 / 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps);
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps);
         match res {
             Err(_) => {}
             Ok(_) => return Err("division by zero not caught".to_string()),
@@ -2181,12 +2185,12 @@ mod tests {
         let src = r##"1 + 1 * 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 * 1 + 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -2195,35 +2199,35 @@ mod tests {
         let src = r##"1 + 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 - 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"0 - 1 + 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "0 - 1 + 1");
         let src = r##"0 - 1 + !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true, "0 - 1 + !1");
         {
             let src = r##"'1' - '1'"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, false, "'1' - '1'");
         }
         {
             let src = r##"'2' - '1'"##.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+            let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
             assert_eq!(res != 0, true, "'1' - '1'");
         }
         Ok(())
@@ -2233,17 +2237,17 @@ mod tests {
         let src = r##"1 << 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >> 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 >> !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -2252,47 +2256,47 @@ mod tests {
         let src = r##"1 < 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 < 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 < !2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"2 <= 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 > 2"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 > 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >= 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 >= 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -2301,22 +2305,22 @@ mod tests {
         let src = r##"1 == 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 != 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 != !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 != 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -2325,27 +2329,27 @@ mod tests {
         let src = r##"1 & 0 == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 & 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 & !0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 & 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 == 0 & 1 == 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -2354,12 +2358,12 @@ mod tests {
         let src = r##"1 ^ 0 == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"(1 ^ !0) == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         Ok(())
     }
@@ -2368,12 +2372,12 @@ mod tests {
         let src = r##"1 | 0 == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"1 | !0 == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true, "1 | !0 == 0");
         Ok(())
     }
@@ -2382,17 +2386,17 @@ mod tests {
         let src = r##"1 && 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 && 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"1 && !1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -2401,17 +2405,17 @@ mod tests {
         let src = r##"1 || 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 1"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -2420,27 +2424,27 @@ mod tests {
         let src = r##"1 ? 1 : 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = expressions::eval_constant_expression(&tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }

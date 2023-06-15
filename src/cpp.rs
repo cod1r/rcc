@@ -1388,9 +1388,9 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, cpp, define_directive, expand_macro, expressions::eval_constant_expression_integer,
-        if_directive, include_directive, parse_defined_in_if_directive, preprocessing_directives,
-        Define,
+        comments, cpp, define_directive, expand_macro,
+        expressions::eval_constant_expression_integer, if_directive, include_directive,
+        parse_defined_in_if_directive, preprocessing_directives, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
