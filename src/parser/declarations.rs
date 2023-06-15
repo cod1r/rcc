@@ -19,7 +19,7 @@ pub enum DirectAbstractDeclarator {
     DirectAbstractDeclaratorWithParameterTypeList(Option<DirectDeclaratorWithParameterTypeList>),
 }
 pub enum AbstractDeclarator {
-    AbstractDeclaratorWithPointer(Pointer),
+    AbstractDeclaratorWithPointer(Vec<Pointer>),
     AbstractDeclaratorWithDirectAbstractDeclarator {
         pointer: Option<Pointer>,
         direct_abstract_declarator: DirectAbstractDeclarator,
@@ -29,13 +29,27 @@ pub struct TypeName {
     specifier_qualifier_list: SpecifierQualifierList,
     abstract_declarator: Option<AbstractDeclarator>,
 }
+impl TypeName {
+    fn new() -> Self {
+        Self {
+            specifier_qualifier_list: SpecifierQualifierList::new(),
+            abstract_declarator: None,
+        }
+    }
+}
 pub enum StructOrUnion {
     Struct,
     Union,
 }
 pub struct Pointer {
     type_qualifier_list: Vec<TypeQualifier>,
-    pointer: Option<Box<Pointer>>,
+}
+impl Pointer {
+    fn new() -> Self {
+        Self {
+            type_qualifier_list: Vec::new(),
+        }
+    }
 }
 pub struct StaticDirectDeclaratorWithOptionalQualifiers {
     is_static: bool,
@@ -52,12 +66,17 @@ impl StaticDirectDeclaratorWithOptionalQualifiers {
 pub struct StaticDirectDeclaratorWithQualifiers {
     is_static: bool,
     type_qualifiers: Vec<TypeQualifier>,
+    assignment_expr: expressions::Expr,
 }
 impl StaticDirectDeclaratorWithQualifiers {
     fn new() -> Self {
         Self {
             is_static: true,
             type_qualifiers: Vec::new(),
+            assignment_expr: expressions::Expr::Assignment(expressions::Assignment {
+                first: None,
+                second: None,
+            }),
         }
     }
 }
@@ -89,8 +108,16 @@ pub enum DirectDeclarator {
     DirectDeclaratorWithIdentifierList(Option<DirectDeclaratorWithIdentifierList>),
 }
 pub struct Declarator {
-    pointer: Option<Pointer>,
+    pointer: Vec<Pointer>,
     direct_declarator: DirectDeclarator,
+}
+impl Declarator {
+    fn new(dd: DirectDeclarator) -> Self {
+        Self {
+            pointer: Vec::new(),
+            direct_declarator: dd,
+        }
+    }
 }
 pub enum StructDeclarator {
     Declarator(Declarator),
@@ -147,6 +174,7 @@ pub enum TypeSpecifier {
     StructUnion(StructUnionSpecifier),
     Enum(EnumSpecifier),
 }
+#[derive(Copy, Clone)]
 pub enum TypeQualifier {
     Const,
     Restrict,
@@ -160,11 +188,6 @@ pub enum FunctionSpecifier {
 pub enum AlignmentSpecifier {
     _Alignas(TypeName),
     _AlignasConstExpr(expressions::Expr),
-}
-impl Declarator {
-    fn new() -> Declarator {
-        todo!()
-    }
 }
 pub struct DeclarationSpecifier {
     pub storage_class_specifiers: Vec<StorageClassSpecifier>,
@@ -320,7 +343,9 @@ fn parse_declarations(
                     next_index += 1;
                 }
                 if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(next_index) {
-                    let start = next_index + 1;
+                    let (new_index, type_name) =
+                        parse_type_names(&tokens, next_index + 1, str_maps)?;
+                    next_index = new_index;
                     while !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR))
                         && next_index < tokens.len()
                     {
@@ -329,7 +354,6 @@ fn parse_declarations(
                     if !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
                         return Err(format!("Missing closing parenthesis"));
                     }
-                    let type_name = parse_type_names(&tokens[start..next_index], str_maps)?;
                 }
             }
             lexer::Token::KEYWORD_INLINE => declaration
@@ -348,7 +372,177 @@ fn parse_declarations(
     todo!()
 }
 
-fn parse_struct_union_specifier(tokens: &[lexer::Token]) -> Result<StructUnionSpecifier, String> {
+fn parse_pointer(
+    tokens: &[lexer::Token],
+    start_index: usize,
+) -> Result<(usize, Vec<Pointer>), String> {
+    let mut index = start_index;
+    let mut pointer_stack = Vec::new();
+    while matches!(tokens.get(index), Some(lexer::Token::PUNCT_MULT)) {
+        pointer_stack.push(Pointer::new());
+        index += 1;
+        let parsed_type_qualified = parse_type_qualifiers(tokens, index);
+        if let Some((new_index, qualifiers)) = parsed_type_qualified {
+            let Some(pointer) = pointer_stack.last_mut() else { unreachable!() };
+            pointer
+                .type_qualifier_list
+                .extend_from_slice(qualifiers.as_slice());
+            index = new_index;
+        }
+        while matches!(
+            tokens.get(index),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) && index < tokens.len()
+        {
+            index += 1;
+        }
+    }
+    Ok((index, pointer_stack))
+}
+
+fn parse_declarator(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, Declarator), String> {
+    let mut index = start_index;
+    let (new_index, pointers) = parse_pointer(tokens, index)?;
+    if !pointers.is_empty() {
+        index = new_index;
+    }
+    let mut declarator = None;
+    loop {
+        match tokens[index] {
+            lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {}
+            lexer::Token::IDENT(key) => {
+                declarator = Some(Declarator::new(DirectDeclarator::Ident(key)));
+            }
+            lexer::Token::PUNCT_OPEN_PAR => {
+                // we use recursion because we are lazy. Most likely rewrite later.
+                let (new_index, inner_declarator) = parse_declarator(tokens, index, str_maps)?;
+                declarator = Some(Declarator::new(DirectDeclarator::Declarator(Box::new(
+                    inner_declarator,
+                ))));
+                index = new_index;
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) && index < tokens.len()
+                {
+                    index += 1;
+                }
+                if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                    return Err(format!("Expected ')', got {:?}", tokens.get(index)));
+                }
+                index += 1;
+                break;
+            }
+            _ => return Err("Expected identifier or open parentheses".to_string()),
+        }
+        index += 1;
+    }
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) && index < tokens.len()
+    {
+        index += 1;
+    }
+    if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_OPEN_SQR)) {
+        return Err(format!("Expected '[', got: {:?}", tokens.get(index)));
+    }
+    index += 1;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) && index < tokens.len()
+    {
+        index += 1;
+    }
+    match tokens.get(index) {
+        Some(lexer::Token::IDENT(key)) => {
+            let ident = &str_maps.key_to_byte_vec[*key];
+            if *ident == *b"static" {}
+        }
+        Some(_) => {
+            if let Some((new_index, qualifiers)) = parse_type_qualifiers(tokens, index) {
+                index = new_index;
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    index += 1;
+                }
+                if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
+                    let ident = &str_maps.key_to_byte_vec[*key];
+                    if *ident == *b"static" {
+                        let mut static_direct_declarator_with_qualifiers =
+                            StaticDirectDeclaratorWithQualifiers::new();
+                        index += 1;
+                        todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
+                    }
+                }
+            }
+        }
+        None => {}
+    }
+    let Some(declarator) = declarator else { unreachable!() };
+    Ok((index, declarator))
+}
+
+fn parse_struct_union_specifier(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, StructUnionSpecifier), String> {
+    let mut index = start_index + 1;
+    let mut struct_union_specifier = StructUnionSpecifier {
+        struct_or_union: match tokens.get(start_index) {
+            Some(lexer::Token::KEYWORD_STRUCT) => StructOrUnion::Struct,
+            Some(lexer::Token::KEYWORD_UNION) => StructOrUnion::Union,
+            _ => unreachable!(),
+        },
+        identifier: None,
+        struct_declaration_list: Vec::new(),
+    };
+    while !matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
+        struct_union_specifier.identifier = Some(*key);
+        index += 1;
+    }
+    while !matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_OPEN_CURLY)) {
+        return Err(format!("Expected open curly bracket"));
+    }
+    index += 1;
+    while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_CURLY))
+        && index < tokens.len()
+    {
+        while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON))
+            && index < tokens.len()
+        {
+            let (new_index, specifier_qualifier_list) =
+                parse_specifiers_qualifiers(tokens, index, str_maps)?;
+            index = new_index;
+            loop {
+                //let (new_index, declarator) = parse_declarators()?;
+                //index = new_index;
+                //if next thing is not comma {
+                //    break;
+                //}
+            }
+        }
+    }
     todo!()
 }
 
@@ -361,7 +555,7 @@ fn parse_enumerator_specifier(
         identifier: None,
         enumerator_list: Vec::new(),
     };
-    let mut index = start_index;
+    let mut index = start_index + 1;
     while matches!(
         tokens.get(index),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -370,8 +564,8 @@ fn parse_enumerator_specifier(
     }
     if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
         enum_specifier.identifier = Some(*key);
+        index += 1;
     }
-    index += 1;
     while matches!(
         tokens.get(index),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -406,7 +600,7 @@ fn parse_enumerator_specifier(
                     {
                         ending_index += 1;
                     }
-                    let constant_val = expressions::eval_constant_expression(
+                    let constant_val = expressions::eval_constant_expression_integer(
                         &tokens[assignment_token_index + 1..ending_index],
                         str_maps,
                     )?;
@@ -439,94 +633,135 @@ fn parse_enumerator_specifier(
     Ok((index, enum_specifier))
 }
 
-fn parse_type_names(
+fn parse_specifiers_qualifiers(
     tokens: &[lexer::Token],
+    start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<TypeName, String> {
-    let mut index = 0;
-    let mut specifiers_qualifiers = SpecifierQualifierList::new();
-    while index < tokens.len() {
-        match tokens[index] {
-            lexer::Token::KEYWORD_VOID => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Void);
+) -> Result<(usize, SpecifierQualifierList), String> {
+    let mut index = start_index;
+    let mut specifier_qualifier = SpecifierQualifierList::new();
+    loop {
+        if let (next_index, mut specifiers) = parse_type_specifiers(tokens, index, str_maps)? {
+            // Avoids cloning
+            while let Some(type_specifier) = specifiers.pop() {
+                specifier_qualifier.type_specifiers.push(type_specifier);
             }
-            lexer::Token::KEYWORD_CHAR => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Char);
+            index = next_index;
+        } else if let Some((next_index, mut qualifiers)) = parse_type_qualifiers(tokens, index) {
+            while let Some(type_qualifier) = qualifiers.pop() {
+                specifier_qualifier.type_qualifiers.push(type_qualifier);
             }
-            lexer::Token::KEYWORD_SHORT => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Short);
-            }
-            lexer::Token::KEYWORD_INT => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Int);
-            }
-            lexer::Token::KEYWORD_LONG => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Long);
-            }
-            lexer::Token::KEYWORD_FLOAT => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Float);
-            }
-            lexer::Token::KEYWORD_DOUBLE => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Double);
-            }
-            lexer::Token::KEYWORD_SIGNED => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Signed);
-            }
-            lexer::Token::KEYWORD_UNSIGNED => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::Unsigned);
-            }
-            lexer::Token::KEYWORD__BOOL => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::_Bool);
-            }
-            lexer::Token::KEYWORD__COMPLEX => {
-                specifiers_qualifiers
-                    .type_specifiers
-                    .push(TypeSpecifier::_Complex);
-            }
-            lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => {
-                // TODO: parse_struct_union_specifier()?;
-            }
-            lexer::Token::KEYWORD__ATOMIC => {}
-            lexer::Token::KEYWORD_ENUM => {
-                let mut enum_index = index + 1;
-                while matches!(
-                    tokens.get(enum_index),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                ) {
-                    enum_index += 1;
-                }
-                if !matches!(tokens.get(enum_index), Some(lexer::Token::PUNCT_OPEN_CURLY)) {
-                    let (new_index, enum_specifier) =
-                        parse_enumerator_specifier(tokens, enum_index + 1, str_maps)?;
-                    index = new_index;
-                    specifiers_qualifiers
-                        .type_specifiers
-                        .push(TypeSpecifier::Enum(enum_specifier));
-                }
-            }
-            lexer::Token::IDENT(_) => {}
-            _ => {}
+            index = next_index;
+        } else {
+            break;
         }
     }
+    Ok((index, specifier_qualifier))
+}
+
+fn parse_type_qualifiers(
+    tokens: &[lexer::Token],
+    start_index: usize,
+) -> Option<(usize, Vec<TypeQualifier>)> {
+    let mut index = start_index;
+    let mut type_qualifiers = Vec::new();
+    while index < tokens.len() {
+        match tokens[index] {
+            lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {}
+            lexer::Token::KEYWORD_CONST => {
+                type_qualifiers.push(TypeQualifier::Const);
+            }
+            lexer::Token::KEYWORD_RESTRICT => {
+                type_qualifiers.push(TypeQualifier::Restrict);
+            }
+            lexer::Token::KEYWORD_VOLATILE => {
+                type_qualifiers.push(TypeQualifier::Volatile);
+            }
+            lexer::Token::KEYWORD__ATOMIC => {
+                type_qualifiers.push(TypeQualifier::_Atomic);
+            }
+            _ => break,
+        }
+        index += 1;
+    }
+    Some((index, type_qualifiers))
+}
+
+fn parse_type_specifiers(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, Vec<TypeSpecifier>), String> {
+    let mut index = start_index;
+    let mut type_specifiers = Vec::new();
+    while index < tokens.len() {
+        match tokens[index] {
+            lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {}
+            lexer::Token::KEYWORD_VOID => {
+                type_specifiers.push(TypeSpecifier::Void);
+            }
+            lexer::Token::KEYWORD_CHAR => {
+                type_specifiers.push(TypeSpecifier::Char);
+            }
+            lexer::Token::KEYWORD_SHORT => {
+                type_specifiers.push(TypeSpecifier::Short);
+            }
+            lexer::Token::KEYWORD_INT => {
+                type_specifiers.push(TypeSpecifier::Int);
+            }
+            lexer::Token::KEYWORD_LONG => {
+                type_specifiers.push(TypeSpecifier::Long);
+            }
+            lexer::Token::KEYWORD_FLOAT => {
+                type_specifiers.push(TypeSpecifier::Float);
+            }
+            lexer::Token::KEYWORD_DOUBLE => {
+                type_specifiers.push(TypeSpecifier::Double);
+            }
+            lexer::Token::KEYWORD_SIGNED => {
+                type_specifiers.push(TypeSpecifier::Signed);
+            }
+            lexer::Token::KEYWORD_UNSIGNED => {
+                type_specifiers.push(TypeSpecifier::Unsigned);
+            }
+            lexer::Token::KEYWORD__BOOL => {
+                type_specifiers.push(TypeSpecifier::_Bool);
+            }
+            lexer::Token::KEYWORD__COMPLEX => {
+                type_specifiers.push(TypeSpecifier::_Complex);
+            }
+            lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => {
+                todo!()
+                // TODO: parse_struct_union_specifier()?;
+            }
+            lexer::Token::KEYWORD__ATOMIC => todo!(),
+            lexer::Token::KEYWORD_ENUM => {
+                let (new_index, enum_specifier) =
+                    parse_enumerator_specifier(tokens, index, str_maps)?;
+                index = new_index;
+                type_specifiers.push(TypeSpecifier::Enum(enum_specifier));
+            }
+            // TODO: typedef identifiers
+            lexer::Token::IDENT(_) => todo!(),
+            _ => {}
+        }
+        index += 1;
+    }
+    Ok((index, type_specifiers))
+}
+
+fn parse_type_names(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, TypeName), String> {
+    let mut index = start_index;
+    let mut type_name = TypeName::new();
+    let (new_index, specifier_qualifier_list) =
+        parse_specifiers_qualifiers(tokens, index, str_maps)?;
+    type_name.specifier_qualifier_list = specifier_qualifier_list;
+    let (new_index, pointers) = parse_pointer(tokens, index)?;
+    index = new_index;
     todo!()
 }
 
@@ -536,35 +771,75 @@ mod tests {
     use crate::lexer::{self};
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
-        let src = r#"
+        {
+            let src = r#"
         enum HI {
             YOUR_MOM,
             HEHE,
         }
 "#
-        .as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
-        let start_index = {
-            let mut index = 0;
-            while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {
-                index += 1;
-            }
-            index + 1
-        };
-        let (_, enum_specifier) =
-            parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
-        assert_eq!(
-            enum_specifier.identifier,
-            Some(str_maps.add_byte_vec("HI".as_bytes()))
-        );
-        assert_eq!(
-            enum_specifier.enumerator_list,
-            vec![
-                Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
-                Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes()))
-            ]
-        );
+            .as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let start_index = {
+                let mut index = 0;
+                while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {
+                    index += 1;
+                }
+                index + 1
+            };
+            let (_, enum_specifier) =
+                parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
+            assert_eq!(
+                enum_specifier.identifier,
+                Some(str_maps.add_byte_vec("HI".as_bytes()))
+            );
+            assert_eq!(
+                enum_specifier.enumerator_list,
+                vec![
+                    Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
+                    Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes()))
+                ],
+                "failed 1"
+            );
+        }
+        {
+            let src = r#"
+        enum HI {
+            YOUR_MOM,
+            HEHE,
+            THIS_PIGGY = 4,
+        }
+"#
+            .as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let start_index = {
+                let mut index = 0;
+                while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {
+                    index += 1;
+                }
+                index + 1
+            };
+            let (_, enum_specifier) =
+                parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
+            assert_eq!(
+                enum_specifier.identifier,
+                Some(str_maps.add_byte_vec("HI".as_bytes()))
+            );
+            assert_eq!(
+                enum_specifier.enumerator_list,
+                vec![
+                    Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
+                    Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes())),
+                    Enumerator::EnumWithConstantExpr(
+                        str_maps.add_byte_vec("THIS_PIGGY".as_bytes()),
+                        4
+                    ),
+                ],
+                "failed 1"
+            );
+        }
         Ok(())
     }
 }
