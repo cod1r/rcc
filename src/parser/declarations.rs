@@ -682,7 +682,11 @@ fn parse_type_qualifiers(
         }
         index += 1;
     }
-    Some((index, type_qualifiers))
+    if type_qualifiers.is_empty() {
+        None
+    } else {
+        Some((index, type_qualifiers))
+    }
 }
 
 fn parse_type_specifiers(
@@ -802,6 +806,12 @@ fn parse_direct_abstract_declarator(
                 let Ok(s) = String::from_utf8(str_maps.key_to_byte_vec[*key].to_vec()) else { unreachable!() };
                 return Err(format!("Was expecting 'static' but got {:?}", s));
             }
+            let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+            let Ok(s) = String::from_utf8(str_maps.key_to_byte_vec[*key].to_vec()) else { unreachable!() };
+            if s != "static" {
+                return Err(format!("Was expecting 'static' but got {:?}", s));
+            }
+            todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
         }
         _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
     }
