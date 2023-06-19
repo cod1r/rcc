@@ -691,7 +691,22 @@ fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
     }
 }
 
-fn parse_expressions(tokens: &[lexer::Token], index: usize) -> Result<Expr, String> {
+fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usize, Expr), String> {
+    let mut index = start_index;
+    match tokens[index] {
+        lexer::Token::IDENT(_)
+        | lexer::Token::CONSTANT_DEC_INT { .. }
+        | lexer::Token::CONSTANT_CHAR(_)
+        | lexer::Token::CONSTANT_HEXA_INT { .. }
+        | lexer::Token::CONSTANT_OCTAL_INT { .. }
+        | lexer::Token::CONSTANT_DEC_FLOAT { .. }
+        | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
+        | lexer::Token::StringLiteral(_)
+        | lexer::Token::PUNCT_OPEN_PAR => {
+            //parse_handle_primary_expression(tokens, index, curr_expr)?;
+        }
+        _ => todo!(),
+    }
     todo!()
 }
 
@@ -1692,339 +1707,233 @@ pub fn eval_constant_expression_integer(
         }
         curr_expr = Some(expr);
     }
-    // where we start evaluating the expression tree
-    // TODO: remove duplicate structure of code.
-    let mut eval_stack = Vec::<Expr>::new();
-    let mut primary_stack = Vec::<i128>::new();
-    if curr_expr.is_some() {
-        eval_stack.push(curr_expr.unwrap());
-        while let Some(mut top_expr) = eval_stack.pop() {
-            match top_expr {
-                Expr::Primary(ref mut p) => match p.clone().unwrap() {
-                    PrimaryInner::Expr(e) => {
-                        eval_stack.push(*e);
-                    }
-                    PrimaryInner::Token(t) => {
-                        assert!(matches!(
-                            t,
-                            lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
-                        ));
-                        match t {
-                            lexer::Token::CONSTANT_DEC_INT { value_key, .. } => {
-                                // "For the purposes of this token conversion and evaluation,
-                                // all signed integer types and all unsigned integer types act as if they have the same representation
-                                // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
-                                //
-                                // We just 'cheat' by using i128 integer types. That way, regardless
-                                // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
-                                // compare and not have to do any weird casts.
-                                // TODO: add overflow checks...
-                                let value = &str_maps.key_to_byte_vec[value_key];
-                                let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else { unreachable!() };
-                                match to_be_parsed.parse::<i128>() {
-                                    Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => {
-                                        primary_stack.push(v);
-                                    }
-                                    _ => {
-                                        return Err(format!(
-                                            "{} cannot be represented as i64 or u64",
-                                            to_be_parsed
-                                        ));
-                                    }
-                                }
-                            }
-                            lexer::Token::CONSTANT_CHAR(cc) => {
-                                let parsed_val = cc.parse_to_value(str_maps)? as i128;
-                                primary_stack.push(parsed_val);
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                },
-                Expr::Unary(ref mut u) => {
-                    if let Some(first) = &mut u.first {
-                        let first_clone = *first.clone();
-                        u.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(first_clone);
-                    } else {
-                        assert!(!primary_stack.is_empty());
-                        let one = primary_stack.pop().unwrap();
-                        match u.op {
-                            UnaryOp::Add => {
-                                primary_stack.push(one);
-                            }
-                            UnaryOp::Sub => {
-                                primary_stack.push(-one);
-                            }
-                            UnaryOp::BitNOT => {
-                                primary_stack.push(!one);
-                            }
-                            UnaryOp::LogicalNOT => {
-                                primary_stack.push(if one == 0 { 1 } else { 0 });
-                            }
-                            UnaryOp::Ampersand | UnaryOp::Deref => {
-                                unreachable!()
-                            }
-                        }
-                    }
-                }
-                Expr::Multiplicative(ref mut m) => {
-                    if let Some(left) = &mut m.first {
-                        let left_clone = *left.clone();
-                        m.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut m.second {
-                        let right_clone = *right.clone();
-                        m.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match m.op {
-                            MultiplicativeOps::Mult => {
-                                primary_stack.push(left * right);
-                            }
-                            MultiplicativeOps::Div | MultiplicativeOps::Mod => {
-                                if right == 0 {
-                                    return Err(String::from("cannot divide by zero"));
-                                }
-                                match m.op {
-                                    MultiplicativeOps::Div => {
-                                        primary_stack.push(left / right);
-                                    }
-                                    MultiplicativeOps::Mod => {
-                                        primary_stack.push(left % right);
-                                    }
-                                    _ => unreachable!(),
+    Ok(recursive_eval(curr_expr.unwrap(), str_maps)?)
+}
+fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128, String> {
+    match expr {
+        Expr::Primary(p) => {
+            match p {
+                Some(PrimaryInner::Expr(e)) => recursive_eval(*e, str_maps),
+                Some(PrimaryInner::Token(t)) => {
+                    assert!(matches!(
+                        t,
+                        lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
+                    ));
+                    match t {
+                        lexer::Token::CONSTANT_DEC_INT { value_key, .. } => {
+                            // "For the purposes of this token conversion and evaluation,
+                            // all signed integer types and all unsigned integer types act as if they have the same representation
+                            // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
+                            //
+                            // We just 'cheat' by using i128 integer types. That way, regardless
+                            // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
+                            // compare and not have to do any weird casts.
+                            // TODO: add overflow checks...
+                            let value = &str_maps.key_to_byte_vec[value_key];
+                            let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else { unreachable!() };
+                            match to_be_parsed.parse::<i128>() {
+                                Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => Ok(v),
+                                _ => {
+                                    return Err(format!(
+                                        "{} cannot be represented as i64 or u64",
+                                        to_be_parsed
+                                    ));
                                 }
                             }
                         }
-                    }
-                }
-                Expr::Additive(ref mut a) => {
-                    if let Some(left) = &mut a.first {
-                        let left_clone = *left.clone();
-                        a.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut a.second {
-                        let right_clone = *right.clone();
-                        a.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match a.op {
-                            AdditiveOps::Add => {
-                                primary_stack.push(left + right);
-                            }
-                            AdditiveOps::Sub => {
-                                primary_stack.push(left - right);
-                            }
+                        lexer::Token::CONSTANT_CHAR(cc) => {
+                            let parsed_val = cc.parse_to_value(str_maps)? as i128;
+                            Ok(parsed_val)
                         }
+                        _ => unreachable!(),
                     }
                 }
-                Expr::BitShift(ref mut bs) => {
-                    if let Some(left) = &mut bs.first {
-                        let left_clone = *left.clone();
-                        bs.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bs.second {
-                        let right_clone = *right.clone();
-                        bs.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match bs.op {
-                            BitShiftOp::Left => {
-                                primary_stack.push(left << right);
-                            }
-                            BitShiftOp::Right => {
-                                primary_stack.push(left >> right);
-                            }
-                        }
-                    }
-                }
-                Expr::Relational(ref mut r) => {
-                    if let Some(left) = &mut r.first {
-                        let left_clone = *left.clone();
-                        r.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut r.second {
-                        let right_clone = *right.clone();
-                        r.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match r.op {
-                            RelationalOp::LessThan => {
-                                primary_stack.push(if left < right { 1 } else { 0 });
-                            }
-                            RelationalOp::LessThanEq => {
-                                primary_stack.push(if left <= right { 1 } else { 0 });
-                            }
-                            RelationalOp::GreaterThan => {
-                                primary_stack.push(if left > right { 1 } else { 0 });
-                            }
-                            RelationalOp::GreaterThanEq => {
-                                primary_stack.push(if left >= right { 1 } else { 0 });
-                            }
-                        }
-                    }
-                }
-                Expr::Equality(ref mut e) => {
-                    if let Some(left) = &mut e.first {
-                        let left_clone = *left.clone();
-                        e.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut e.second {
-                        let right_clone = *right.clone();
-                        e.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        match e.op {
-                            EqualityOp::Equal => {
-                                primary_stack.push(if left == right { 1 } else { 0 });
-                            }
-                            EqualityOp::NotEqual => {
-                                primary_stack.push(if left != right { 1 } else { 0 });
-                            }
-                        }
-                    }
-                }
-                Expr::BitAND(ref mut ba) => {
-                    if let Some(left) = &mut ba.first {
-                        let left_clone = *left.clone();
-                        ba.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut ba.second {
-                        let right_clone = *right.clone();
-                        ba.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left & right) != 0 { 1 } else { 0 });
-                    }
-                }
-                Expr::BitXOR(ref mut bx) => {
-                    if let Some(left) = &mut bx.first {
-                        let left_clone = *left.clone();
-                        bx.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bx.second {
-                        let right_clone = *right.clone();
-                        bx.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left ^ right) != 0 { 1 } else { 0 });
-                    }
-                }
-                Expr::BitOR(ref mut bo) => {
-                    if let Some(left) = &mut bo.first {
-                        let left_clone = *left.clone();
-                        bo.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut bo.second {
-                        let right_clone = *right.clone();
-                        bo.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if (left | right) != 0 { 1 } else { 0 });
-                    }
-                }
-                Expr::LogicalAND(ref mut la) => {
-                    if let Some(left) = &mut la.first {
-                        let left_clone = *left.clone();
-                        la.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut la.second {
-                        let right_clone = *right.clone();
-                        la.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if left != 0 && right != 0 { 1 } else { 0 });
-                    }
-                }
-                Expr::LogicalOR(ref mut lo) => {
-                    if let Some(left) = &mut lo.first {
-                        let left_clone = *left.clone();
-                        lo.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(left_clone);
-                    } else if let Some(right) = &mut lo.second {
-                        let right_clone = *right.clone();
-                        lo.second = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(right_clone);
-                    } else {
-                        assert!(primary_stack.len() >= 2);
-                        let right = primary_stack.pop().unwrap();
-                        let left = primary_stack.pop().unwrap();
-                        primary_stack.push(if left != 0 || right != 0 { 1 } else { 0 });
-                    }
-                }
-                Expr::Conditional(ref mut c) => {
-                    if let Some(first) = &mut c.first {
-                        let first_clone = *first.clone();
-                        c.first = None;
-                        eval_stack.push(top_expr);
-                        eval_stack.push(first_clone);
-                    } else {
-                        assert!(!primary_stack.is_empty());
-                        let top = primary_stack.pop().unwrap();
-                        if top != 0 {
-                            let second = c.second.clone().unwrap();
-                            eval_stack.push(*second);
-                        } else {
-                            let third = c.third.clone().unwrap();
-                            eval_stack.push(*third);
-                        }
-                    }
-                }
-                _ => unreachable!(),
+                None => unreachable!(),
             }
         }
+        Expr::Unary(u) => {
+            let Some(first) = u.first else { unreachable!() };
+            match u.op {
+                UnaryOp::Add => Ok(recursive_eval(*first, str_maps)?),
+                UnaryOp::Sub => Ok(-recursive_eval(*first, str_maps)?),
+                UnaryOp::BitNOT => Ok(!recursive_eval(*first, str_maps)?),
+                UnaryOp::LogicalNOT => Ok(if recursive_eval(*first, str_maps)? == 0 {
+                    1
+                } else {
+                    0
+                }),
+                UnaryOp::Ampersand | UnaryOp::Deref => {
+                    unreachable!()
+                }
+            }
+        }
+        Expr::Multiplicative(m) => {
+            let Some(first) = m.first else { unreachable!() };
+            let Some(second) = m.second else { unreachable!() };
+            match m.op {
+                MultiplicativeOps::Mult => {
+                    Ok(recursive_eval(*first, str_maps)? * recursive_eval(*second, str_maps)?)
+                }
+                MultiplicativeOps::Div | MultiplicativeOps::Mod => {
+                    let right = recursive_eval(*second, str_maps)?;
+                    if right == 0 {
+                        return Err(String::from("cannot divide by zero"));
+                    }
+                    match m.op {
+                        MultiplicativeOps::Div => Ok(recursive_eval(*first, str_maps)? / right),
+                        MultiplicativeOps::Mod => Ok(recursive_eval(*first, str_maps)? % right),
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+        Expr::Additive(a) => {
+            let Some(left) = a.first else { unreachable!() };
+            let Some(right) = a.second else { unreachable!() };
+            match a.op {
+                AdditiveOps::Add => {
+                    Ok(recursive_eval(*left, str_maps)? + recursive_eval(*right, str_maps)?)
+                }
+                AdditiveOps::Sub => {
+                    Ok(recursive_eval(*left, str_maps)? - recursive_eval(*right, str_maps)?)
+                }
+            }
+        }
+        Expr::BitShift(bs) => {
+            let Some(left) = bs.first else { unreachable!() };
+            let Some(right) = bs.second else { unreachable!() };
+            match bs.op {
+                BitShiftOp::Left => {
+                    Ok(recursive_eval(*left, str_maps)? << recursive_eval(*right, str_maps)?)
+                }
+                BitShiftOp::Right => {
+                    Ok(recursive_eval(*left, str_maps)? >> recursive_eval(*right, str_maps)?)
+                }
+            }
+        }
+        Expr::Relational(r) => {
+            let Some(first) = r.first else { unreachable!() };
+            let Some(second) = r.second else { unreachable!() };
+            match r.op {
+                RelationalOp::LessThan => Ok(
+                    if recursive_eval(*first, str_maps)? < recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                RelationalOp::LessThanEq => Ok(
+                    if recursive_eval(*first, str_maps)? <= recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                RelationalOp::GreaterThan => Ok(
+                    if recursive_eval(*first, str_maps)? > recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                RelationalOp::GreaterThanEq => Ok(
+                    if recursive_eval(*first, str_maps)? >= recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+            }
+        }
+        Expr::Equality(e) => {
+            let Some(first) = e.first else { unreachable!() };
+            let Some(second) = e.second else { unreachable!() };
+            match e.op {
+                EqualityOp::Equal => Ok(
+                    if recursive_eval(*first, str_maps)? == recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                EqualityOp::NotEqual => Ok(
+                    if recursive_eval(*first, str_maps)? != recursive_eval(*second, str_maps)? {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+            }
+        }
+        Expr::BitAND(ba) => {
+            let Some(first) = ba.first else { unreachable!() };
+            let Some(second) = ba.second else { unreachable!() };
+            Ok(
+                if (recursive_eval(*first, str_maps)? & recursive_eval(*second, str_maps)?) != 0 {
+                    1
+                } else {
+                    0
+                },
+            )
+        }
+        Expr::BitXOR(bx) => {
+            let Some(first) = bx.first else { unreachable!() };
+            let Some(second) = bx.second else { unreachable!() };
+            Ok(
+                if (recursive_eval(*first, str_maps)? ^ recursive_eval(*second, str_maps)?) != 0 {
+                    1
+                } else {
+                    0
+                },
+            )
+        }
+        Expr::BitOR(bo) => {
+            let Some(first) = bo.first else { unreachable!() };
+            let Some(second) = bo.second else { unreachable!() };
+            Ok(
+                if (recursive_eval(*first, str_maps)? | recursive_eval(*second, str_maps)?) != 0 {
+                    1
+                } else {
+                    0
+                },
+            )
+        }
+        Expr::LogicalAND(la) => {
+            let Some(first) = la.first else { unreachable!() };
+            let Some(second) = la.second else { unreachable!() };
+            Ok(
+                if recursive_eval(*first, str_maps)? != 0 && recursive_eval(*second, str_maps)? != 0
+                {
+                    1
+                } else {
+                    0
+                },
+            )
+        }
+        Expr::LogicalOR(lo) => {
+            let Some(first) = lo.first else { unreachable!() };
+            let Some(second) = lo.second else { unreachable!() };
+            Ok(
+                if recursive_eval(*first, str_maps)? != 0 || recursive_eval(*second, str_maps)? != 0
+                {
+                    1
+                } else {
+                    0
+                },
+            )
+        }
+        Expr::Conditional(c) => {
+            let Some(first) = c.first else { unreachable!() };
+            let Some(second) = c.second else { unreachable!() };
+            let Some(third) = c.third else { unreachable!() };
+            if recursive_eval(*first, str_maps)? != 0 {
+                Ok(recursive_eval(*second, str_maps)?)
+            } else {
+                Ok(recursive_eval(*third, str_maps)?)
+            }
+        }
+        _ => unreachable!(),
     }
-    assert!(primary_stack.len() == 1);
-    Ok(*primary_stack.last().unwrap())
 }
 #[cfg(test)]
 mod tests {
