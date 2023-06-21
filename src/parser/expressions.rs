@@ -650,9 +650,9 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
     }
 }
 
-fn left_has_higher_eq_priority(left: &mut Expr, right: &mut Expr) {
+fn left_has_higher_eq_priority(left: Expr, right: &mut Expr) {
     assert!(left.priority() >= right.priority());
-    let boxed = Some(Box::new(left.clone()));
+    let boxed = Some(Box::new(left));
     match right {
         Expr::Multiplicative(m) => {
             m.first = boxed;
@@ -701,86 +701,32 @@ fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usi
         | lexer::Token::CONSTANT_OCTAL_INT { .. }
         | lexer::Token::CONSTANT_DEC_FLOAT { .. }
         | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
-        | lexer::Token::StringLiteral(_)
-        | lexer::Token::PUNCT_OPEN_PAR => {
-            //parse_handle_primary_expression(tokens, index, curr_expr)?;
+        | lexer::Token::StringLiteral(_) => Ok((
+            index + 1,
+            Expr::Primary(Some(PrimaryInner::new_p_token(tokens[index])?)),
+        )),
+        lexer::Token::PUNCT_OPEN_PAR => {
+            index += 1;
+            let (new_index, expr) = parse_expressions(tokens, index)?;
+            index = new_index;
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                index += 1;
+            }
+            if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                return Err(format!(
+                    "Expected closing parenthesis, got: {:?}",
+                    tokens.get(index)
+                ));
+            }
+            Ok((index, Expr::Primary(Some(PrimaryInner::new_p_expr(expr)))))
         }
+
+        lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {todo!()}
         _ => todo!(),
     }
-    todo!()
-}
-
-fn parse_handle_primary_expression(
-    tokens: &[lexer::Token],
-    index: usize,
-    curr_expr: &mut Option<Expr>,
-) -> Result<(), String> {
-    let mut token_within = tokens[index];
-    let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
-    if curr_expr.is_none() {
-        *curr_expr = Some(primary);
-    } else {
-        match curr_expr {
-            Some(Expr::Additive(a)) => {
-                assert!(a.first.is_some());
-                a.second = Some(Box::new(primary));
-            }
-            Some(Expr::PostFix(_)) => todo!(),
-            Some(Expr::Cast(_)) => todo!(),
-            Some(Expr::Unary(u)) => {
-                assert!(u.first.is_none());
-                u.first = Some(Box::new(primary));
-            }
-            Some(Expr::LogicalOR(lo)) => {
-                assert!(lo.first.is_some());
-                lo.second = Some(Box::new(primary));
-            }
-            Some(Expr::LogicalAND(la)) => {
-                assert!(la.first.is_some());
-                la.second = Some(Box::new(primary));
-            }
-            Some(Expr::BitOR(bo)) => {
-                assert!(bo.first.is_some());
-                bo.second = Some(Box::new(primary));
-            }
-            Some(Expr::BitXOR(bx)) => {
-                assert!(bx.first.is_some());
-                bx.second = Some(Box::new(primary));
-            }
-            Some(Expr::BitAND(ba)) => {
-                assert!(ba.first.is_some());
-                ba.second = Some(Box::new(primary));
-            }
-            Some(Expr::Equality(e)) => {
-                assert!(e.first.is_some());
-                e.second = Some(Box::new(primary));
-            }
-            Some(Expr::Relational(r)) => {
-                assert!(r.first.is_some());
-                r.second = Some(Box::new(primary));
-            }
-            Some(Expr::BitShift(bs)) => {
-                assert!(bs.first.is_some());
-                bs.second = Some(Box::new(primary));
-            }
-            Some(Expr::Multiplicative(m)) => {
-                assert!(m.first.is_some());
-                m.second = Some(Box::new(primary));
-            }
-            Some(Expr::Conditional(c)) => {
-                if c.first.is_none() {
-                    c.first = Some(Box::new(primary));
-                } else if c.second.is_none() {
-                    c.second = Some(Box::new(primary));
-                } else if c.third.is_none() {
-                    c.third = Some(Box::new(primary));
-                }
-            }
-            Some(Expr::Assignment(a)) => todo!(),
-            _ => return Err(format!("err at index: {}", index)),
-        }
-    }
-    Ok(())
 }
 
 //Notes:
@@ -881,7 +827,72 @@ pub fn eval_constant_expression_integer(
             lexer::Token::IDENT(_)
             | lexer::Token::CONSTANT_DEC_INT { .. }
             | lexer::Token::CONSTANT_CHAR(_) => {
-                parse_handle_primary_expression(tokens, index, &mut curr_expr)?;
+                let mut token_within = tokens[index];
+                let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
+                if curr_expr.is_none() {
+                    curr_expr = Some(primary);
+                } else {
+                    match &mut curr_expr {
+                        Some(Expr::Additive(a)) => {
+                            assert!(a.first.is_some());
+                            a.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::PostFix(_)) => todo!(),
+                        Some(Expr::Cast(_)) => todo!(),
+                        Some(Expr::Unary(u)) => {
+                            assert!(u.first.is_none());
+                            u.first = Some(Box::new(primary));
+                        }
+                        Some(Expr::LogicalOR(lo)) => {
+                            assert!(lo.first.is_some());
+                            lo.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::LogicalAND(la)) => {
+                            assert!(la.first.is_some());
+                            la.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitOR(bo)) => {
+                            assert!(bo.first.is_some());
+                            bo.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitXOR(bx)) => {
+                            assert!(bx.first.is_some());
+                            bx.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitAND(ba)) => {
+                            assert!(ba.first.is_some());
+                            ba.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Equality(e)) => {
+                            assert!(e.first.is_some());
+                            e.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Relational(r)) => {
+                            assert!(r.first.is_some());
+                            r.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::BitShift(bs)) => {
+                            assert!(bs.first.is_some());
+                            bs.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Multiplicative(m)) => {
+                            assert!(m.first.is_some());
+                            m.second = Some(Box::new(primary));
+                        }
+                        Some(Expr::Conditional(c)) => {
+                            if c.first.is_none() {
+                                c.first = Some(Box::new(primary));
+                            } else if c.second.is_none() {
+                                c.second = Some(Box::new(primary));
+                            } else if c.third.is_none() {
+                                c.third = Some(Box::new(primary));
+                            }
+                        }
+                        Some(Expr::Assignment(a)) => todo!(),
+                        _ => return Err(format!("err at index: {}", index)),
+                    }
+                }
+
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1649,10 +1660,10 @@ pub fn eval_constant_expression_integer(
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
         }
         if left_expression.is_some() && right_expression.is_some() {
-            let mut left = left_expression.unwrap();
-            let mut right = right_expression.unwrap();
+            let Some(mut left) = left_expression else { unreachable!() };
+            let Some(mut right) = right_expression else { unreachable!() };
             if left.priority() >= right.priority() {
-                left_has_higher_eq_priority(&mut left, &mut right);
+                left_has_higher_eq_priority(left, &mut right);
             } else {
                 right_has_higher_priority(&mut left, &mut right);
                 stack.push(left);
