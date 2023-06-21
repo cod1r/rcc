@@ -1,8 +1,8 @@
 use crate::lexer::{self};
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
-    Expr(Box<Expr>),
+    Expr(usize),
 }
 
 impl PrimaryInner {
@@ -23,8 +23,8 @@ impl PrimaryInner {
         }
         Err(format!("not allowed token passed in"))
     }
-    pub fn new_p_expr(e: Expr) -> Self {
-        Self::Expr(Box::new(e))
+    pub fn new_p_expr(e_index: usize) -> Self {
+        Self::Expr(e_index)
     }
 }
 
@@ -41,57 +41,59 @@ pub enum Type {
     UnsignedLongLongInt,
 }
 
-#[derive(Clone)]
+type ExpressionIndex = usize;
+
+#[derive(Copy, Clone)]
 pub struct Conditional {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
-    pub third: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
+    pub third: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct LogicalOR {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct LogicalAND {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct BitOR {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct BitXOR {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct BitAND {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum EqualityOp {
     Equal,
     NotEqual,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Equality {
     pub op: EqualityOp,
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum RelationalOp {
     LessThan,
     LessThanEq,
@@ -99,51 +101,51 @@ pub enum RelationalOp {
     GreaterThanEq,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Relational {
     pub op: RelationalOp,
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum BitShiftOp {
     Left,
     Right,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct BitShift {
     pub op: BitShiftOp,
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum AdditiveOps {
     Add,
     Sub,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Additive {
     pub op: AdditiveOps,
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum MultiplicativeOps {
     Mult,
     Div,
     Mod,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Multiplicative {
     pub op: MultiplicativeOps,
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum UnaryOp {
     Ampersand,
     Sub,
@@ -152,22 +154,22 @@ pub enum UnaryOp {
     BitNOT,
     LogicalNOT,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Unary {
     pub op: UnaryOp,
-    pub first: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Cast {}
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct PostFix {}
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Assignment {
-    pub first: Option<Box<Expr>>,
-    pub second: Option<Box<Expr>>,
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum Expr {
     Assignment(Assignment),
     Conditional(Conditional),
@@ -282,7 +284,7 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = a.second.clone();
+                m.first = a.second;
             }
             _ => unreachable!(),
         },
@@ -296,11 +298,11 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = bs.second.clone();
+                m.first = bs.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = bs.second.clone();
+                a.first = bs.second;
             }
             _ => unreachable!(),
         },
@@ -314,15 +316,15 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = r.second.clone();
+                m.first = r.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = r.second.clone();
+                a.first = r.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = r.second.clone();
+                bs.first = r.second;
             }
             _ => unreachable!(),
         },
@@ -336,19 +338,19 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = e.second.clone();
+                m.first = e.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = e.second.clone();
+                a.first = e.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = e.second.clone();
+                bs.first = e.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = e.second.clone();
+                r.first = e.second;
             }
             _ => unreachable!(),
         },
@@ -362,23 +364,23 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = ba.second.clone();
+                m.first = ba.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = ba.second.clone();
+                a.first = ba.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = ba.second.clone();
+                bs.first = ba.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = ba.second.clone();
+                r.first = ba.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = ba.second.clone();
+                e.first = ba.second;
             }
             _ => unreachable!(),
         },
@@ -392,27 +394,27 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = bx.second.clone();
+                m.first = bx.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = bx.second.clone();
+                a.first = bx.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = bx.second.clone();
+                bs.first = bx.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = bx.second.clone();
+                r.first = bx.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = bx.second.clone();
+                e.first = bx.second;
             }
             Expr::BitAND(ba) => {
                 assert!(ba.first.is_none());
-                ba.first = bx.second.clone();
+                ba.first = bx.second;
             }
             _ => unreachable!(),
         },
@@ -426,31 +428,31 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = bo.second.clone();
+                m.first = bo.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = bo.second.clone();
+                a.first = bo.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = bo.second.clone();
+                bs.first = bo.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = bo.second.clone();
+                r.first = bo.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = bo.second.clone();
+                e.first = bo.second;
             }
             Expr::BitAND(ba) => {
                 assert!(ba.first.is_none());
-                ba.first = bo.second.clone();
+                ba.first = bo.second;
             }
             Expr::BitXOR(bx) => {
                 assert!(bx.first.is_none());
-                bx.first = bo.second.clone();
+                bx.first = bo.second;
             }
             _ => unreachable!(),
         },
@@ -464,35 +466,35 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = la.second.clone();
+                m.first = la.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = la.second.clone();
+                a.first = la.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = la.second.clone();
+                bs.first = la.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = la.second.clone();
+                r.first = la.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = la.second.clone();
+                e.first = la.second;
             }
             Expr::BitAND(ba) => {
                 assert!(ba.first.is_none());
-                ba.first = la.second.clone();
+                ba.first = la.second;
             }
             Expr::BitXOR(bx) => {
                 assert!(bx.first.is_none());
-                bx.first = la.second.clone();
+                bx.first = la.second;
             }
             Expr::BitOR(bo) => {
                 assert!(bo.first.is_none());
-                bo.first = la.second.clone();
+                bo.first = la.second;
             }
             _ => unreachable!(),
         },
@@ -506,39 +508,39 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = lo.second.clone();
+                m.first = lo.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = lo.second.clone();
+                a.first = lo.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = lo.second.clone();
+                bs.first = lo.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = lo.second.clone();
+                r.first = lo.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = lo.second.clone();
+                e.first = lo.second;
             }
             Expr::BitAND(ba) => {
                 assert!(ba.first.is_none());
-                ba.first = lo.second.clone();
+                ba.first = lo.second;
             }
             Expr::BitXOR(bx) => {
                 assert!(bx.first.is_none());
-                bx.first = lo.second.clone();
+                bx.first = lo.second;
             }
             Expr::BitOR(bo) => {
                 assert!(bo.first.is_none());
-                bo.first = lo.second.clone();
+                bo.first = lo.second;
             }
             Expr::LogicalAND(la) => {
                 assert!(la.first.is_none());
-                la.first = lo.second.clone();
+                la.first = lo.second;
             }
             _ => unreachable!(),
         },
@@ -555,43 +557,43 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                 }
                 Expr::Multiplicative(m) => {
                     assert!(m.first.is_none());
-                    m.first = c.third.clone();
+                    m.first = c.third;
                 }
                 Expr::Additive(a) => {
                     assert!(a.first.is_none());
-                    a.first = c.third.clone();
+                    a.first = c.third;
                 }
                 Expr::BitShift(bs) => {
                     assert!(bs.first.is_none());
-                    bs.first = c.third.clone();
+                    bs.first = c.third;
                 }
                 Expr::Relational(r) => {
                     assert!(r.first.is_none());
-                    r.first = c.third.clone();
+                    r.first = c.third;
                 }
                 Expr::Equality(e) => {
                     assert!(e.first.is_none());
-                    e.first = c.third.clone();
+                    e.first = c.third;
                 }
                 Expr::BitAND(ba) => {
                     assert!(ba.first.is_none());
-                    ba.first = c.third.clone();
+                    ba.first = c.third;
                 }
                 Expr::BitXOR(bx) => {
                     assert!(bx.first.is_none());
-                    bx.first = c.third.clone();
+                    bx.first = c.third;
                 }
                 Expr::BitOR(bo) => {
                     assert!(bo.first.is_none());
-                    bo.first = c.third.clone();
+                    bo.first = c.third;
                 }
                 Expr::LogicalAND(la) => {
                     assert!(la.first.is_none());
-                    la.first = c.third.clone();
+                    la.first = c.third;
                 }
                 Expr::LogicalOR(lo) => {
                     assert!(lo.first.is_none());
-                    lo.first = c.third.clone();
+                    lo.first = c.third;
                 }
                 _ => unreachable!(),
             }
@@ -606,43 +608,43 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
             Expr::Multiplicative(m) => {
                 assert!(m.first.is_none());
-                m.first = a.second.clone();
+                m.first = a.second;
             }
             Expr::Additive(a) => {
                 assert!(a.first.is_none());
-                a.first = a.second.clone();
+                a.first = a.second;
             }
             Expr::BitShift(bs) => {
                 assert!(bs.first.is_none());
-                bs.first = a.second.clone();
+                bs.first = a.second;
             }
             Expr::Relational(r) => {
                 assert!(r.first.is_none());
-                r.first = a.second.clone();
+                r.first = a.second;
             }
             Expr::Equality(e) => {
                 assert!(e.first.is_none());
-                e.first = a.second.clone();
+                e.first = a.second;
             }
             Expr::BitAND(ba) => {
                 assert!(ba.first.is_none());
-                ba.first = a.second.clone();
+                ba.first = a.second;
             }
             Expr::BitXOR(bx) => {
                 assert!(bx.first.is_none());
-                bx.first = a.second.clone();
+                bx.first = a.second;
             }
             Expr::BitOR(bo) => {
                 assert!(bo.first.is_none());
-                bo.first = a.second.clone();
+                bo.first = a.second;
             }
             Expr::LogicalAND(la) => {
                 assert!(la.first.is_none());
-                la.first = a.second.clone();
+                la.first = a.second;
             }
             Expr::LogicalOR(lo) => {
                 assert!(lo.first.is_none());
-                lo.first = a.second.clone();
+                lo.first = a.second;
             }
             _ => unreachable!(),
         },
@@ -650,9 +652,8 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
     }
 }
 
-fn left_has_higher_eq_priority(left: Expr, right: &mut Expr) {
-    assert!(left.priority() >= right.priority());
-    let boxed = Some(Box::new(left));
+fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
+    let boxed = Some(left);
     match right {
         Expr::Multiplicative(m) => {
             m.first = boxed;
@@ -721,10 +722,12 @@ fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usi
                     tokens.get(index)
                 ));
             }
-            Ok((index, Expr::Primary(Some(PrimaryInner::new_p_expr(expr)))))
+            todo!("Ok((index, Expr::Primary(Some(PrimaryInner::new_p_expr(expr)))))")
         }
 
-        lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {todo!()}
+        lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {
+            todo!()
+        }
         _ => todo!(),
     }
 }
@@ -822,6 +825,7 @@ pub fn eval_constant_expression_integer(
     let mut left_expression: Option<Expr> = None;
     let mut right_expression: Option<Expr> = None;
     let mut index = 0;
+    let mut expressions = Vec::new();
     while index < tokens.len() {
         match &tokens[index] {
             lexer::Token::IDENT(_)
@@ -829,63 +833,65 @@ pub fn eval_constant_expression_integer(
             | lexer::Token::CONSTANT_CHAR(_) => {
                 let mut token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
+                expressions.push(primary);
+                let last_index = expressions.len() - 1;
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
                 } else {
                     match &mut curr_expr {
                         Some(Expr::Additive(a)) => {
                             assert!(a.first.is_some());
-                            a.second = Some(Box::new(primary));
+                            a.second = Some(last_index);
                         }
                         Some(Expr::PostFix(_)) => todo!(),
                         Some(Expr::Cast(_)) => todo!(),
                         Some(Expr::Unary(u)) => {
                             assert!(u.first.is_none());
-                            u.first = Some(Box::new(primary));
+                            u.first = Some(last_index);
                         }
                         Some(Expr::LogicalOR(lo)) => {
                             assert!(lo.first.is_some());
-                            lo.second = Some(Box::new(primary));
+                            lo.second = Some(last_index);
                         }
                         Some(Expr::LogicalAND(la)) => {
                             assert!(la.first.is_some());
-                            la.second = Some(Box::new(primary));
+                            la.second = Some(last_index);
                         }
                         Some(Expr::BitOR(bo)) => {
                             assert!(bo.first.is_some());
-                            bo.second = Some(Box::new(primary));
+                            bo.second = Some(last_index);
                         }
                         Some(Expr::BitXOR(bx)) => {
                             assert!(bx.first.is_some());
-                            bx.second = Some(Box::new(primary));
+                            bx.second = Some(last_index);
                         }
                         Some(Expr::BitAND(ba)) => {
                             assert!(ba.first.is_some());
-                            ba.second = Some(Box::new(primary));
+                            ba.second = Some(last_index);
                         }
                         Some(Expr::Equality(e)) => {
                             assert!(e.first.is_some());
-                            e.second = Some(Box::new(primary));
+                            e.second = Some(last_index);
                         }
                         Some(Expr::Relational(r)) => {
                             assert!(r.first.is_some());
-                            r.second = Some(Box::new(primary));
+                            r.second = Some(last_index);
                         }
                         Some(Expr::BitShift(bs)) => {
                             assert!(bs.first.is_some());
-                            bs.second = Some(Box::new(primary));
+                            bs.second = Some(last_index);
                         }
                         Some(Expr::Multiplicative(m)) => {
                             assert!(m.first.is_some());
-                            m.second = Some(Box::new(primary));
+                            m.second = Some(last_index);
                         }
                         Some(Expr::Conditional(c)) => {
                             if c.first.is_none() {
-                                c.first = Some(Box::new(primary));
+                                c.first = Some(last_index);
                             } else if c.second.is_none() {
-                                c.second = Some(Box::new(primary));
+                                c.second = Some(last_index);
                             } else if c.third.is_none() {
-                                c.third = Some(Box::new(primary));
+                                c.third = Some(last_index);
                             }
                         }
                         Some(Expr::Assignment(a)) => todo!(),
@@ -972,7 +978,9 @@ pub fn eval_constant_expression_integer(
                 while let Some(mut e) = stack.pop() {
                     match e {
                         Expr::Primary(ref mut p) => {
-                            *p = Some(PrimaryInner::new_p_expr(curr_expr.unwrap()));
+                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            expressions.push(unwrapped);
+                            *p = Some(PrimaryInner::new_p_expr(expressions.len() - 1));
                             curr_expr = Some(e);
                             if !matches!(stack.last(), Some(Expr::Unary(_))) {
                                 break;
@@ -981,7 +989,9 @@ pub fn eval_constant_expression_integer(
                             }
                         }
                         Expr::Unary(ref mut u) => {
-                            u.first = Some(Box::new(curr_expr.unwrap()));
+                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            expressions.push(unwrapped);
+                            u.first = Some(expressions.len() - 1);
                             curr_expr = Some(e);
                             if popped_opening_parenth_already {
                                 break;
@@ -989,7 +999,9 @@ pub fn eval_constant_expression_integer(
                         }
                         _ => {
                             assert!(e.priority() <= curr_expr.clone().unwrap().priority());
-                            let unwrapped = Some(Box::new(curr_expr.unwrap()));
+                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            expressions.push(unwrapped);
+                            let unwrapped = Some(expressions.len() - 1);
                             match e {
                                 Expr::Unary(ref mut u) => {
                                     u.first = unwrapped;
@@ -1093,7 +1105,8 @@ pub fn eval_constant_expression_integer(
                     }
                     Some(Expr::Unary(Unary { op: _, first })) => {
                         if first.is_none() {
-                            stack.push(left_expression.clone().unwrap());
+                            let Some(left_expression) = left_expression else { unreachable!() };
+                            stack.push(left_expression);
                             curr_expr = Some(Expr::Unary(Unary {
                                 op: match tokens[index] {
                                     lexer::Token::PUNCT_PLUS => UnaryOp::Add,
@@ -1574,8 +1587,9 @@ pub fn eval_constant_expression_integer(
             }
             lexer::Token::PUNCT_QUESTION_MARK => {
                 if let Some(expr) = curr_expr {
+                    expressions.push(expr);
                     let expr_cond = Expr::Conditional(Conditional {
-                        first: Some(Box::new(expr)),
+                        first: Some(expressions.len() - 1),
                         second: None,
                         third: None,
                     });
@@ -1598,7 +1612,9 @@ pub fn eval_constant_expression_integer(
                     return Err(format!("expected expression before ':'"));
                 }
                 while let Some(mut expr) = stack.pop() {
-                    let unwrapped = Some(Box::new(curr_expr.unwrap()));
+                    let Some(unwrapped) = curr_expr else { unreachable!() };
+                    expressions.push(unwrapped);
+                    let unwrapped = Some(expressions.len() - 1);
                     match expr {
                         Expr::Unary(ref mut u) => {
                             u.first = unwrapped;
@@ -1663,7 +1679,9 @@ pub fn eval_constant_expression_integer(
             let Some(mut left) = left_expression else { unreachable!() };
             let Some(mut right) = right_expression else { unreachable!() };
             if left.priority() >= right.priority() {
-                left_has_higher_eq_priority(left, &mut right);
+                assert!(left.priority() >= right.priority());
+                expressions.push(left);
+                left_has_higher_eq_priority(expressions.len() - 1, &mut right);
             } else {
                 right_has_higher_priority(&mut left, &mut right);
                 stack.push(left);
@@ -1675,7 +1693,9 @@ pub fn eval_constant_expression_integer(
     }
     while let Some(mut expr) = stack.pop() {
         assert!(curr_expr.is_some());
-        let unwrapped = Some(Box::new(curr_expr.unwrap()));
+        let Some(unwrapped) = curr_expr else { unreachable!() };
+        expressions.push(unwrapped);
+        let unwrapped = Some(expressions.len() - 1);
         match expr {
             Expr::Unary(ref mut u) => {
                 u.first = unwrapped;
@@ -1718,13 +1738,23 @@ pub fn eval_constant_expression_integer(
         }
         curr_expr = Some(expr);
     }
-    Ok(recursive_eval(curr_expr.unwrap(), str_maps)?)
+    Ok(recursive_eval(
+        &curr_expr.unwrap(),
+        str_maps,
+        expressions.as_slice(),
+    )?)
 }
-fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128, String> {
+fn recursive_eval(
+    expr: &Expr,
+    str_maps: &mut lexer::ByteVecMaps,
+    expressions: &[Expr],
+) -> Result<i128, String> {
     match expr {
         Expr::Primary(p) => {
             match p {
-                Some(PrimaryInner::Expr(e)) => recursive_eval(*e, str_maps),
+                Some(PrimaryInner::Expr(e)) => {
+                    recursive_eval(&expressions[*e], str_maps, expressions)
+                }
                 Some(PrimaryInner::Token(t)) => {
                     assert!(matches!(
                         t,
@@ -1740,7 +1770,7 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
                             // whether we get u64 (uintmax_t) or i64 (intmax_t), we can still
                             // compare and not have to do any weird casts.
                             // TODO: add overflow checks...
-                            let value = &str_maps.key_to_byte_vec[value_key];
+                            let value = &str_maps.key_to_byte_vec[*value_key];
                             let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else { unreachable!() };
                             match to_be_parsed.parse::<i128>() {
                                 Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => Ok(v),
@@ -1765,14 +1795,16 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
         Expr::Unary(u) => {
             let Some(first) = u.first else { unreachable!() };
             match u.op {
-                UnaryOp::Add => Ok(recursive_eval(*first, str_maps)?),
-                UnaryOp::Sub => Ok(-recursive_eval(*first, str_maps)?),
-                UnaryOp::BitNOT => Ok(!recursive_eval(*first, str_maps)?),
-                UnaryOp::LogicalNOT => Ok(if recursive_eval(*first, str_maps)? == 0 {
-                    1
-                } else {
-                    0
-                }),
+                UnaryOp::Add => Ok(recursive_eval(&expressions[first], str_maps, expressions)?),
+                UnaryOp::Sub => Ok(-recursive_eval(&expressions[first], str_maps, expressions)?),
+                UnaryOp::BitNOT => Ok(!recursive_eval(&expressions[first], str_maps, expressions)?),
+                UnaryOp::LogicalNOT => Ok(
+                    if recursive_eval(&expressions[first], str_maps, expressions)? == 0 {
+                        1
+                    } else {
+                        0
+                    },
+                ),
                 UnaryOp::Ampersand | UnaryOp::Deref => {
                     unreachable!()
                 }
@@ -1783,16 +1815,21 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(second) = m.second else { unreachable!() };
             match m.op {
                 MultiplicativeOps::Mult => {
-                    Ok(recursive_eval(*first, str_maps)? * recursive_eval(*second, str_maps)?)
+                    Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                        * recursive_eval(&expressions[second], str_maps, expressions)?)
                 }
                 MultiplicativeOps::Div | MultiplicativeOps::Mod => {
-                    let right = recursive_eval(*second, str_maps)?;
+                    let right = recursive_eval(&expressions[second], str_maps, expressions)?;
                     if right == 0 {
                         return Err(String::from("cannot divide by zero"));
                     }
                     match m.op {
-                        MultiplicativeOps::Div => Ok(recursive_eval(*first, str_maps)? / right),
-                        MultiplicativeOps::Mod => Ok(recursive_eval(*first, str_maps)? % right),
+                        MultiplicativeOps::Div => {
+                            Ok(recursive_eval(&expressions[first], str_maps, expressions)? / right)
+                        }
+                        MultiplicativeOps::Mod => {
+                            Ok(recursive_eval(&expressions[first], str_maps, expressions)? % right)
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -1802,24 +1839,20 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(left) = a.first else { unreachable!() };
             let Some(right) = a.second else { unreachable!() };
             match a.op {
-                AdditiveOps::Add => {
-                    Ok(recursive_eval(*left, str_maps)? + recursive_eval(*right, str_maps)?)
-                }
-                AdditiveOps::Sub => {
-                    Ok(recursive_eval(*left, str_maps)? - recursive_eval(*right, str_maps)?)
-                }
+                AdditiveOps::Add => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
+                    + recursive_eval(&expressions[right], str_maps, expressions)?),
+                AdditiveOps::Sub => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
+                    - recursive_eval(&expressions[right], str_maps, expressions)?),
             }
         }
         Expr::BitShift(bs) => {
             let Some(left) = bs.first else { unreachable!() };
             let Some(right) = bs.second else { unreachable!() };
             match bs.op {
-                BitShiftOp::Left => {
-                    Ok(recursive_eval(*left, str_maps)? << recursive_eval(*right, str_maps)?)
-                }
-                BitShiftOp::Right => {
-                    Ok(recursive_eval(*left, str_maps)? >> recursive_eval(*right, str_maps)?)
-                }
+                BitShiftOp::Left => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
+                    << recursive_eval(&expressions[right], str_maps, expressions)?),
+                BitShiftOp::Right => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
+                    >> recursive_eval(&expressions[right], str_maps, expressions)?),
             }
         }
         Expr::Relational(r) => {
@@ -1827,28 +1860,36 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(second) = r.second else { unreachable!() };
             match r.op {
                 RelationalOp::LessThan => Ok(
-                    if recursive_eval(*first, str_maps)? < recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        < recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
                     },
                 ),
                 RelationalOp::LessThanEq => Ok(
-                    if recursive_eval(*first, str_maps)? <= recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        <= recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
                     },
                 ),
                 RelationalOp::GreaterThan => Ok(
-                    if recursive_eval(*first, str_maps)? > recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        > recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
                     },
                 ),
                 RelationalOp::GreaterThanEq => Ok(
-                    if recursive_eval(*first, str_maps)? >= recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        >= recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
@@ -1861,14 +1902,18 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(second) = e.second else { unreachable!() };
             match e.op {
                 EqualityOp::Equal => Ok(
-                    if recursive_eval(*first, str_maps)? == recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        == recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
                     },
                 ),
                 EqualityOp::NotEqual => Ok(
-                    if recursive_eval(*first, str_maps)? != recursive_eval(*second, str_maps)? {
+                    if recursive_eval(&expressions[first], str_maps, expressions)?
+                        != recursive_eval(&expressions[second], str_maps, expressions)?
+                    {
                         1
                     } else {
                         0
@@ -1880,7 +1925,10 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = ba.first else { unreachable!() };
             let Some(second) = ba.second else { unreachable!() };
             Ok(
-                if (recursive_eval(*first, str_maps)? & recursive_eval(*second, str_maps)?) != 0 {
+                if (recursive_eval(&expressions[first], str_maps, expressions)?
+                    & recursive_eval(&expressions[second], str_maps, expressions)?)
+                    != 0
+                {
                     1
                 } else {
                     0
@@ -1891,7 +1939,10 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = bx.first else { unreachable!() };
             let Some(second) = bx.second else { unreachable!() };
             Ok(
-                if (recursive_eval(*first, str_maps)? ^ recursive_eval(*second, str_maps)?) != 0 {
+                if (recursive_eval(&expressions[first], str_maps, expressions)?
+                    ^ recursive_eval(&expressions[second], str_maps, expressions)?)
+                    != 0
+                {
                     1
                 } else {
                     0
@@ -1902,7 +1953,10 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = bo.first else { unreachable!() };
             let Some(second) = bo.second else { unreachable!() };
             Ok(
-                if (recursive_eval(*first, str_maps)? | recursive_eval(*second, str_maps)?) != 0 {
+                if (recursive_eval(&expressions[first], str_maps, expressions)?
+                    | recursive_eval(&expressions[second], str_maps, expressions)?)
+                    != 0
+                {
                     1
                 } else {
                     0
@@ -1913,7 +1967,8 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = la.first else { unreachable!() };
             let Some(second) = la.second else { unreachable!() };
             Ok(
-                if recursive_eval(*first, str_maps)? != 0 && recursive_eval(*second, str_maps)? != 0
+                if recursive_eval(&expressions[first], str_maps, expressions)? != 0
+                    && recursive_eval(&expressions[second], str_maps, expressions)? != 0
                 {
                     1
                 } else {
@@ -1925,7 +1980,8 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = lo.first else { unreachable!() };
             let Some(second) = lo.second else { unreachable!() };
             Ok(
-                if recursive_eval(*first, str_maps)? != 0 || recursive_eval(*second, str_maps)? != 0
+                if recursive_eval(&expressions[first], str_maps, expressions)? != 0
+                    || recursive_eval(&expressions[second], str_maps, expressions)? != 0
                 {
                     1
                 } else {
@@ -1937,10 +1993,10 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
             let Some(first) = c.first else { unreachable!() };
             let Some(second) = c.second else { unreachable!() };
             let Some(third) = c.third else { unreachable!() };
-            if recursive_eval(*first, str_maps)? != 0 {
-                Ok(recursive_eval(*second, str_maps)?)
+            if recursive_eval(&expressions[first], str_maps, expressions)? != 0 {
+                Ok(recursive_eval(&expressions[second], str_maps, expressions)?)
             } else {
-                Ok(recursive_eval(*third, str_maps)?)
+                Ok(recursive_eval(&expressions[third], str_maps, expressions)?)
             }
         }
         _ => unreachable!(),
@@ -1950,7 +2006,6 @@ fn recursive_eval(expr: Expr, str_maps: &mut lexer::ByteVecMaps) -> Result<i128,
 mod tests {
     use crate::lexer;
     use crate::parser::expressions::{self};
-    use std::collections::HashMap;
     #[test]
     fn eval_expression_test_empty() -> Result<(), String> {
         let src = r##""##.as_bytes();
