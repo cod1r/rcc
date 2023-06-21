@@ -27,7 +27,7 @@ fn concat_adjacent_strings(
                 )
             ) && adjacent_string_lit_index < tokens.len()
             {
-                if let Some(lexer::Token::StringLiteral(second_string_lit)) =
+                if let Some(lexer::Token::StringLiteral(_second_string_lit)) =
                     tokens.get(adjacent_string_lit_index)
                 {
                     while let Some(lexer::Token::StringLiteral(second_string_lit)) =

@@ -708,7 +708,7 @@ fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usi
         )),
         lexer::Token::PUNCT_OPEN_PAR => {
             index += 1;
-            let (new_index, expr) = parse_expressions(tokens, index)?;
+            let (new_index, _expr) = parse_expressions(tokens, index)?;
             index = new_index;
             while matches!(
                 tokens.get(index),
@@ -831,7 +831,7 @@ pub fn eval_constant_expression_integer(
             lexer::Token::IDENT(_)
             | lexer::Token::CONSTANT_DEC_INT { .. }
             | lexer::Token::CONSTANT_CHAR(_) => {
-                let mut token_within = tokens[index];
+                let token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
                 expressions.push(primary);
                 let last_index = expressions.len() - 1;
@@ -894,7 +894,7 @@ pub fn eval_constant_expression_integer(
                                 c.third = Some(last_index);
                             }
                         }
-                        Some(Expr::Assignment(a)) => todo!(),
+                        Some(Expr::Assignment(_a)) => todo!(),
                         _ => return Err(format!("err at index: {}", index)),
                     }
                 }

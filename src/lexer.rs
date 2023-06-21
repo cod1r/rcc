@@ -1088,7 +1088,7 @@ fn match_floating_constant(
     }
     None
 }
-fn match_enumeration_constant(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_enumeration_constant(_program_str_bytes: &[u8], _index: &mut usize) -> Option<Token> {
     todo!()
 }
 fn match_character_constant(
@@ -1678,7 +1678,7 @@ mod tests {
         match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
     use crate::lexer::{self};
-    use std::collections::HashMap;
+    
     #[test]
     fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {
         let s = r#"int \UAAAA_URMOM = 4"#.as_bytes();
@@ -1996,7 +1996,7 @@ mod tests {
         let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
         match &char_token {
             super::Token::CONSTANT_CHAR(ConstantChar {
-                prefix,
+                prefix: _,
                 sequence_key,
             }) => {
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");

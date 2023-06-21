@@ -1,4 +1,4 @@
-use crate::cpp::{self};
+
 use crate::lexer::{self};
 use crate::parser::expressions::{self};
 pub enum StorageClassSpecifier {
@@ -246,7 +246,7 @@ fn parse_declarations(
     start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<Option<(Declaration, usize)>, String> {
-    let mut declaration_index = start_index;
+    let declaration_index = start_index;
     let mut declaration = Declaration::new();
     while declaration_index < tokens.len() {
         match tokens[declaration_index] {
@@ -341,7 +341,7 @@ fn parse_declarations(
                     next_index += 1;
                 }
                 if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(next_index) {
-                    let (new_index, type_name) =
+                    let (new_index, _type_name) =
                         parse_type_names(&tokens, next_index + 1, str_maps)?;
                     next_index = new_index;
                     while !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR))
@@ -405,7 +405,7 @@ fn parse_declarator(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Declarator), String> {
     let mut index = start_index;
-    if let Some((new_index, pointers)) = parse_pointer(tokens, index) {
+    if let Some((new_index, _pointers)) = parse_pointer(tokens, index) {
         index = new_index;
     }
     let mut declarator = None;
@@ -463,7 +463,7 @@ fn parse_declarator(
             if *ident == *b"static" {}
         }
         Some(_) => {
-            if let Some((new_index, qualifiers)) = parse_type_qualifiers(tokens, index) {
+            if let Some((new_index, _qualifiers)) = parse_type_qualifiers(tokens, index) {
                 index = new_index;
                 while matches!(
                     tokens.get(index),
@@ -474,7 +474,7 @@ fn parse_declarator(
                 if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
                     let ident = &str_maps.key_to_byte_vec[*key];
                     if *ident == *b"static" {
-                        let mut static_direct_declarator_with_qualifiers =
+                        let _static_direct_declarator_with_qualifiers =
                             StaticDirectDeclaratorWithQualifiers::new();
                         index += 1;
                         todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
@@ -529,7 +529,7 @@ fn parse_struct_union_specifier(
         while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON))
             && index < tokens.len()
         {
-            let (new_index, specifier_qualifier_list) =
+            let (new_index, _specifier_qualifier_list) =
                 parse_specifiers_qualifiers(tokens, index, str_maps)?;
             index = new_index;
             loop {
@@ -761,7 +761,7 @@ fn parse_direct_abstract_declarator(
     match tokens[index] {
         lexer::Token::PUNCT_OPEN_PAR => {
             index += 1;
-            let (new_index, abstract_declarator) =
+            let (_new_index, _abstract_declarator) =
                 parse_abstract_declarator(tokens, index, str_maps)?;
         }
         lexer::Token::PUNCT_OPEN_SQR => {
@@ -824,7 +824,7 @@ fn parse_abstract_declarator(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, AbstractDeclarator), String> {
     let mut index = start_index;
-    if let Some((new_index, pointers)) = parse_pointer(tokens, index) {
+    if let Some((new_index, _pointers)) = parse_pointer(tokens, index) {
         index = new_index;
     }
     parse_direct_abstract_declarator(tokens, index, str_maps);
@@ -836,9 +836,9 @@ fn parse_type_names(
     start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, TypeName), String> {
-    let mut index = start_index;
+    let index = start_index;
     let mut type_name = TypeName::new();
-    let (new_index, specifier_qualifier_list) =
+    let (_new_index, specifier_qualifier_list) =
         parse_specifiers_qualifiers(tokens, index, str_maps)?;
     type_name.specifier_qualifier_list = specifier_qualifier_list;
     todo!()
@@ -846,7 +846,7 @@ fn parse_type_names(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_enumerator_specifier, EnumSpecifier, Enumerator};
+    use super::{parse_enumerator_specifier, Enumerator};
     use crate::lexer::{self};
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
@@ -859,7 +859,7 @@ mod tests {
 "#
             .as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
             let start_index = {
                 let mut index = 0;
                 while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {
@@ -892,7 +892,7 @@ mod tests {
 "#
             .as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
             let start_index = {
                 let mut index = 0;
                 while !matches!(tokens.get(index), Some(lexer::Token::KEYWORD_ENUM)) {

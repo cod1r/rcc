@@ -188,7 +188,7 @@ fn include_directive(
             eprintln!("Warning: Tokens after {s} are skipped",);
         }
     }
-    if let Some(mut fname) = file_name {
+    if let Some(fname) = file_name {
         if look_at_current_dir {
             let curr_dir = {
                 let mut split_index = 0;
@@ -223,7 +223,7 @@ fn include_directive(
                 let full_path_file = path.to_string() + "/" + &fname;
                 match std::fs::read(full_path_file.as_str()) {
                     Ok(file_contents) => {
-                        let mut tokens_from_file =
+                        let tokens_from_file =
                             cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
                         final_tokens.extend_from_slice(&tokens_from_file);
                         return Ok(newline_index + 1);
@@ -735,17 +735,17 @@ fn define_directive(
         index_of_identifier
     ))
 }
-fn error_directive(tokens: &mut Vec<lexer::Token>) {
+fn error_directive(_tokens: &mut Vec<lexer::Token>) {
     todo!()
 }
-fn line_directive(tokens: &mut Vec<lexer::Token>, index: usize, end: usize) -> Result<(), String> {
+fn line_directive(_tokens: &mut Vec<lexer::Token>, _index: usize, _end: usize) -> Result<(), String> {
     todo!()
 }
 fn undef_directive(
     tokens: &[lexer::Token],
     index: usize,
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
+    _str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<usize, String> {
     let mut index_of_identifier = index + 1;
     if matches!(
@@ -1152,7 +1152,7 @@ fn expand_macro(
         }
     };
     let mut original_macro = tokens[index..ending_index].to_vec();
-    let mut first_macro_section = MacroSection {
+    let first_macro_section = MacroSection {
         macro_key: macro_id_key,
         start: 0,
         depth: 1,
@@ -1388,8 +1388,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, cpp, define_directive, expand_macro,
-        expressions::eval_constant_expression_integer, if_directive, include_directive,
+        comments, cpp, define_directive, expand_macro, if_directive,
         parse_defined_in_if_directive, preprocessing_directives, Define,
     };
     #[test]
@@ -1439,8 +1438,8 @@ int main() {
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut final_tokens = Vec::<lexer::Token>::new();
-            let mut tokens = cpp(
+            let _final_tokens = Vec::<lexer::Token>::new();
+            let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
                 &["./test_c_files"],
@@ -1469,8 +1468,8 @@ int main() {
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut final_tokens = Vec::<lexer::Token>::new();
-            let mut tokens = cpp(
+            let _final_tokens = Vec::<lexer::Token>::new();
+            let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
                 &["./test_c_files"],
@@ -1566,7 +1565,7 @@ char p[] = join(x, y);"##;
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut tokens = lexer::lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        let mut index = 0;
+        let index = 0;
         let mut defines = HashMap::new();
         let new_index = define_directive(&mut tokens, index, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
@@ -1610,7 +1609,7 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
         .to_vec();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut defines = HashMap::new();
-        let mut tokens = cpp(src, "", &["./test_c_files"], &mut defines, &mut str_maps)?;
+        let tokens = cpp(src, "", &["./test_c_files"], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 lexer::Token::StringLiteral(lexer::StringLiteral {
@@ -2094,7 +2093,7 @@ PP(/,*)PP2(*,/)"##
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
-        let new_index = expand_macro(
+        let _new_index = expand_macro(
             &tokens,
             new_index,
             &defines,
@@ -2119,7 +2118,7 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut final_tokens = Vec::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         parse_defined_in_if_directive(
             tokens.as_slice(),
             0,
@@ -2133,7 +2132,7 @@ PP(/,*)PP2(*,/)"##
         let defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut final_tokens = Vec::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         parse_defined_in_if_directive(
             tokens.as_slice(),
             0,
@@ -2289,7 +2288,7 @@ PP(/,*)PP2(*,/)"##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = cpp(
+            let tokens = cpp(
                 src.to_vec(),
                 "",
                 &["./test_c_files"],
@@ -2319,7 +2318,7 @@ PP(/,*)PP2(*,/)"##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = cpp(
+            let tokens = cpp(
                 src.to_vec(),
                 "",
                 &["./test_c_files"],
@@ -2348,7 +2347,7 @@ PP(/,*)PP2(*,/)"##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = cpp(
+            let tokens = cpp(
                 src.to_vec(),
                 "",
                 &["./test_c_files"],
@@ -2378,7 +2377,7 @@ PP(/,*)PP2(*,/)"##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = cpp(
+            let tokens = cpp(
                 src.to_vec(),
                 "",
                 &["./test_c_files"],
@@ -2405,14 +2404,14 @@ PP(/,*)PP2(*,/)"##
 "##;
         let mut defines = HashMap::new();
         let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = cpp(
+        let tokens = cpp(
             src.as_bytes().to_vec(),
             "./test_c_files/pp-acid-test.h",
             &["./test_c_files"],
             &mut defines,
             &mut str_maps,
         )?;
-        let assert_tokens: Vec<lexer::Token> = vec![];
+        let _assert_tokens: Vec<lexer::Token> = vec![];
         let s = tokens
             .iter()
             .map(|t| t.to_byte_vec(&str_maps).expect(format!("{:?}", t).as_str()))
