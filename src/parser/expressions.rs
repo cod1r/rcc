@@ -1,4 +1,5 @@
 use crate::lexer::{self};
+use crate::parser::declarations::{self};
 #[derive(Copy, Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
@@ -41,7 +42,7 @@ pub enum Type {
     UnsignedLongLongInt,
 }
 
-type ExpressionIndex = usize;
+pub type ExpressionIndex = usize;
 
 #[derive(Copy, Clone)]
 pub struct Conditional {
@@ -159,8 +160,10 @@ pub struct Unary {
     pub op: UnaryOp,
     pub first: Option<ExpressionIndex>,
 }
-#[derive(Copy, Clone)]
-pub struct Cast {}
+#[derive(Clone)]
+pub struct Cast {
+    type_name: declarations::TypeName,
+}
 #[derive(Copy, Clone)]
 pub struct PostFix {}
 #[derive(Copy, Clone)]
@@ -169,7 +172,7 @@ pub struct Assignment {
     pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub enum Expr {
     Assignment(Assignment),
     Conditional(Conditional),
@@ -692,7 +695,11 @@ fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
     }
 }
 
-fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usize, Expr), String> {
+fn parse_expressions(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    expressions: &mut Vec<Expr>,
+) -> Result<(usize, Expr), String> {
     let mut index = start_index;
     match tokens[index] {
         lexer::Token::IDENT(_)
@@ -708,7 +715,7 @@ fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usi
         )),
         lexer::Token::PUNCT_OPEN_PAR => {
             index += 1;
-            let (new_index, _expr) = parse_expressions(tokens, index)?;
+            let (new_index, expr) = parse_expressions(tokens, index, expressions)?;
             index = new_index;
             while matches!(
                 tokens.get(index),
@@ -722,7 +729,11 @@ fn parse_expressions(tokens: &[lexer::Token], start_index: usize) -> Result<(usi
                     tokens.get(index)
                 ));
             }
-            todo!("Ok((index, Expr::Primary(Some(PrimaryInner::new_p_expr(expr)))))")
+            expressions.push(expr);
+            Ok((
+                index,
+                Expr::Primary(Some(PrimaryInner::new_p_expr(expressions.len() - 1))),
+            ))
         }
 
         lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {
@@ -833,7 +844,7 @@ pub fn eval_constant_expression_integer(
             | lexer::Token::CONSTANT_CHAR(_) => {
                 let token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
-                expressions.push(primary);
+                expressions.push(primary.clone());
                 let last_index = expressions.len() - 1;
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
@@ -1105,8 +1116,9 @@ pub fn eval_constant_expression_integer(
                     }
                     Some(Expr::Unary(Unary { op: _, first })) => {
                         if first.is_none() {
-                            let Some(left_expression) = left_expression else { unreachable!() };
-                            stack.push(left_expression);
+                            let Some(left_expression_unwrapped) = left_expression else { unreachable!() };
+                            stack.push(left_expression_unwrapped);
+                            left_expression = None;
                             curr_expr = Some(Expr::Unary(Unary {
                                 op: match tokens[index] {
                                     lexer::Token::PUNCT_PLUS => UnaryOp::Add,

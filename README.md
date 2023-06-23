@@ -6,7 +6,7 @@ status: VAPORWARE
 - Preprocessor works to a certain extent.
     - Things like actually good diagnostic messages are non-existent.
     - `#error`, `#pragma`, etc. aren't implemented yet.
-- Currently working on parsing C declarations.
+- Currently working on parsing C declarations. (Taking 1 week break)
 
 # References
 

@@ -9,6 +9,7 @@ pub enum StorageClassSpecifier {
     Auto,
     Register,
 }
+#[derive(Clone)]
 pub enum DirectAbstractDeclarator {
     AbstractDeclarator(Box<AbstractDeclarator>),
     StaticWithOptionalQualifiers(StaticDirectDeclaratorWithOptionalQualifiers),
@@ -16,6 +17,7 @@ pub enum DirectAbstractDeclarator {
     Pointer,
     ParameterTypeList(Option<DirectDeclaratorWithParameterTypeList>),
 }
+#[derive(Clone)]
 pub enum AbstractDeclarator {
     AbstractDeclaratorWithPointer(Vec<Pointer>),
     AbstractDeclaratorWithDirectAbstractDeclarator {
@@ -23,9 +25,10 @@ pub enum AbstractDeclarator {
         direct_abstract_declarator: DirectAbstractDeclarator,
     },
 }
+#[derive(Clone)]
 pub struct TypeName {
-    specifier_qualifier_list: SpecifierQualifierList,
-    abstract_declarator: Option<AbstractDeclarator>,
+    pub specifier_qualifier_list: SpecifierQualifierList,
+    pub abstract_declarator: Option<AbstractDeclarator>,
 }
 impl TypeName {
     fn new() -> Self {
@@ -35,10 +38,12 @@ impl TypeName {
         }
     }
 }
+#[derive(Copy, Clone)]
 pub enum StructOrUnion {
     Struct,
     Union,
 }
+#[derive(Clone)]
 pub struct Pointer {
     type_qualifier_list: Vec<TypeQualifier>,
 }
@@ -49,6 +54,7 @@ impl Pointer {
         }
     }
 }
+#[derive(Clone)]
 pub struct StaticDirectDeclaratorWithOptionalQualifiers {
     is_static: bool,
     type_qualifiers: Vec<TypeQualifier>,
@@ -61,43 +67,47 @@ impl StaticDirectDeclaratorWithOptionalQualifiers {
         }
     }
 }
+#[derive(Clone)]
 pub struct StaticDirectDeclaratorWithQualifiers {
     is_static: bool,
     type_qualifiers: Vec<TypeQualifier>,
-    assignment_expr: expressions::Expr,
+    assignment_expr: Option<expressions::ExpressionIndex>,
 }
 impl StaticDirectDeclaratorWithQualifiers {
     fn new() -> Self {
         Self {
             is_static: true,
             type_qualifiers: Vec::new(),
-            assignment_expr: expressions::Expr::Assignment(expressions::Assignment {
-                first: None,
-                second: None,
-            }),
+            assignment_expr: None,
         }
     }
 }
+#[derive(Clone)]
 pub struct DirectDeclaratorWithPointer {
     type_qualifiers: Vec<TypeQualifier>,
 }
+#[derive(Clone)]
 pub struct ParameterType {
     ellipsis: bool,
     parameter_list: Vec<ParameterDeclaration>,
 }
+#[derive(Clone)]
 pub struct ParameterDeclaration {}
+#[derive(Clone)]
 pub struct DirectDeclaratorWithParameterTypeList {
     parameter_type_list: Vec<ParameterType>,
 }
+#[derive(Clone)]
 pub struct DirectDeclaratorWithIdentifierList {
     identifier_list: Vec<usize>,
 }
+#[derive(Clone)]
 pub enum DirectDeclarator {
     Ident(usize),
     Declarator(Box<Declarator>),
     DirectDeclarator {
         type_qualifier_list: Vec<TypeQualifier>,
-        assignment_expr: Option<expressions::Expr>,
+        assignment_expr: Option<expressions::ExpressionIndex>,
     },
     DirectDeclaratorWithStaticWithOptionalQualifiers(StaticDirectDeclaratorWithOptionalQualifiers),
     DirectDeclaratorWithStaticWithQualifiers(StaticDirectDeclaratorWithQualifiers),
@@ -105,6 +115,7 @@ pub enum DirectDeclarator {
     DirectDeclaratorWithParameterTypeList(DirectDeclaratorWithParameterTypeList),
     DirectDeclaratorWithIdentifierList(Option<DirectDeclaratorWithIdentifierList>),
 }
+#[derive(Clone)]
 pub struct Declarator {
     pointer: Vec<Pointer>,
     direct_declarator: DirectDeclarator,
@@ -117,13 +128,15 @@ impl Declarator {
         }
     }
 }
+#[derive(Clone)]
 pub enum StructDeclarator {
     Declarator(Declarator),
     DeclaratorBitField {
         declarator: Option<Declarator>,
-        const_expr: expressions::Expr,
+        const_expr: Option<expressions::ExpressionIndex>,
     },
 }
+#[derive(Clone)]
 pub struct SpecifierQualifierList {
     pub type_qualifiers: Vec<TypeQualifier>,
     pub type_specifiers: Vec<TypeSpecifier>,
@@ -138,24 +151,28 @@ impl SpecifierQualifierList {
         }
     }
 }
+#[derive(Clone)]
 pub struct StructDeclaration {
     specifier_qualifier_list: SpecifierQualifierList,
     struct_declarator_list: Vec<StructDeclarator>,
 }
+#[derive(Clone)]
 pub struct StructUnionSpecifier {
     pub struct_or_union: StructOrUnion,
     pub identifier: Option<usize>,
     pub struct_declaration_list: Vec<StructDeclaration>,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Enumerator {
     Enum(usize),
     EnumWithConstantExpr(usize, i128),
 }
+#[derive(Clone)]
 pub struct EnumSpecifier {
     identifier: Option<usize>,
     enumerator_list: Vec<Enumerator>,
 }
+#[derive(Clone)]
 pub enum TypeSpecifier {
     Void,
     Char,
@@ -183,9 +200,10 @@ pub enum FunctionSpecifier {
     Inline,
     _Noreturn,
 }
+#[derive(Clone)]
 pub enum AlignmentSpecifier {
     _Alignas(TypeName),
-    _AlignasConstExpr(expressions::Expr),
+    _AlignasConstExpr(expressions::ExpressionIndex),
 }
 pub struct DeclarationSpecifier {
     pub storage_class_specifiers: Vec<StorageClassSpecifier>,
@@ -206,7 +224,7 @@ impl DeclarationSpecifier {
     }
 }
 pub enum Designator {
-    DesignatorWithConstantExpr(expressions::Expr),
+    DesignatorWithConstantExpr(expressions::ExpressionIndex),
     DesignatorWithIdentifier(usize),
 }
 pub struct Designation {
@@ -218,7 +236,7 @@ pub struct InitializerList {
     initializer: Initializer,
 }
 pub struct Initializer {
-    assignment_expression: expressions::Expr,
+    assignment_expression: Option<expressions::ExpressionIndex>,
     initializer_list: Vec<Initializer>,
 }
 pub struct DeclaratorWithInitializer {
