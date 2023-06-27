@@ -738,7 +738,11 @@ fn define_directive(
 fn error_directive(_tokens: &mut Vec<lexer::Token>) {
     todo!()
 }
-fn line_directive(_tokens: &mut Vec<lexer::Token>, _index: usize, _end: usize) -> Result<(), String> {
+fn line_directive(
+    _tokens: &mut Vec<lexer::Token>,
+    _index: usize,
+    _end: usize,
+) -> Result<(), String> {
     todo!()
 }
 fn undef_directive(
@@ -1388,8 +1392,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        comments, cpp, define_directive, expand_macro, if_directive,
-        parse_defined_in_if_directive, preprocessing_directives, Define,
+        comments, cpp, define_directive, expand_macro, if_directive, parse_defined_in_if_directive,
+        preprocessing_directives, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {

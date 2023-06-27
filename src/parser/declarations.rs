@@ -1,4 +1,3 @@
-
 use crate::lexer::{self};
 use crate::parser::expressions::{self};
 pub enum StorageClassSpecifier {
@@ -849,7 +848,7 @@ fn parse_abstract_declarator(
     todo!()
 }
 
-fn parse_type_names(
+pub fn parse_type_names(
     tokens: &[lexer::Token],
     start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,

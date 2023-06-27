@@ -1678,7 +1678,7 @@ mod tests {
         match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
     use crate::lexer::{self};
-    
+
     #[test]
     fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {
         let s = r#"int \UAAAA_URMOM = 4"#.as_bytes();
