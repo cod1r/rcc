@@ -703,7 +703,50 @@ fn parse_cast_expressions(
     expressions: &mut Vec<Expr>,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Expr), String> {
-    todo!()
+    let mut index = start_index;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) && index < tokens.len()
+    {
+        index += 1;
+    }
+    match tokens.get(index) {
+        Some(lexer::Token::PUNCT_OPEN_PAR) => {
+            index += 1;
+            let starting = index;
+            let mut parenth_counter = 1;
+            while parenth_counter > 0 {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_counter += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_counter -= 1,
+                    None => break,
+                    _ => {}
+                }
+                index += 1;
+            }
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) && index < tokens.len()
+            {
+                index += 1;
+            }
+            if index == tokens.len() {
+                let (new_index, expr) =
+                    parse_expressions(&tokens[starting..index], 0, expressions, str_maps)?;
+                return Ok((new_index, expr));
+            }
+            let (new_index, cast_expr) =
+                parse_cast_expressions(tokens, index, expressions, str_maps)?;
+            return Ok((new_index, cast_expr));
+        }
+        _ => {
+            let (new_index, unary_expr) =
+                parse_unary_expressions(tokens, index, expressions, str_maps)?;
+            return Ok((new_index, unary_expr));
+        }
+    }
 }
 fn parse_unary_expressions(
     tokens: &[lexer::Token],
@@ -753,10 +796,19 @@ fn parse_unary_expressions(
     }
     todo!()
 }
+fn parse_primary_expressions(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    expressions: &mut Vec<Expr>,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, Expr), String> {
+    todo!()
+}
 fn parse_postfix_expressions(
     tokens: &[lexer::Token],
     start_index: usize,
     expressions: &mut Vec<Expr>,
+    str_maps: &mut lexer::ByteVecMaps
 ) -> Result<(usize, Expr), String> {
     todo!()
 }
@@ -805,7 +857,7 @@ fn parse_expressions(
             match attempted_cast {
                 Ok((new_index, cast_expr)) => {
                     let (_, type_name) =
-                        declarations::parse_type_names(tokens, starting, str_maps)?;
+                        declarations::parse_type_names(&tokens[starting..end], 0, str_maps)?;
                     expressions.push(cast_expr);
                     let cast = Cast {
                         type_name,
@@ -837,7 +889,17 @@ fn parse_expressions(
                 }
             }
         }
-        _ => todo!(),
+        lexer::Token::PUNCT_INCREMENT => {
+            index += 1;
+            let (new_index, unary_expr) = parse_unary_expressions(tokens, index, expressions, str_maps)?;
+            expressions.push(unary_expr);
+            let unary = Unary {
+                op: UnaryOp::Increment,
+                first: Some(expressions.len() - 1),
+            };
+            Ok((new_index, Expr::Unary(unary)))
+        }
+        _ => todo!("{}", format!("{:?}", tokens[index])),
     }
 }
 
@@ -1915,7 +1977,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-                UnaryOp::Ampersand | UnaryOp::Deref => {
+                UnaryOp::Ampersand | UnaryOp::Deref | UnaryOp::Increment => {
                     unreachable!()
                 }
             }
@@ -2116,6 +2178,8 @@ fn recursive_eval(
 mod tests {
     use crate::lexer;
     use crate::parser::expressions::{self};
+
+    use super::parse_expressions;
     #[test]
     fn eval_expression_test_empty() -> Result<(), String> {
         let src = r##""##.as_bytes();
@@ -2531,6 +2595,15 @@ mod tests {
         let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_test() -> Result<(), String> {
+        let src = r##"++(1 + 1);"##.as_bytes();
+        let mut expressions = Vec::new();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        parse_expressions(&tokens, 0, &mut expressions, &mut str_maps)?;
         Ok(())
     }
 }
