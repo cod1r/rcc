@@ -381,8 +381,8 @@ pub enum Token {
     PUNCT_NOT_BOOL,
     PUNCT_DIV,
     PUNCT_MODULO,
-    PUNCT_BITSHFT_LEFT,
-    PUNCT_BITSHFT_RIGHT,
+    PUNCT_BITSHIFT_LEFT,
+    PUNCT_BITSHIFT_RIGHT,
     PUNCT_LESS_THAN,
     PUNCT_GREATER_THAN,
     PUNCT_LESS_THAN_EQ,
@@ -605,8 +605,8 @@ impl Token {
             Token::PUNCT_NOT_BOOL => Some("!".as_bytes().to_vec()),
             Token::PUNCT_DIV => Some("/".as_bytes().to_vec()),
             Token::PUNCT_MODULO => Some("%".as_bytes().to_vec()),
-            Token::PUNCT_BITSHFT_LEFT => Some("<<".as_bytes().to_vec()),
-            Token::PUNCT_BITSHFT_RIGHT => Some(">>".as_bytes().to_vec()),
+            Token::PUNCT_BITSHIFT_LEFT => Some("<<".as_bytes().to_vec()),
+            Token::PUNCT_BITSHIFT_RIGHT => Some(">>".as_bytes().to_vec()),
             Token::PUNCT_LESS_THAN => Some("<".as_bytes().to_vec()),
             Token::PUNCT_GREATER_THAN => Some(">".as_bytes().to_vec()),
             Token::PUNCT_LESS_THAN_EQ => Some("<=".as_bytes().to_vec()),
@@ -1342,7 +1342,7 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                                 return Some(Token::PUNCT_L_SHIFT_BIT_ASSIGN);
                             }
                             *index += 2;
-                            return Some(Token::PUNCT_BITSHFT_LEFT);
+                            return Some(Token::PUNCT_BITSHIFT_LEFT);
                         }
                         b'=' => {
                             *index += 2;
@@ -1373,7 +1373,7 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                                 return Some(Token::PUNCT_R_SHIFT_BIT_ASSIGN);
                             }
                             *index += 2;
-                            return Some(Token::PUNCT_BITSHFT_RIGHT);
+                            return Some(Token::PUNCT_BITSHIFT_RIGHT);
                         }
                         b'=' => {
                             *index += 2;
@@ -1677,7 +1677,7 @@ mod tests {
         lexer, match_character_constant, match_floating_constant, match_identifier,
         match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
-    use crate::lexer::{self};
+    use crate::lexer;
 
     #[test]
     fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {

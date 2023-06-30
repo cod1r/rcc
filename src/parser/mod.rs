@@ -1,4 +1,4 @@
-use crate::lexer::{self};
+use crate::lexer;
 pub mod declarations;
 pub mod expressions;
 

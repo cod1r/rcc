@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::lexer::{self};
-use crate::parser::expressions::{self};
+use crate::lexer;
+use crate::parser::expressions;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -1388,7 +1388,7 @@ pub fn cpp(
 mod tests {
 
     use crate::lexer;
-    use crate::parser::expressions::{self};
+    use crate::parser::expressions;
     use std::collections::HashMap;
 
     use super::{

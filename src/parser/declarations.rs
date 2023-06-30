@@ -1,5 +1,5 @@
-use crate::lexer::{self};
-use crate::parser::expressions::{self};
+use crate::lexer;
+use crate::parser::expressions;
 pub enum StorageClassSpecifier {
     TypeDef,
     Extern,
@@ -864,7 +864,7 @@ pub fn parse_type_names(
 #[cfg(test)]
 mod tests {
     use super::{parse_enumerator_specifier, Enumerator};
-    use crate::lexer::{self};
+    use crate::lexer;
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
         {
