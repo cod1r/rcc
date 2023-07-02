@@ -310,6 +310,24 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
             }
         };
     }
+    macro_rules! match_right_assign_to_third {
+        ($($e: ident) *, $c: ident) => {
+            match right {
+                Expr::Primary(p) => {
+                    assert!(p.is_some());
+                    assert!($c.third.is_none());
+                }
+                Expr::Unary(_u) => {
+                    assert!($c.third.is_none());
+                }
+                $(Expr::$e(i) => {
+                    assert!(i.first.is_none());
+                    i.first = $c.third;
+                })*
+                _ => unreachable!(),
+            }
+        };
+    }
     macro_rules! match_left_and_match_right {
         ($($e: ident) *) => {
             match left {
@@ -326,25 +344,7 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                 Expr::Conditional(c) => {
                     assert!(c.first.is_some());
                     assert!(c.second.is_some());
-                    macro_rules! match_right_assign_to_third {
-                        ($($e: ident) *) => {
-                            match right {
-                                Expr::Primary(p) => {
-                                    assert!(p.is_some());
-                                    assert!(c.third.is_none());
-                                }
-                                Expr::Unary(_u) => {
-                                    assert!(c.third.is_none());
-                                }
-                                $(Expr::$e(i) => {
-                                    assert!(i.first.is_none());
-                                    i.first = c.third;
-                                })*
-                                _ => unreachable!(),
-                            }
-                        };
-                    }
-                    match_right_assign_to_third!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+                    match_right_assign_to_third!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR, c);
                 }
                 Expr::Assignment(a) => {
                     match_right_and_do_operation!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR, a)
@@ -400,8 +400,14 @@ fn parse_expressions(
     while index < tokens.len() {
         match &tokens[index] {
             lexer::Token::IDENT(_)
+            | lexer::Token::StringLiteral { .. }
             | lexer::Token::CONSTANT_DEC_INT { .. }
-            | lexer::Token::CONSTANT_CHAR(_) => {
+            | lexer::Token::CONSTANT_HEXA_INT { .. }
+            | lexer::Token::CONSTANT_DEC_FLOAT { .. }
+            | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
+            | lexer::Token::CONSTANT_CHAR { .. }
+            | lexer::Token::CONSTANT_OCTAL_INT { .. }
+            | lexer::Token::CONSTANT_ENUM(_) => {
                 let token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
                 expressions.push(primary.clone());
@@ -441,7 +447,10 @@ fn parse_expressions(
 
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
                         break;
                     }
                 }
@@ -469,6 +478,17 @@ fn parse_expressions(
                             | lexer::Token::PUNCT_CLOSE_PAR
                             | lexer::Token::PUNCT_QUESTION_MARK
                             | lexer::Token::PUNCT_COLON
+                            | lexer::Token::PUNCT_ASSIGNMENT
+                            | lexer::Token::PUNCT_MULT_ASSIGN
+                            | lexer::Token::PUNCT_DIV_ASSIGN
+                            | lexer::Token::PUNCT_MODULO_ASSIGN
+                            | lexer::Token::PUNCT_ADD_ASSIGN
+                            | lexer::Token::PUNCT_SUB_ASSIGN
+                            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
+                            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
+                            | lexer::Token::PUNCT_AND_BIT_ASSIGN
+                            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
+                            | lexer::Token::PUNCT_OR_BIT_ASSIGN
                     ) | None
                 ) {
                     return Err(format!("unexpected operator: {:?}", tokens));
@@ -482,7 +502,10 @@ fn parse_expressions(
                 curr_expr = None;
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
                         break;
                     }
                 }
