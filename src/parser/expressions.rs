@@ -183,7 +183,7 @@ pub enum UnaryOp {
     LogicalNOT,
     Increment,
     Sizeof,
-    AlignOf
+    AlignOf,
 }
 #[derive(Copy, Clone)]
 pub struct Unary {
@@ -434,9 +434,11 @@ macro_rules! expression_operators {
 }
 fn parse_expressions(
     tokens: &[lexer::Token],
+    start_index: usize,
     expressions: &mut Vec<Expr>,
     type_names: &mut Vec<declarations::TypeName>,
     str_maps: &mut lexer::ByteVecMaps,
+    preprocessing: bool,
 ) -> Result<(usize, Expr), String> {
     let mut stack = Vec::<Expr>::new();
     // if our current expression is 'complete' as in it has all it
@@ -460,7 +462,7 @@ fn parse_expressions(
     let mut curr_expr: Option<Expr> = None;
     let mut left_expression: Option<Expr> = None;
     let mut right_expression: Option<Expr> = None;
-    let mut index = 0;
+    let mut index = start_index;
     while index < tokens.len() {
         match &tokens[index] {
             lexer::Token::IDENT(_)
@@ -582,14 +584,14 @@ fn parse_expressions(
                         ));
                     }
                     index = inside_parenth_index;
-                } else {
+                } else if !preprocessing {
                     // Typenames
                     let (new_index, type_name) =
                         declarations::parse_type_names(tokens, starting, str_maps)?;
                     type_names.push(type_name);
                     match tokens.get(index) {
                         // Postfix
-                        Some(lexer::Token::PUNCT_OPEN_CURLY) => todo!(),
+                        Some(lexer::Token::PUNCT_OPEN_CURLY) => todo!("have to parse initializers"),
                         // Cast
                         Some(_) => {
                             let cast = Cast {
@@ -597,9 +599,12 @@ fn parse_expressions(
                                 cast_expr: None,
                             };
                             stack.push(Expr::Cast(cast));
+                            index += 1;
                         }
                         None => unreachable!(),
                     }
+                } else {
+                    todo!()
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
@@ -1222,11 +1227,10 @@ fn parse_expressions(
         }
     }
     while let Some(mut expr) = stack.pop() {
-        assert!(curr_expr.is_some());
-        let Some(unwrapped) = curr_expr else { unreachable!() };
-        expressions.push(unwrapped);
-        let unwrapped = Some(expressions.len() - 1);
-        macro_rules! set_to_unwrapped {
+        if let Some(unwrapped) = curr_expr {
+            expressions.push(unwrapped);
+            let unwrapped = Some(expressions.len() - 1);
+            macro_rules! set_to_unwrapped {
             ($($e: ident) *) => {
                 match expr {
                     Expr::Unary(ref mut u) => {
@@ -1243,7 +1247,8 @@ fn parse_expressions(
                 }
             };
                     }
-        set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+        }
         curr_expr = Some(expr);
     }
     let Some(curr_expr) = curr_expr else { unreachable!() };
@@ -1321,7 +1326,8 @@ pub fn eval_constant_expression_integer(
     }
     let mut expressions = Vec::new();
     let mut type_names = Vec::new();
-    let (_, curr_expr) = parse_expressions(tokens, &mut expressions, &mut type_names, str_maps)?;
+    let (_, curr_expr) =
+        parse_expressions(tokens, 0, &mut expressions, &mut type_names, str_maps, true)?;
     Ok(recursive_eval(
         &curr_expr,
         str_maps,
@@ -1389,7 +1395,11 @@ fn recursive_eval(
                         0
                     },
                 ),
-                UnaryOp::Ampersand | UnaryOp::Deref | UnaryOp::Increment => {
+                UnaryOp::Ampersand
+                | UnaryOp::Deref
+                | UnaryOp::Increment
+                | UnaryOp::Sizeof
+                | UnaryOp::AlignOf => {
                     unreachable!()
                 }
             }
@@ -2006,6 +2016,24 @@ mod tests {
         let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
         assert_eq!(res != 0, false);
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_test() -> Result<(), String> {
+        let src = r#"(int)1"#.as_bytes();
+        let mut expressions = Vec::new();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+        let mut type_names = Vec::new();
+        let (_, cast_expr) = expressions::parse_expressions(
+            &tokens,
+            0,
+            &mut expressions,
+            &mut type_names,
+            &mut str_maps,
+            false,
+        )?;
+        assert!(matches!(cast_expr, expressions::Expr::Cast(_)));
         Ok(())
     }
     //#[test]
