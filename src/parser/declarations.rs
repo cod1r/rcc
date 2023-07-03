@@ -1,5 +1,7 @@
 use crate::lexer;
 use crate::parser::expressions;
+pub type TypeNameIndex = usize;
+pub type DeclarationIndex = usize;
 pub enum StorageClassSpecifier {
     TypeDef,
     Extern,
@@ -11,18 +13,14 @@ pub enum StorageClassSpecifier {
 #[derive(Clone)]
 pub enum DirectAbstractDeclarator {
     AbstractDeclarator(Box<AbstractDeclarator>),
-    StaticWithOptionalQualifiers(StaticDirectDeclaratorWithOptionalQualifiers),
-    StaticWithQualifiers(StaticDirectDeclaratorWithQualifiers),
+    StaticTypeQualifiersAssignment(StaticTypeQualifiersAssignment),
     Pointer,
     ParameterTypeList(Option<DirectDeclaratorWithParameterTypeList>),
 }
 #[derive(Clone)]
-pub enum AbstractDeclarator {
-    AbstractDeclaratorWithPointer(Vec<Pointer>),
-    AbstractDeclaratorWithDirectAbstractDeclarator {
-        pointer: Vec<Pointer>,
-        direct_abstract_declarator: DirectAbstractDeclarator,
-    },
+pub struct AbstractDeclarator {
+    pointer: Vec<Pointer>,
+    direct_abstract_declarator: Option<DirectAbstractDeclarator>,
 }
 #[derive(Clone)]
 pub struct TypeName {
@@ -54,32 +52,10 @@ impl Pointer {
     }
 }
 #[derive(Clone)]
-pub struct StaticDirectDeclaratorWithOptionalQualifiers {
+pub struct StaticTypeQualifiersAssignment {
     is_static: bool,
     type_qualifiers: Vec<TypeQualifier>,
-}
-impl StaticDirectDeclaratorWithOptionalQualifiers {
-    fn new() -> Self {
-        Self {
-            is_static: true,
-            type_qualifiers: Vec::new(),
-        }
-    }
-}
-#[derive(Clone)]
-pub struct StaticDirectDeclaratorWithQualifiers {
-    is_static: bool,
-    type_qualifiers: Vec<TypeQualifier>,
-    assignment_expr: Option<expressions::ExpressionIndex>,
-}
-impl StaticDirectDeclaratorWithQualifiers {
-    fn new() -> Self {
-        Self {
-            is_static: true,
-            type_qualifiers: Vec::new(),
-            assignment_expr: None,
-        }
-    }
+    assignment: Option<expressions::ExpressionIndex>,
 }
 #[derive(Clone)]
 pub struct DirectDeclaratorWithPointer {
@@ -108,11 +84,10 @@ pub enum DirectDeclarator {
         type_qualifier_list: Vec<TypeQualifier>,
         assignment_expr: Option<expressions::ExpressionIndex>,
     },
-    DirectDeclaratorWithStaticWithOptionalQualifiers(StaticDirectDeclaratorWithOptionalQualifiers),
-    DirectDeclaratorWithStaticWithQualifiers(StaticDirectDeclaratorWithQualifiers),
-    DirectDeclaratorWithPointer(DirectDeclaratorWithPointer),
-    DirectDeclaratorWithParameterTypeList(DirectDeclaratorWithParameterTypeList),
-    DirectDeclaratorWithIdentifierList(Option<DirectDeclaratorWithIdentifierList>),
+    WithStaticTypeQualifiers(StaticTypeQualifiers),
+    WithPointer(DirectDeclaratorWithPointer),
+    WithParameterTypeList(DirectDeclaratorWithParameterTypeList),
+    WithIdentifierList(Option<DirectDeclaratorWithIdentifierList>),
 }
 #[derive(Clone)]
 pub struct Declarator {
@@ -775,64 +750,88 @@ fn parse_direct_abstract_declarator(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, DirectAbstractDeclarator), String> {
     let mut index = start_index;
-    match tokens[index] {
-        lexer::Token::PUNCT_OPEN_PAR => {
-            index += 1;
-            let (_new_index, _abstract_declarator) =
-                parse_abstract_declarator(tokens, index, str_maps)?;
+    let mut dad: Option<DirectAbstractDeclarator> = None;
+    loop {
+        if index >= tokens.len() {
+            break;
         }
-        lexer::Token::PUNCT_OPEN_SQR => {
-            index += 1;
-            while matches!(
-                tokens.get(index),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-            ) {
+        match tokens.get(index) {
+            Some(lexer::Token::PUNCT_OPEN_PAR) => {
                 index += 1;
-            }
-            let mut direct_abstract_declarator: Option<DirectAbstractDeclarator> = None;
-            if let Some(lexer::Token::IDENT(key)) = tokens.get(index) {
-                if *str_maps.key_to_byte_vec[*key] == *b"static" {
-                    let s = StaticDirectDeclaratorWithOptionalQualifiers::new();
-                    direct_abstract_declarator =
-                        Some(DirectAbstractDeclarator::StaticWithOptionalQualifiers(s));
+                let (new_index, abstract_declarator) =
+                    parse_abstract_declarator(tokens, index, str_maps)?;
+                index = new_index;
+                if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                    return Err(format!("Missing closing parenth"));
+                }
+                dad = Some(DirectAbstractDeclarator::AbstractDeclarator(Box::new(
+                    abstract_declarator,
+                )));
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) && index < tokens.len()
+                {
+                    index += 1;
                 }
             }
-            if let Some(DirectAbstractDeclarator::StaticWithOptionalQualifiers(s)) =
-                &mut direct_abstract_declarator
-            {
+            Some(lexer::Token::PUNCT_OPEN_SQR) => {
+                index += 1;
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    index += 1;
+                }
+                if let Some(lexer::Token::KEYWORD_STATIC) = tokens.get(index) {
+                    let s = StaticTypeQualifiersAssignment {
+                        is_static: true,
+                        type_qualifiers: Vec::new(),
+                        assignment: None,
+                    };
+                    dad = Some(DirectAbstractDeclarator::StaticTypeQualifiersAssignment(s));
+                    index += 1;
+                }
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    index += 1;
+                }
                 if let Some((new_index, type_qualifiers)) = parse_type_qualifiers(tokens, index) {
+                    let mut s = StaticTypeQualifiersAssignment {
+                        is_static: false,
+                        type_qualifiers: Vec::new(),
+                        assignment: None,
+                    };
                     s.type_qualifiers = type_qualifiers;
+                    direct_abstract_declarator =
+                        Some(DirectAbstractDeclarator::StaticTypeQualifiersAssignment(s));
                     index = new_index;
                 }
-            } else if let Some((new_index, type_qualifiers)) = parse_type_qualifiers(tokens, index)
-            {
-                let mut s = StaticDirectDeclaratorWithQualifiers::new();
-                s.type_qualifiers = type_qualifiers;
-                direct_abstract_declarator =
-                    Some(DirectAbstractDeclarator::StaticWithQualifiers(s));
-                index = new_index;
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    index += 1;
+                }
+                if matches!(tokens.get(index), Some(lexer::Token::KEYWORD_STATIC)) {
+                    index += 1;
+                    if let Some(DirectAbstractDeclarator::StaticTypeQualifiers(s)) = &mut dad {
+                        s.is_static = true;
+                    }
+                }
+                while matches!(
+                    tokens.get(index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    index += 1;
+                }
+                todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
             }
-            while matches!(
-                tokens.get(index),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-            ) {
-                index += 1;
-            }
-            if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
-                let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
-                let Ok(s) = String::from_utf8(str_maps.key_to_byte_vec[*key].to_vec()) else { unreachable!() };
-                return Err(format!("Was expecting 'static' but got {:?}", s));
-            }
-            let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
-            let Ok(s) = String::from_utf8(str_maps.key_to_byte_vec[*key].to_vec()) else { unreachable!() };
-            if s != "static" {
-                return Err(format!("Was expecting 'static' but got {:?}", s));
-            }
-            todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
+            _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
         }
-        _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
     }
-    todo!()
 }
 
 fn parse_abstract_declarator(
@@ -841,11 +840,19 @@ fn parse_abstract_declarator(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, AbstractDeclarator), String> {
     let mut index = start_index;
-    if let Some((new_index, _pointers)) = parse_pointer(tokens, index) {
+    let mut ad = AbstractDeclarator {
+        pointer: Vec::new(),
+        direct_abstract_declarator: None,
+    };
+    if let Some((new_index, pointers)) = parse_pointer(tokens, index) {
         index = new_index;
+        ad.pointer = pointers;
     }
-    parse_direct_abstract_declarator(tokens, index, str_maps);
-    todo!()
+    if let Ok((new_index, dad)) = parse_direct_abstract_declarator(tokens, index, str_maps) {
+        index = new_index;
+        ad.direct_abstract_declarator = Some(dad);
+    }
+    Ok((index, ad))
 }
 
 pub fn parse_type_names(
@@ -853,12 +860,17 @@ pub fn parse_type_names(
     start_index: usize,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, TypeName), String> {
-    let index = start_index;
+    let mut index = start_index;
     let mut type_name = TypeName::new();
-    let (_new_index, specifier_qualifier_list) =
+    let (new_index, specifier_qualifier_list) =
         parse_specifiers_qualifiers(tokens, index, str_maps)?;
     type_name.specifier_qualifier_list = specifier_qualifier_list;
-    todo!()
+    index = new_index;
+    if let (new_index, ad) = parse_abstract_declarator(tokens, index, str_maps) {
+        index = new_index;
+        type_name.abstract_declarator = Some(ad);
+    }
+    Ok((index, type_name))
 }
 
 #[cfg(test)]

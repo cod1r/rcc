@@ -182,20 +182,46 @@ pub enum UnaryOp {
     BitNOT,
     LogicalNOT,
     Increment,
+    Sizeof,
+    AlignOf
 }
 #[derive(Copy, Clone)]
 pub struct Unary {
     pub op: UnaryOp,
     pub first: Option<ExpressionIndex>,
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct Cast {
-    type_name: declarations::TypeName,
+    type_name: Option<declarations::TypeNameIndex>,
     cast_expr: Option<usize>,
+}
+#[derive(Copy, Clone)]
+pub enum PostFixIncrementDecrement {
+    Increment,
+    Decrement,
+}
+#[derive(Copy, Clone)]
+pub enum PostFixType {
+    PostFixWithSubscript {
+        first: Option<ExpressionIndex>,
+    },
+    PostFixWithMember {
+        member_ident_key: usize,
+    },
+    PostFixWithPointerToMember {
+        member_ident_key: usize,
+    },
+    PostFixWithIncrementDecrement {
+        op: PostFixIncrementDecrement,
+    },
+    PostFixWithTypeNameInitializerList {
+        type_name: Option<declarations::TypeNameIndex>,
+    },
 }
 #[derive(Copy, Clone)]
 pub struct PostFix {
     first: Option<ExpressionIndex>,
+    postfix_type: PostFixType,
 }
 #[derive(Copy, Clone)]
 pub struct Assignment {
@@ -203,7 +229,7 @@ pub struct Assignment {
     pub second: Option<ExpressionIndex>,
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub enum Expr {
     Assignment(Assignment),
     Conditional(Conditional),
@@ -370,9 +396,47 @@ fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
     }
     set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
 }
+macro_rules! expression_operators {
+    () => {
+        lexer::Token::PUNCT_PLUS
+            | lexer::Token::PUNCT_MINUS
+            | lexer::Token::PUNCT_MULT
+            | lexer::Token::PUNCT_DIV
+            | lexer::Token::PUNCT_MODULO
+            | lexer::Token::PUNCT_BITSHIFT_LEFT
+            | lexer::Token::PUNCT_BITSHIFT_RIGHT
+            | lexer::Token::PUNCT_LESS_THAN
+            | lexer::Token::PUNCT_LESS_THAN_EQ
+            | lexer::Token::PUNCT_GREATER_THAN
+            | lexer::Token::PUNCT_GREATER_THAN_EQ
+            | lexer::Token::PUNCT_EQ_BOOL
+            | lexer::Token::PUNCT_NOT_EQ_BOOL
+            | lexer::Token::PUNCT_AND_BIT
+            | lexer::Token::PUNCT_XOR_BIT
+            | lexer::Token::PUNCT_OR_BIT
+            | lexer::Token::PUNCT_AND_BOOL
+            | lexer::Token::PUNCT_OR_BOOL
+            | lexer::Token::PUNCT_CLOSE_PAR
+            | lexer::Token::PUNCT_QUESTION_MARK
+            | lexer::Token::PUNCT_COLON
+            | lexer::Token::PUNCT_ASSIGNMENT
+            | lexer::Token::PUNCT_MULT_ASSIGN
+            | lexer::Token::PUNCT_DIV_ASSIGN
+            | lexer::Token::PUNCT_MODULO_ASSIGN
+            | lexer::Token::PUNCT_ADD_ASSIGN
+            | lexer::Token::PUNCT_SUB_ASSIGN
+            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
+            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
+            | lexer::Token::PUNCT_AND_BIT_ASSIGN
+            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
+            | lexer::Token::PUNCT_OR_BIT_ASSIGN
+    };
+}
 fn parse_expressions(
     tokens: &[lexer::Token],
     expressions: &mut Vec<Expr>,
+    type_names: &mut Vec<declarations::TypeName>,
+    str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Expr), String> {
     let mut stack = Vec::<Expr>::new();
     // if our current expression is 'complete' as in it has all it
@@ -408,9 +472,10 @@ fn parse_expressions(
             | lexer::Token::CONSTANT_CHAR { .. }
             | lexer::Token::CONSTANT_OCTAL_INT { .. }
             | lexer::Token::CONSTANT_ENUM(_) => {
+                // TODO: we need to check for the case of sizeof and _Alignof
                 let token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
-                expressions.push(primary.clone());
+                expressions.push(primary);
                 let last_index = expressions.len() - 1;
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
@@ -440,7 +505,7 @@ fn parse_expressions(
                                 _ => return Err(format!("err at index: {}", index)),
                             }
                         };
-}
+                    }
 
                     primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
                 }
@@ -454,78 +519,87 @@ fn parse_expressions(
                         break;
                     }
                 }
-                if !matches!(
-                    tokens.get(index),
-                    Some(
-                        lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_DIV
-                            | lexer::Token::PUNCT_MODULO
-                            | lexer::Token::PUNCT_BITSHIFT_LEFT
-                            | lexer::Token::PUNCT_BITSHIFT_RIGHT
-                            | lexer::Token::PUNCT_LESS_THAN
-                            | lexer::Token::PUNCT_LESS_THAN_EQ
-                            | lexer::Token::PUNCT_GREATER_THAN
-                            | lexer::Token::PUNCT_GREATER_THAN_EQ
-                            | lexer::Token::PUNCT_EQ_BOOL
-                            | lexer::Token::PUNCT_NOT_EQ_BOOL
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::PUNCT_XOR_BIT
-                            | lexer::Token::PUNCT_OR_BIT
-                            | lexer::Token::PUNCT_AND_BOOL
-                            | lexer::Token::PUNCT_OR_BOOL
-                            | lexer::Token::PUNCT_CLOSE_PAR
-                            | lexer::Token::PUNCT_QUESTION_MARK
-                            | lexer::Token::PUNCT_COLON
-                            | lexer::Token::PUNCT_ASSIGNMENT
-                            | lexer::Token::PUNCT_MULT_ASSIGN
-                            | lexer::Token::PUNCT_DIV_ASSIGN
-                            | lexer::Token::PUNCT_MODULO_ASSIGN
-                            | lexer::Token::PUNCT_ADD_ASSIGN
-                            | lexer::Token::PUNCT_SUB_ASSIGN
-                            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
-                            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
-                            | lexer::Token::PUNCT_AND_BIT_ASSIGN
-                            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
-                            | lexer::Token::PUNCT_OR_BIT_ASSIGN
-                    ) | None
-                ) {
+                if !matches!(tokens.get(index), Some(expression_operators!()) | None) {
                     return Err(format!("unexpected operator: {:?}", tokens));
                 }
             }
             lexer::Token::PUNCT_OPEN_PAR => {
-                if let Some(expr) = curr_expr {
-                    stack.push(expr);
-                }
-                stack.push(Expr::Primary(None));
-                curr_expr = None;
-                loop {
-                    index += 1;
-                    if !matches!(
-                        tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                    ) {
-                        break;
+                index += 1;
+                let starting = index;
+                let mut parenth_counter = 1;
+                while parenth_counter > 0 {
+                    match tokens.get(index) {
+                        Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_counter += 1,
+                        Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_counter -= 1,
+                        None => return Err(format!("Missing closing parenth")),
+                        _ => {}
                     }
+                    index += 1;
                 }
-                if !matches!(
+                while matches!(
                     tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                    )
-                ) {
-                    return Err(format!(
-                        "expected '-', '(', or an identifier/integer constant: {:?}",
-                        tokens[index]
-                    ));
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) && index < tokens.len()
+                {
+                    index += 1;
+                }
+                // if we run into a token that makes everything inside the (...) just a primary
+                // expression
+                if matches!(tokens.get(index), Some(expression_operators!())) {
+                    if let Some(expr) = curr_expr {
+                        stack.push(expr);
+                    }
+                    stack.push(Expr::Primary(None));
+                    curr_expr = None;
+                    let mut inside_parenth_index = starting;
+                    loop {
+                        inside_parenth_index += 1;
+                        if !matches!(
+                            tokens.get(inside_parenth_index),
+                            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        ) {
+                            break;
+                        }
+                    }
+                    if !matches!(
+                        tokens.get(inside_parenth_index),
+                        Some(
+                            lexer::Token::IDENT(_)
+                                | lexer::Token::CONSTANT_DEC_INT { .. }
+                                | lexer::Token::CONSTANT_CHAR(_)
+                                | lexer::Token::PUNCT_OPEN_PAR
+                                | lexer::Token::PUNCT_PLUS
+                                | lexer::Token::PUNCT_MINUS
+                                | lexer::Token::PUNCT_NOT_BOOL
+                                | lexer::Token::PUNCT_TILDE
+                                | lexer::Token::PUNCT_INCREMENT
+                                | lexer::Token::PUNCT_DECREMENT
+                        )
+                    ) {
+                        return Err(format!(
+                            "expected '-', '(', or an identifier/integer constant: {:?}",
+                            tokens[index]
+                        ));
+                    }
+                    index = inside_parenth_index;
+                } else {
+                    // Typenames
+                    let (new_index, type_name) =
+                        declarations::parse_type_names(tokens, starting, str_maps)?;
+                    type_names.push(type_name);
+                    match tokens.get(index) {
+                        // Postfix
+                        Some(lexer::Token::PUNCT_OPEN_CURLY) => todo!(),
+                        // Cast
+                        Some(_) => {
+                            let cast = Cast {
+                                type_name: Some(type_names.len() - 1),
+                                cast_expr: None,
+                            };
+                            stack.push(Expr::Cast(cast));
+                        }
+                        None => unreachable!(),
+                    }
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
@@ -588,7 +662,10 @@ fn parse_expressions(
                 }
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
                         break;
                     }
                 }
@@ -1243,7 +1320,8 @@ pub fn eval_constant_expression_integer(
         return Err(String::from("parentheses in expression not balanced"));
     }
     let mut expressions = Vec::new();
-    let (_, curr_expr) = parse_expressions(tokens, &mut expressions)?;
+    let mut type_names = Vec::new();
+    let (_, curr_expr) = parse_expressions(tokens, &mut expressions, &mut type_names, str_maps)?;
     Ok(recursive_eval(
         &curr_expr,
         str_maps,
