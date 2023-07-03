@@ -599,7 +599,6 @@ fn parse_expressions(
                                 cast_expr: None,
                             };
                             stack.push(Expr::Cast(cast));
-                            index += 1;
                         }
                         None => unreachable!(),
                     }
@@ -1233,8 +1232,12 @@ fn parse_expressions(
             macro_rules! set_to_unwrapped {
             ($($e: ident) *) => {
                 match expr {
+                    Expr::PostFix(_) => todo!(),
                     Expr::Unary(ref mut u) => {
                         u.first = unwrapped;
+                    }
+                    Expr::Cast(ref mut c) => {
+                        c.cast_expr = unwrapped;
                     }
                     $(Expr::$e(ref mut i) => {
                         i.second = unwrapped;
@@ -2034,6 +2037,15 @@ mod tests {
             false,
         )?;
         assert!(matches!(cast_expr, expressions::Expr::Cast(_)));
+        let expressions::Expr::Cast(c) = cast_expr else { unreachable!() };
+        assert!(matches!(
+            expressions[c.cast_expr.unwrap()],
+            expressions::Expr::Primary(_)
+        ));
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) = expressions[c.cast_expr.unwrap()] else { unreachable!() };
+        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
     //#[test]
