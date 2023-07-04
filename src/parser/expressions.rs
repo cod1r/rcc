@@ -630,12 +630,26 @@ fn parse_expressions(
                                 popped_opening_parenth_already = true;
                             }
                         }
+                        Expr::PostFix(_) => todo!(),
                         Expr::Unary(ref mut u) => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
                             expressions.push(unwrapped);
                             u.first = Some(expressions.len() - 1);
                             curr_expr = Some(e);
-                            if popped_opening_parenth_already {
+                            if popped_opening_parenth_already
+                                && !matches!(stack.last(), Some(Expr::Cast(_) | Expr::Unary(_)))
+                            {
+                                break;
+                            }
+                        }
+                        Expr::Cast(ref mut c) => {
+                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            expressions.push(unwrapped);
+                            c.cast_expr = Some(expressions.len() - 1);
+                            curr_expr = Some(e);
+                            if popped_opening_parenth_already
+                                && !matches!(stack.last(), Some(Expr::Cast(_) | Expr::Unary(_)))
+                            {
                                 break;
                             }
                         }
@@ -2068,6 +2082,52 @@ mod tests {
         assert!(matches!(add, expressions::Expr::Additive(_)));
         let expressions::Expr::Additive(a) = add else { unreachable!() };
         let Some(first_idx) = a.first else { unreachable!() };
+        let Some(second_idx) = a.second else { unreachable!() };
+        assert!(matches!(
+            expressions[first_idx],
+            expressions::Expr::Primary(_)
+        ));
+        assert!(matches!(
+            expressions[second_idx],
+            expressions::Expr::Cast(_)
+        ));
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
+            expressions[first_idx] else { unreachable!() };
+        let expressions::Expr::Cast(c) =
+            expressions[second_idx] else { unreachable!() };
+        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
+        assert!(matches!(a.op, expressions::AdditiveOps::Add));
+        let expressions::Expr::Cast(c) =
+            expressions[second_idx] else { unreachable!() };
+        let Some(c_idx) = c.cast_expr else { unreachable!() };
+        assert!(matches!(expressions[c_idx], expressions::Expr::Primary(_)));
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
+            expressions[c_idx] else { unreachable!() };
+        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_test_additive_unary_cast() -> Result<(), String> {
+        let src = r#"1 + !(int)1"#.as_bytes();
+        let mut expressions = Vec::new();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+        let mut type_names = Vec::new();
+        let (_, add) = expressions::parse_expressions(
+            &tokens,
+            0,
+            &mut expressions,
+            &mut type_names,
+            &mut str_maps,
+            false,
+        )?;
+        assert!(matches!(add, expressions::Expr::Additive(_)));
+        let expressions::Expr::Additive(a) = add else { unreachable!() };
+        let Some(first_idx) = a.first else { unreachable!() };
         assert!(matches!(
             expressions[first_idx],
             expressions::Expr::Primary(_)
@@ -2076,6 +2136,23 @@ mod tests {
             expressions[first_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
+        let Some(second_idx) = a.second else { unreachable!() };
+        assert!(matches!(
+            expressions[second_idx],
+            expressions::Expr::Unary(_)
+        ));
+        let expressions::Expr::Unary(u) = expressions[second_idx] else { unreachable!() };
+        assert!(matches!(u.op, expressions::UnaryOp::LogicalNOT));
+        let Some(cast_idx) = u.first else { unreachable!() };
+        assert!(matches!(expressions[cast_idx], expressions::Expr::Cast(_)));
+        let expressions::Expr::Cast(c) = expressions[cast_idx] else { unreachable!() };
+        let Some(p_idx) = c.cast_expr else { unreachable!() };
+        assert!(matches!(expressions[p_idx], expressions::Expr::Primary(_)));
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
+            expressions[p_idx] else { unreachable!() };
+        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. } ));
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key } = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
