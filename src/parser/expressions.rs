@@ -547,21 +547,18 @@ fn parse_expressions(
                 }
                 // if we run into a token that makes everything inside the (...) just a primary
                 // expression
-                if matches!(tokens.get(index), Some(expression_operators!())) {
+                if matches!(tokens.get(index), Some(expression_operators!()) | None) {
                     if let Some(expr) = curr_expr {
                         stack.push(expr);
                     }
                     stack.push(Expr::Primary(None));
                     curr_expr = None;
                     let mut inside_parenth_index = starting;
-                    loop {
+                    while matches!(
+                        tokens.get(inside_parenth_index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
                         inside_parenth_index += 1;
-                        if !matches!(
-                            tokens.get(inside_parenth_index),
-                            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                        ) {
-                            break;
-                        }
                     }
                     if !matches!(
                         tokens.get(inside_parenth_index),
@@ -580,7 +577,7 @@ fn parse_expressions(
                     ) {
                         return Err(format!(
                             "expected '-', '(', or an identifier/integer constant: {:?}",
-                            tokens[index]
+                            tokens[inside_parenth_index]
                         ));
                     }
                     index = inside_parenth_index;
@@ -594,16 +591,20 @@ fn parse_expressions(
                         Some(lexer::Token::PUNCT_OPEN_CURLY) => todo!("have to parse initializers"),
                         // Cast
                         Some(_) => {
+                            if let Some(expr) = curr_expr {
+                                stack.push(expr);
+                            }
                             let cast = Cast {
                                 type_name: Some(type_names.len() - 1),
                                 cast_expr: None,
                             };
                             stack.push(Expr::Cast(cast));
+                            curr_expr = None;
                         }
                         None => unreachable!(),
                     }
                 } else {
-                    todo!()
+                    unreachable!("{}", format!("we got {:?}", tokens.get(index)));
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
@@ -1932,12 +1933,12 @@ mod tests {
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
-        assert_eq!(res != 0, false);
+        assert_eq!(res != 0, false, "1 ^ 0 == 0");
         let src = r##"(1 ^ !0) == 0"##.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer(&tokens, &mut str_maps)?;
-        assert_eq!(res != 0, true);
+        assert_eq!(res != 0, true, "(1 ^ !0) == 0");
         Ok(())
     }
     #[test]
@@ -2022,7 +2023,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn parse_expressions_test() -> Result<(), String> {
+    fn parse_expressions_test_cast() -> Result<(), String> {
         let src = r#"(int)1"#.as_bytes();
         let mut expressions = Vec::new();
         let mut str_maps = lexer::ByteVecMaps::new();
@@ -2042,7 +2043,37 @@ mod tests {
             expressions[c.cast_expr.unwrap()],
             expressions::Expr::Primary(_)
         ));
-        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) = expressions[c.cast_expr.unwrap()] else { unreachable!() };
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
+            expressions[c.cast_expr.unwrap()] else { unreachable!() };
+        assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_test_additive_cast() -> Result<(), String> {
+        let src = r#"1 + (int)1"#.as_bytes();
+        let mut expressions = Vec::new();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+        let mut type_names = Vec::new();
+        let (_, add) = expressions::parse_expressions(
+            &tokens,
+            0,
+            &mut expressions,
+            &mut type_names,
+            &mut str_maps,
+            false,
+        )?;
+        assert!(matches!(add, expressions::Expr::Additive(_)));
+        let expressions::Expr::Additive(a) = add else { unreachable!() };
+        let Some(first_idx) = a.first else { unreachable!() };
+        assert!(matches!(
+            expressions[first_idx],
+            expressions::Expr::Primary(_)
+        ));
+        let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
+            expressions[first_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
