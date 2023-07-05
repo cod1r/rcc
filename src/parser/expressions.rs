@@ -2076,7 +2076,7 @@ mod tests {
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             expressions[c.cast_expr.unwrap()] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
@@ -2112,7 +2112,7 @@ mod tests {
         let expressions::Expr::Cast(c) =
             expressions[second_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         assert!(matches!(a.op, expressions::AdditiveOps::Add));
         let expressions::Expr::Cast(c) =
@@ -2122,7 +2122,7 @@ mod tests {
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             expressions[c_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key } = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
@@ -2151,7 +2151,7 @@ mod tests {
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             expressions[first_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         let Some(second_idx) = a.second else { unreachable!() };
         assert!(matches!(
@@ -2168,7 +2168,7 @@ mod tests {
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             expressions[p_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix_key } = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }

@@ -1525,7 +1525,7 @@ hi;
             lexer::Token::NEWLINE,
             lexer::Token::CONSTANT_DEC_INT {
                 value_key: 6,
-                suffix_key: None,
+                suffix: None,
             },
             lexer::Token::PUNCT_SEMI_COLON,
             lexer::Token::NEWLINE,
@@ -1740,7 +1740,7 @@ A"##
         assert_eq!(
             vec![lexer::Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
-                suffix_key: None
+                suffix: None
             }],
             final_tokens
         );
@@ -1769,17 +1769,17 @@ A"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("5".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("6".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 }
             ],
             final_tokens
@@ -1842,13 +1842,13 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                 lexer::Token::PUNCT_OPEN_PAR,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_COMMA,
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_CLOSE_PAR,
                 lexer::Token::PUNCT_COMMA,
@@ -1857,13 +1857,13 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                 lexer::Token::PUNCT_OPEN_PAR,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_COMMA,
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_CLOSE_PAR,
                 lexer::Token::PUNCT_CLOSE_PAR,
@@ -1893,22 +1893,22 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
             ],
             final_tokens
@@ -1942,7 +1942,7 @@ HAHA(C,4)"##
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
             ],
             final_tokens
@@ -1972,12 +1972,12 @@ f(2)(9)"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_MULT,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("9".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_MULT,
                 lexer::Token::IDENT(str_maps.add_byte_vec("g".as_bytes())),
@@ -2046,22 +2046,22 @@ CHICKEN(1 2,3 4)"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::PUNCT_COMMA,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
                 lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix_key: None
+                    suffix: None
                 },
             ],
             final_tokens
@@ -2168,7 +2168,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2210,7 +2210,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2252,7 +2252,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2276,7 +2276,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2306,7 +2306,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2336,7 +2336,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2365,7 +2365,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
@@ -2395,7 +2395,7 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix_key: None
+                        suffix: None
                     },
                     lexer::Token::NEWLINE,
                 ],
