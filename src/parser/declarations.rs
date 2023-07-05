@@ -176,7 +176,7 @@ pub enum FunctionSpecifier {
 }
 #[derive(Clone)]
 pub enum AlignmentSpecifier {
-    _Alignas(TypeName),
+    _Alignas(TypeNameIndex),
     _AlignasConstExpr(expressions::ExpressionIndex),
 }
 pub struct DeclarationSpecifier {
@@ -358,6 +358,59 @@ fn parse_declarations(
             _ => todo!(),
         }
         todo!()
+    }
+    todo!()
+}
+
+fn parse_initializer_list(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    expressions: &mut Vec<expressions::Expr>,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, InitializerList), String> {
+    let mut index = start_index;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) && index < tokens.len()
+    {
+        index += 1;
+    }
+    let mut designation = Designation {
+        designator_list: Vec::new(),
+    };
+    match tokens.get(index) {
+        Some(lexer::Token::PUNCT_OPEN_SQR) => {
+            let starting = index + 1;
+            let mut sqr_br_counter = 1;
+            while sqr_br_counter > 0 {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_br_counter += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_br_counter -= 1,
+                    None => return Err(format!("No closing sqr bracket")),
+                    _ => {}
+                }
+                index += 1;
+            }
+            let constant_val = expressions::eval_constant_expression_integer(
+                &tokens[starting..index],
+                str_maps,
+                false,
+            )?;
+        }
+        Some(lexer::Token::PUNCT_DOT) => {
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) && index < tokens.len()
+            {
+                index += 1;
+            }
+            if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
+                return Err(format!("Expected identifier, got {:?}", tokens.get(index)));
+            }
+        }
+        _ => return Err(format!("Expected '.' or '[', got {:?}", tokens.get(index))),
     }
     todo!()
 }
@@ -593,6 +646,7 @@ fn parse_enumerator_specifier(
                     let constant_val = expressions::eval_constant_expression_integer(
                         &tokens[assignment_token_index + 1..ending_index],
                         str_maps,
+                        false,
                     )?;
                     enum_specifier
                         .enumerator_list

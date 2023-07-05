@@ -87,7 +87,10 @@ fn main() -> Result<(), String> {
         var_arg: false,
         replacement_list: vec![lexer::Token::CONSTANT_DEC_INT {
             value_key: str_maps.add_byte_vec("201710".as_bytes()),
-            suffix_key: Some(str_maps.add_byte_vec("L".as_bytes())),
+            suffix: Some(lexer::Suffix::Integer {
+                integer_type: lexer::IntegerSuffix::Long,
+                key: str_maps.add_byte_vec("L".as_bytes()),
+            }),
         }],
     };
     defines.insert(

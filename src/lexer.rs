@@ -355,6 +355,33 @@ impl StringLiteral {
     }
 }
 
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum IntegerSuffix {
+    Unsigned,
+    Long,
+    LongLong,
+    UnsignedLong,
+    UnsignedLongLong,
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum FloatSuffix {
+    Float,
+    LongDouble,
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum Suffix {
+    Float {
+        float_type: FloatSuffix,
+        key: usize,
+    },
+    Integer {
+        integer_type: IntegerSuffix,
+        key: usize,
+    },
+}
+
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Token {
@@ -465,25 +492,25 @@ pub enum Token {
     CONSTANT_ENUM(usize),
     CONSTANT_OCTAL_INT {
         value_key: usize,
-        suffix_key: Option<usize>,
+        suffix: Option<Suffix>,
     },
     CONSTANT_HEXA_INT {
         value_key: usize,
-        suffix_key: Option<usize>,
+        suffix: Option<Suffix>,
     },
     CONSTANT_DEC_INT {
         value_key: usize,
-        suffix_key: Option<usize>,
+        suffix: Option<Suffix>,
     },
     CONSTANT_DEC_FLOAT {
         value_key: usize,
         exp_part_key: Option<usize>,
-        suffix_key: Option<usize>,
+        suffix: Option<Suffix>,
     },
     CONSTANT_HEXA_FLOAT {
         value_key: usize,
         binary_exp_part_key: usize,
-        suffix_key: Option<usize>,
+        suffix: Option<Suffix>,
     },
     StringLiteral(StringLiteral),
     CONSTANT_CHAR(ConstantChar),
@@ -494,12 +521,13 @@ impl Token {
             Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key,
+                suffix,
             } => {
-                if let Some(suff_key) = suffix_key {
+                if let Some(suff_key) = suffix {
+                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 } else {
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
@@ -507,13 +535,11 @@ impl Token {
                     Some(vec)
                 }
             }
-            Token::CONSTANT_HEXA_INT {
-                value_key,
-                suffix_key,
-            } => {
-                if let Some(suff_key) = suffix_key {
+            Token::CONSTANT_HEXA_INT { value_key, suffix } => {
+                if let Some(suff_key) = suffix {
+                    let Suffix::Integer { integer_type, key } = suff_key else { unreachable!() };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 } else {
                     Some(str_maps.key_to_byte_vec[*value_key].to_vec())
@@ -522,17 +548,19 @@ impl Token {
             Token::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
-                suffix_key,
-            } => match (exp_part_key, suffix_key) {
+                suffix,
+            } => match (exp_part_key, suffix) {
                 (Some(ep_key), Some(suff_key)) => {
+                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*ep_key]);
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 }
                 (_, Some(suff_key)) => {
+                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 }
                 _ => Some(str_maps.key_to_byte_vec[*value_key].to_vec()),
@@ -572,13 +600,11 @@ impl Token {
                     Some(vec)
                 }
             }
-            Token::CONSTANT_DEC_INT {
-                value_key,
-                suffix_key,
-            } => {
-                if let Some(suff_key) = suffix_key {
+            Token::CONSTANT_DEC_INT { value_key, suffix } => {
+                if let Some(suff_key) = suffix {
+                    let Suffix::Integer { integer_type, key } = suff_key else { unreachable!() };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*suff_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 } else {
                     Some(str_maps.key_to_byte_vec[*value_key].to_vec())
@@ -896,7 +922,34 @@ fn match_integer_constant(
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
-                            suffix_key,
+                            suffix: match suffix_key {
+                                Some(key) => Some(Suffix::Integer {
+                                    integer_type: match str_maps.key_to_byte_vec[key].as_slice() {
+                                        [b'u'] | [b'U'] => IntegerSuffix::Unsigned,
+                                        [b'l'] | [b'L'] => IntegerSuffix::Long,
+                                        [b'l', b'l'] | [b'L', b'L'] => IntegerSuffix::LongLong,
+                                        [b'U', b'L']
+                                        | [b'U', b'l']
+                                        | [b'u', b'L']
+                                        | [b'u', b'l']
+                                        | [b'L', b'u']
+                                        | [b'L', b'U']
+                                        | [b'l', b'U']
+                                        | [b'l', b'u'] => IntegerSuffix::UnsignedLong,
+                                        [b'l', b'l', b'u']
+                                        | [b'l', b'l', b'U']
+                                        | [b'L', b'L', b'u']
+                                        | [b'L', b'L', b'U']
+                                        | [b'u', b'l', b'l']
+                                        | [b'u', b'L', b'L']
+                                        | [b'U', b'l', b'l']
+                                        | [b'U', b'L', b'L'] => IntegerSuffix::UnsignedLongLong,
+                                        _ => unreachable!(),
+                                    },
+                                    key,
+                                }),
+                                None => None,
+                            },
                         });
                         *index = byte_index;
                         token
@@ -905,7 +958,34 @@ fn match_integer_constant(
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
-                            suffix_key,
+                            suffix: match suffix_key {
+                                Some(key) => Some(Suffix::Integer {
+                                    integer_type: match str_maps.key_to_byte_vec[key].as_slice() {
+                                        [b'u'] | [b'U'] => IntegerSuffix::Unsigned,
+                                        [b'l'] | [b'L'] => IntegerSuffix::Long,
+                                        [b'l', b'l'] | [b'L', b'L'] => IntegerSuffix::LongLong,
+                                        [b'U', b'L']
+                                        | [b'U', b'l']
+                                        | [b'u', b'L']
+                                        | [b'u', b'l']
+                                        | [b'L', b'u']
+                                        | [b'L', b'U']
+                                        | [b'l', b'U']
+                                        | [b'l', b'u'] => IntegerSuffix::UnsignedLong,
+                                        [b'l', b'l', b'u']
+                                        | [b'l', b'l', b'U']
+                                        | [b'L', b'L', b'u']
+                                        | [b'L', b'L', b'U']
+                                        | [b'u', b'l', b'l']
+                                        | [b'u', b'L', b'L']
+                                        | [b'U', b'l', b'l']
+                                        | [b'U', b'L', b'L'] => IntegerSuffix::UnsignedLongLong,
+                                        _ => unreachable!(),
+                                    },
+                                    key,
+                                }),
+                                None => None,
+                            },
                         });
                         *index = byte_index;
                         token
@@ -962,7 +1042,34 @@ fn match_integer_constant(
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
-                            suffix_key,
+                            suffix: match suffix_key {
+                                Some(key) => Some(Suffix::Integer {
+                                    integer_type: match str_maps.key_to_byte_vec[key].as_slice() {
+                                        [b'u'] | [b'U'] => IntegerSuffix::Unsigned,
+                                        [b'l'] | [b'L'] => IntegerSuffix::Long,
+                                        [b'l', b'l'] | [b'L', b'L'] => IntegerSuffix::LongLong,
+                                        [b'U', b'L']
+                                        | [b'U', b'l']
+                                        | [b'u', b'L']
+                                        | [b'u', b'l']
+                                        | [b'L', b'u']
+                                        | [b'L', b'U']
+                                        | [b'l', b'U']
+                                        | [b'l', b'u'] => IntegerSuffix::UnsignedLong,
+                                        [b'l', b'l', b'u']
+                                        | [b'l', b'l', b'U']
+                                        | [b'L', b'L', b'u']
+                                        | [b'L', b'L', b'U']
+                                        | [b'u', b'l', b'l']
+                                        | [b'u', b'L', b'L']
+                                        | [b'U', b'l', b'l']
+                                        | [b'U', b'L', b'L'] => IntegerSuffix::UnsignedLongLong,
+                                        _ => unreachable!(),
+                                    },
+                                    key,
+                                }),
+                                None => None,
+                            },
                         });
                         *index = byte_index;
                         return token;
@@ -1064,7 +1171,20 @@ fn match_floating_constant(
                         &program_str_bytes[end_of_second_digit_sequence..end_of_exp_digit_sequence],
                     )
                 },
-                suffix_key,
+                suffix: match suffix_key {
+                    Some(key) => match str_maps.key_to_byte_vec[key].as_slice() {
+                        [b'f' | b'F'] => Some(Suffix::Float {
+                            float_type: FloatSuffix::Float,
+                            key,
+                        }),
+                        [b'l' | b'L'] => Some(Suffix::Float {
+                            float_type: FloatSuffix::LongDouble,
+                            key,
+                        }),
+                        _ => unreachable!(),
+                    },
+                    None => None,
+                },
             });
             *index = byte_index;
             return token;
@@ -1080,7 +1200,20 @@ fn match_floating_constant(
                 } else {
                     None
                 },
-                suffix_key,
+                suffix: match suffix_key {
+                    Some(key) => match str_maps.key_to_byte_vec[key].as_slice() {
+                        [b'f' | b'F'] => Some(Suffix::Float {
+                            float_type: FloatSuffix::Float,
+                            key,
+                        }),
+                        [b'l' | b'L'] => Some(Suffix::Float {
+                            float_type: FloatSuffix::LongDouble,
+                            key,
+                        }),
+                        _ => unreachable!(),
+                    },
+                    None => None,
+                },
             });
             *index = byte_index;
             return token;
@@ -1693,7 +1826,7 @@ mod tests {
                 Token::PUNCT_ASSIGNMENT,
                 Token::WHITESPACE,
                 Token::CONSTANT_DEC_INT {
-                    suffix_key: None,
+                    suffix: None,
                     value_key: str_maps.add_byte_vec("4".as_bytes())
                 }
             ],
@@ -1761,7 +1894,7 @@ mod tests {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key: _,
+                suffix: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -1783,7 +1916,7 @@ mod tests {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key: _,
+                suffix: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -1883,7 +2016,7 @@ mod tests {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key: _,
+                suffix: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -1904,7 +2037,7 @@ mod tests {
             Some(super::Token::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
-                suffix_key: _,
+                suffix: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
@@ -1926,11 +2059,12 @@ mod tests {
             Some(super::Token::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
-                suffix_key,
+                suffix,
             }) => {
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
-                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
                 assert_eq!(value, b"001223");
                 assert_eq!(exp_part, b"e0");
                 assert_eq!(suffix, b"L");
@@ -1950,11 +2084,12 @@ mod tests {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key,
+                suffix,
             }) => {
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
-                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
                 assert_eq!(value, b"0x01223");
                 assert_eq!(binary_exp_part, b"p0");
                 assert_eq!(suffix, b"L");
@@ -1974,11 +2109,12 @@ mod tests {
             Some(super::Token::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
-                suffix_key,
+                suffix,
             }) => {
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
-                let suffix = str_maps.key_to_byte_vec.get(suffix_key.unwrap()).unwrap();
+                let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
                 assert_eq!(value, b"0x01223");
                 assert_eq!(binary_exp_part, b"p+0");
                 assert_eq!(suffix, b"L");
@@ -2149,7 +2285,7 @@ mod tests {
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
-                suffix_key: None,
+                suffix: None,
             },
             Token::PUNCT_SEMI_COLON,
             Token::NEWLINE,
@@ -2157,7 +2293,7 @@ mod tests {
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("0".as_bytes()),
-                suffix_key: None,
+                suffix: None,
             },
             Token::PUNCT_SEMI_COLON,
             Token::NEWLINE,
@@ -2218,14 +2354,14 @@ mod tests {
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
-                suffix_key: None,
+                suffix: None,
             },
             Token::WHITESPACE,
             Token::PUNCT_PLUS,
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
-                suffix_key: None,
+                suffix: None,
             },
             Token::NEWLINE,
             Token::PUNCT_HASH,
@@ -2235,7 +2371,7 @@ mod tests {
             Token::WHITESPACE,
             Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("5".as_bytes()),
-                suffix_key: None,
+                suffix: None,
             },
             Token::NEWLINE,
             Token::PUNCT_HASH,
