@@ -392,11 +392,6 @@ fn parse_initializer_list(
                 }
                 index += 1;
             }
-            let constant_val = expressions::eval_constant_expression_integer(
-                &tokens[starting..index],
-                str_maps,
-                false,
-            )?;
         }
         Some(lexer::Token::PUNCT_DOT) => {
             while matches!(
@@ -643,10 +638,10 @@ fn parse_enumerator_specifier(
                     {
                         ending_index += 1;
                     }
+                    // TODO: probably call parse_expressions here instead of evaluating
                     let constant_val = expressions::eval_constant_expression_integer(
                         &tokens[assignment_token_index + 1..ending_index],
                         str_maps,
-                        false,
                     )?;
                     enum_specifier
                         .enumerator_list

@@ -264,12 +264,12 @@ fn parse_defined_in_if_directive(
             if defines.contains_key(&identifier_name_key) {
                 final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec(&[b'1']),
-                    suffix: None
+                    suffix: None,
                 });
             } else {
                 final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec(&[b'0']),
-                    suffix: None
+                    suffix: None,
                 });
             }
             if matches!(tokens.get(start), Some(lexer::Token::PUNCT_OPEN_PAR)) {
@@ -506,7 +506,7 @@ fn if_directive(
                             if !defines.contains_key(curr_id_key) {
                                 final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
                                     value_key: str_maps.add_byte_vec(&[b'0']),
-                                    suffix: None
+                                    suffix: None,
                                 });
                                 eval_vec_index += 1;
                             } else {
@@ -535,8 +535,7 @@ fn if_directive(
                     eval_vec_index += 1;
                 }
                 let eval_vec = final_eval_tokens;
-                expressions::eval_constant_expression_integer(eval_vec.as_slice(), str_maps, true)?
-                    != 0
+                expressions::eval_constant_expression_integer(eval_vec.as_slice(), str_maps)? != 0
             }
             b"ifdef" => {
                 if eval_vec
@@ -2131,8 +2130,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res =
-            expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps, true)?;
+        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let defines = HashMap::new();
@@ -2146,8 +2144,7 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res =
-            expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps, true)?;
+        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
         assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
