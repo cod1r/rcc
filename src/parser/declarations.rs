@@ -1,5 +1,5 @@
 use crate::lexer;
-use crate::parser::expressions;
+use crate::parser;
 pub type TypeNameIndex = usize;
 pub type DeclarationIndex = usize;
 pub enum StorageClassSpecifier {
@@ -55,7 +55,7 @@ impl Pointer {
 pub struct StaticTypeQualifiersAssignment {
     is_static: bool,
     type_qualifiers: Vec<TypeQualifier>,
-    assignment: Option<expressions::ExpressionIndex>,
+    assignment: Option<parser::expressions::ExpressionIndex>,
 }
 #[derive(Clone)]
 pub struct DirectDeclaratorWithPointer {
@@ -82,7 +82,7 @@ pub enum DirectDeclarator {
     Declarator(Box<Declarator>),
     DirectDeclarator {
         type_qualifier_list: Vec<TypeQualifier>,
-        assignment_expr: Option<expressions::ExpressionIndex>,
+        assignment_expr: Option<parser::expressions::ExpressionIndex>,
     },
     WithStaticTypeQualifiers(StaticTypeQualifiersAssignment),
     WithPointer(DirectDeclaratorWithPointer),
@@ -107,7 +107,7 @@ pub enum StructDeclarator {
     Declarator(Declarator),
     DeclaratorBitField {
         declarator: Option<Declarator>,
-        const_expr: Option<expressions::ExpressionIndex>,
+        const_expr: Option<parser::expressions::ExpressionIndex>,
     },
 }
 #[derive(Clone)]
@@ -177,7 +177,7 @@ pub enum FunctionSpecifier {
 #[derive(Clone)]
 pub enum AlignmentSpecifier {
     _Alignas(TypeNameIndex),
-    _AlignasConstExpr(expressions::ExpressionIndex),
+    _AlignasConstExpr(parser::expressions::ExpressionIndex),
 }
 pub struct DeclarationSpecifier {
     pub storage_class_specifiers: Vec<StorageClassSpecifier>,
@@ -198,7 +198,7 @@ impl DeclarationSpecifier {
     }
 }
 pub enum Designator {
-    DesignatorWithConstantExpr(expressions::ExpressionIndex),
+    DesignatorWithConstantExpr(parser::expressions::ExpressionIndex),
     DesignatorWithIdentifier(usize),
 }
 pub struct Designation {
@@ -210,7 +210,7 @@ pub struct InitializerList {
     initializer: Initializer,
 }
 pub struct Initializer {
-    assignment_expression: Option<expressions::ExpressionIndex>,
+    assignment_expression: Option<parser::expressions::ExpressionIndex>,
     initializer_list: Vec<Initializer>,
 }
 pub struct DeclaratorWithInitializer {
@@ -365,7 +365,7 @@ fn parse_declarations(
 fn parse_initializer_list(
     tokens: &[lexer::Token],
     start_index: usize,
-    expressions: &mut Vec<expressions::Expr>,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, InitializerList), String> {
     let mut index = start_index;
@@ -392,6 +392,7 @@ fn parse_initializer_list(
                 }
                 index += 1;
             }
+            parser::expressions::parse_expressions(&tokens[starting..index], 0, flattened, str_maps);
         }
         Some(lexer::Token::PUNCT_DOT) => {
             while matches!(
@@ -639,7 +640,7 @@ fn parse_enumerator_specifier(
                         ending_index += 1;
                     }
                     // TODO: probably call parse_expressions here instead of evaluating
-                    let constant_val = expressions::eval_constant_expression_integer(
+                    let constant_val = parser::expressions::eval_constant_expression_integer(
                         &tokens[assignment_token_index + 1..ending_index],
                         str_maps,
                     )?;

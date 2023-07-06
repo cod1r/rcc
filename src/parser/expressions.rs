@@ -1,5 +1,5 @@
 use crate::lexer;
-use crate::parser::declarations;
+use crate::parser;
 #[derive(Copy, Clone)]
 pub enum PrimaryInner {
     Token(lexer::Token),
@@ -192,7 +192,7 @@ pub struct Unary {
 }
 #[derive(Copy, Clone)]
 pub struct Cast {
-    type_name: Option<declarations::TypeNameIndex>,
+    type_name: Option<parser::declarations::TypeNameIndex>,
     cast_expr: Option<usize>,
 }
 #[derive(Copy, Clone)]
@@ -215,7 +215,7 @@ pub enum PostFixType {
         op: PostFixIncrementDecrement,
     },
     PostFixWithTypeNameInitializerList {
-        type_name: Option<declarations::TypeNameIndex>,
+        type_name: Option<parser::declarations::TypeNameIndex>,
     },
 }
 #[derive(Copy, Clone)]
@@ -432,13 +432,11 @@ macro_rules! expression_operators {
             | lexer::Token::PUNCT_OR_BIT_ASSIGN
     };
 }
-fn parse_expressions(
+pub fn parse_expressions(
     tokens: &[lexer::Token],
     start_index: usize,
-    expressions: &mut Vec<Expr>,
-    type_names: &mut Vec<declarations::TypeName>,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-    preprocessing: bool,
 ) -> Result<(usize, Expr), String> {
     let mut stack = Vec::<Expr>::new();
     // if our current expression is 'complete' as in it has all it
@@ -477,8 +475,8 @@ fn parse_expressions(
                 // TODO: we need to check for the case of sizeof and _Alignof
                 let token_within = tokens[index];
                 let primary = Expr::Primary(Some(PrimaryInner::new_p_token(token_within)?));
-                expressions.push(primary);
-                let last_index = expressions.len() - 1;
+                flattened.expressions.push(primary);
+                let last_index = flattened.expressions.len() - 1;
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
                 } else {
@@ -581,11 +579,11 @@ fn parse_expressions(
                         ));
                     }
                     index = inside_parenth_index;
-                } else if !preprocessing {
+                } else {
                     // Typenames
                     let (new_index, type_name) =
-                        declarations::parse_type_names(tokens, starting, str_maps)?;
-                    type_names.push(type_name);
+                        parser::declarations::parse_type_names(tokens, starting, str_maps)?;
+                    flattened.type_names.push(type_name);
                     match tokens.get(index) {
                         // Postfix
                         Some(lexer::Token::PUNCT_OPEN_CURLY) => todo!("have to parse initializers"),
@@ -595,7 +593,7 @@ fn parse_expressions(
                                 stack.push(expr);
                             }
                             let cast = Cast {
-                                type_name: Some(type_names.len() - 1),
+                                type_name: Some(flattened.type_names.len() - 1),
                                 cast_expr: None,
                             };
                             stack.push(Expr::Cast(cast));
@@ -603,8 +601,6 @@ fn parse_expressions(
                         }
                         None => unreachable!(),
                     }
-                } else {
-                    unreachable!("{}", format!("we got {:?}", tokens.get(index)));
                 }
             }
             lexer::Token::PUNCT_CLOSE_PAR => {
@@ -621,8 +617,8 @@ fn parse_expressions(
                     match e {
                         Expr::Primary(ref mut p) => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
-                            expressions.push(unwrapped);
-                            *p = Some(PrimaryInner::new_p_expr(expressions.len() - 1));
+                            flattened.expressions.push(unwrapped);
+                            *p = Some(PrimaryInner::new_p_expr(flattened.expressions.len() - 1));
                             curr_expr = Some(e);
                             if !matches!(stack.last(), Some(Expr::Unary(_))) {
                                 break;
@@ -633,8 +629,8 @@ fn parse_expressions(
                         Expr::PostFix(_) => todo!(),
                         Expr::Unary(ref mut u) => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
-                            expressions.push(unwrapped);
-                            u.first = Some(expressions.len() - 1);
+                            flattened.expressions.push(unwrapped);
+                            u.first = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
                             if popped_opening_parenth_already
                                 && !matches!(stack.last(), Some(Expr::Cast(_) | Expr::Unary(_)))
@@ -644,8 +640,8 @@ fn parse_expressions(
                         }
                         Expr::Cast(ref mut c) => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
-                            expressions.push(unwrapped);
-                            c.cast_expr = Some(expressions.len() - 1);
+                            flattened.expressions.push(unwrapped);
+                            c.cast_expr = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
                             if popped_opening_parenth_already
                                 && !matches!(stack.last(), Some(Expr::Cast(_) | Expr::Unary(_)))
@@ -656,8 +652,8 @@ fn parse_expressions(
                         _ => {
                             assert!(e.priority() <= curr_expr.clone().unwrap().priority());
                             let Some(unwrapped) = curr_expr else { unreachable!() };
-                            expressions.push(unwrapped);
-                            let unwrapped = Some(expressions.len() - 1);
+                            flattened.expressions.push(unwrapped);
+                            let unwrapped = Some(flattened.expressions.len() - 1);
                             macro_rules! set_to_unwrapped {
                                 ($($e: ident) *) => {
                                     match e {
@@ -1158,9 +1154,9 @@ fn parse_expressions(
             }
             lexer::Token::PUNCT_QUESTION_MARK => {
                 if let Some(expr) = curr_expr {
-                    expressions.push(expr);
+                    flattened.expressions.push(expr);
                     let expr_cond = Expr::Conditional(Conditional {
-                        first: Some(expressions.len() - 1),
+                        first: Some(flattened.expressions.len() - 1),
                         second: None,
                         third: None,
                     });
@@ -1184,8 +1180,8 @@ fn parse_expressions(
                 }
                 while let Some(mut expr) = stack.pop() {
                     let Some(unwrapped) = curr_expr else { unreachable!() };
-                    expressions.push(unwrapped);
-                    let unwrapped = Some(expressions.len() - 1);
+                    flattened.expressions.push(unwrapped);
+                    let unwrapped = Some(flattened.expressions.len() - 1);
                     macro_rules! set_to_unwrapped {
                         ($($e: ident) *) => {
                             match expr {
@@ -1229,8 +1225,8 @@ fn parse_expressions(
             let Some(mut right) = right_expression else { unreachable!() };
             if left.priority() >= right.priority() {
                 assert!(left.priority() >= right.priority());
-                expressions.push(left);
-                left_has_higher_eq_priority(expressions.len() - 1, &mut right);
+                flattened.expressions.push(left);
+                left_has_higher_eq_priority(flattened.expressions.len() - 1, &mut right);
             } else {
                 right_has_higher_priority(&mut left, &mut right);
                 stack.push(left);
@@ -1242,8 +1238,8 @@ fn parse_expressions(
     }
     while let Some(mut expr) = stack.pop() {
         if let Some(unwrapped) = curr_expr {
-            expressions.push(unwrapped);
-            let unwrapped = Some(expressions.len() - 1);
+            flattened.expressions.push(unwrapped);
+            let unwrapped = Some(flattened.expressions.len() - 1);
             macro_rules! set_to_unwrapped {
             ($($e: ident) *) => {
                 match expr {
@@ -1342,14 +1338,12 @@ pub fn eval_constant_expression_integer(
     if !parenth_balance.is_empty() {
         return Err(String::from("parentheses in expression not balanced"));
     }
-    let mut expressions = Vec::new();
-    let mut type_names = Vec::new();
-    let (_, curr_expr) =
-        parse_expressions(tokens, 0, &mut expressions, &mut type_names, str_maps, true)?;
+    let mut flattened = parser::Flattened::new();
+    let (_, curr_expr) = parse_expressions(tokens, 0, &mut flattened, str_maps)?;
     Ok(recursive_eval(
         &curr_expr,
         str_maps,
-        expressions.as_slice(),
+        flattened.expressions.as_slice(),
     )?)
 }
 fn recursive_eval(
@@ -1403,7 +1397,9 @@ fn recursive_eval(
                 None => unreachable!(),
             }
         }
-        Expr::PostFix(_) => todo!(),
+        Expr::PostFix(_) => {
+            return Err(format!("postfix expressions aren't allowed in preprocessing directives"));
+        },
         Expr::Unary(u) => {
             let Some(first) = u.first else { unreachable!() };
             match u.op {
@@ -1426,8 +1422,8 @@ fn recursive_eval(
                 }
             }
         }
-        Expr::Cast(c) => {
-            todo!("let Some(first) = c.cast_expr else {{ unreachable!() }};")
+        Expr::Cast(_) => {
+            return Err(format!("cast expressions aren't allowed in preprocessing directives"));
         }
         Expr::Multiplicative(m) => {
             let Some(first) = m.first else { unreachable!() };
@@ -1623,7 +1619,7 @@ fn recursive_eval(
 }
 #[cfg(test)]
 mod tests {
-    use crate::lexer;
+    use crate::{lexer, parser};
     use crate::parser::expressions;
 
     #[test]
@@ -2046,26 +2042,23 @@ mod tests {
     #[test]
     fn parse_expressions_test_cast() -> Result<(), String> {
         let src = r#"(int)1"#.as_bytes();
-        let mut expressions = Vec::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-        let mut type_names = Vec::new();
+        let mut flattened = parser::Flattened::new();
         let (_, cast_expr) = expressions::parse_expressions(
             &tokens,
             0,
-            &mut expressions,
-            &mut type_names,
+            &mut flattened,
             &mut str_maps,
-            false,
         )?;
         assert!(matches!(cast_expr, expressions::Expr::Cast(_)));
         let expressions::Expr::Cast(c) = cast_expr else { unreachable!() };
         assert!(matches!(
-            expressions[c.cast_expr.unwrap()],
+            flattened.expressions[c.cast_expr.unwrap()],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            expressions[c.cast_expr.unwrap()] else { unreachable!() };
+            flattened.expressions[c.cast_expr.unwrap()] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
@@ -2074,44 +2067,41 @@ mod tests {
     #[test]
     fn parse_expressions_test_additive_cast() -> Result<(), String> {
         let src = r#"1 + (int)1"#.as_bytes();
-        let mut expressions = Vec::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-        let mut type_names = Vec::new();
+        let mut flattened = parser::Flattened::new();
         let (_, add) = expressions::parse_expressions(
             &tokens,
             0,
-            &mut expressions,
-            &mut type_names,
+            &mut flattened,
             &mut str_maps,
-            false,
         )?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
         let expressions::Expr::Additive(a) = add else { unreachable!() };
         let Some(first_idx) = a.first else { unreachable!() };
         let Some(second_idx) = a.second else { unreachable!() };
         assert!(matches!(
-            expressions[first_idx],
+            flattened.expressions[first_idx],
             expressions::Expr::Primary(_)
         ));
         assert!(matches!(
-            expressions[second_idx],
+            flattened.expressions[second_idx],
             expressions::Expr::Cast(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            expressions[first_idx] else { unreachable!() };
+            flattened.expressions[first_idx] else { unreachable!() };
         let expressions::Expr::Cast(c) =
-            expressions[second_idx] else { unreachable!() };
+            flattened.expressions[second_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         assert!(matches!(a.op, expressions::AdditiveOps::Add));
         let expressions::Expr::Cast(c) =
-            expressions[second_idx] else { unreachable!() };
+            flattened.expressions[second_idx] else { unreachable!() };
         let Some(c_idx) = c.cast_expr else { unreachable!() };
-        assert!(matches!(expressions[c_idx], expressions::Expr::Primary(_)));
+        assert!(matches!(flattened.expressions[c_idx], expressions::Expr::Primary(_)));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            expressions[c_idx] else { unreachable!() };
+            flattened.expressions[c_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
@@ -2120,44 +2110,41 @@ mod tests {
     #[test]
     fn parse_expressions_test_additive_unary_cast() -> Result<(), String> {
         let src = r#"1 + !(int)1"#.as_bytes();
-        let mut expressions = Vec::new();
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-        let mut type_names = Vec::new();
+        let mut flattened = parser::Flattened::new();
         let (_, add) = expressions::parse_expressions(
             &tokens,
             0,
-            &mut expressions,
-            &mut type_names,
+            &mut flattened,
             &mut str_maps,
-            false,
         )?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
         let expressions::Expr::Additive(a) = add else { unreachable!() };
         let Some(first_idx) = a.first else { unreachable!() };
         assert!(matches!(
-            expressions[first_idx],
+            flattened.expressions[first_idx],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            expressions[first_idx] else { unreachable!() };
+            flattened.expressions[first_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         let Some(second_idx) = a.second else { unreachable!() };
         assert!(matches!(
-            expressions[second_idx],
+            flattened.expressions[second_idx],
             expressions::Expr::Unary(_)
         ));
-        let expressions::Expr::Unary(u) = expressions[second_idx] else { unreachable!() };
+        let expressions::Expr::Unary(u) = flattened.expressions[second_idx] else { unreachable!() };
         assert!(matches!(u.op, expressions::UnaryOp::LogicalNOT));
         let Some(cast_idx) = u.first else { unreachable!() };
-        assert!(matches!(expressions[cast_idx], expressions::Expr::Cast(_)));
-        let expressions::Expr::Cast(c) = expressions[cast_idx] else { unreachable!() };
+        assert!(matches!(flattened.expressions[cast_idx], expressions::Expr::Cast(_)));
+        let expressions::Expr::Cast(c) = flattened.expressions[cast_idx] else { unreachable!() };
         let Some(p_idx) = c.cast_expr else { unreachable!() };
-        assert!(matches!(expressions[p_idx], expressions::Expr::Primary(_)));
+        assert!(matches!(flattened.expressions[p_idx], expressions::Expr::Primary(_)));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            expressions[p_idx] else { unreachable!() };
+            flattened.expressions[p_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
         let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
