@@ -1398,8 +1398,10 @@ fn recursive_eval(
             }
         }
         Expr::PostFix(_) => {
-            return Err(format!("postfix expressions aren't allowed in preprocessing directives"));
-        },
+            return Err(format!(
+                "postfix expressions aren't allowed in preprocessing directives"
+            ));
+        }
         Expr::Unary(u) => {
             let Some(first) = u.first else { unreachable!() };
             match u.op {
@@ -1423,7 +1425,9 @@ fn recursive_eval(
             }
         }
         Expr::Cast(_) => {
-            return Err(format!("cast expressions aren't allowed in preprocessing directives"));
+            return Err(format!(
+                "cast expressions aren't allowed in preprocessing directives"
+            ));
         }
         Expr::Multiplicative(m) => {
             let Some(first) = m.first else { unreachable!() };
@@ -1619,8 +1623,8 @@ fn recursive_eval(
 }
 #[cfg(test)]
 mod tests {
-    use crate::{lexer, parser};
     use crate::parser::expressions;
+    use crate::{lexer, parser};
 
     #[test]
     fn eval_expression_test_empty() -> Result<(), String> {
@@ -2045,12 +2049,8 @@ mod tests {
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
         let mut flattened = parser::Flattened::new();
-        let (_, cast_expr) = expressions::parse_expressions(
-            &tokens,
-            0,
-            &mut flattened,
-            &mut str_maps,
-        )?;
+        let (_, cast_expr) =
+            expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(cast_expr, expressions::Expr::Cast(_)));
         let expressions::Expr::Cast(c) = cast_expr else { unreachable!() };
         assert!(matches!(
@@ -2070,12 +2070,7 @@ mod tests {
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
         let mut flattened = parser::Flattened::new();
-        let (_, add) = expressions::parse_expressions(
-            &tokens,
-            0,
-            &mut flattened,
-            &mut str_maps,
-        )?;
+        let (_, add) = expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
         let expressions::Expr::Additive(a) = add else { unreachable!() };
         let Some(first_idx) = a.first else { unreachable!() };
@@ -2099,7 +2094,10 @@ mod tests {
         let expressions::Expr::Cast(c) =
             flattened.expressions[second_idx] else { unreachable!() };
         let Some(c_idx) = c.cast_expr else { unreachable!() };
-        assert!(matches!(flattened.expressions[c_idx], expressions::Expr::Primary(_)));
+        assert!(matches!(
+            flattened.expressions[c_idx],
+            expressions::Expr::Primary(_)
+        ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             flattened.expressions[c_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
@@ -2113,12 +2111,7 @@ mod tests {
         let mut str_maps = lexer::ByteVecMaps::new();
         let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
         let mut flattened = parser::Flattened::new();
-        let (_, add) = expressions::parse_expressions(
-            &tokens,
-            0,
-            &mut flattened,
-            &mut str_maps,
-        )?;
+        let (_, add) = expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
         let expressions::Expr::Additive(a) = add else { unreachable!() };
         let Some(first_idx) = a.first else { unreachable!() };
@@ -2139,10 +2132,16 @@ mod tests {
         let expressions::Expr::Unary(u) = flattened.expressions[second_idx] else { unreachable!() };
         assert!(matches!(u.op, expressions::UnaryOp::LogicalNOT));
         let Some(cast_idx) = u.first else { unreachable!() };
-        assert!(matches!(flattened.expressions[cast_idx], expressions::Expr::Cast(_)));
+        assert!(matches!(
+            flattened.expressions[cast_idx],
+            expressions::Expr::Cast(_)
+        ));
         let expressions::Expr::Cast(c) = flattened.expressions[cast_idx] else { unreachable!() };
         let Some(p_idx) = c.cast_expr else { unreachable!() };
-        assert!(matches!(flattened.expressions[p_idx], expressions::Expr::Primary(_)));
+        assert!(matches!(
+            flattened.expressions[p_idx],
+            expressions::Expr::Primary(_)
+        ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
             flattened.expressions[p_idx] else { unreachable!() };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));

@@ -7,7 +7,7 @@ pub struct Flattened {
     pub type_names: Vec<declarations::TypeName>,
     pub initializers: Vec<declarations::Initializer>,
     pub initializer_lists: Vec<Vec<declarations::InitializerList>>,
-    pub designations: Vec<declarations::Designation>
+    pub designations: Vec<declarations::Designation>,
 }
 
 impl Flattened {
