@@ -436,7 +436,8 @@ fn parse_initializer_list(
         loop {
             match tokens.get(index) {
                 Some(lexer::Token::PUNCT_OPEN_SQR) => {
-                    let starting = index + 1;
+                    index += 1;
+                    let starting = index;
                     let mut sqr_br_counter = 1;
                     while sqr_br_counter > 0 {
                         match tokens.get(index) {
@@ -448,7 +449,7 @@ fn parse_initializer_list(
                         index += 1;
                     }
                     let (_, expr) = parser::expressions::parse_expressions(
-                        &tokens[starting..index],
+                        &tokens[starting..index - 1],
                         0,
                         flattened,
                         str_maps,
@@ -479,7 +480,7 @@ fn parse_initializer_list(
                     index += 1;
                 }
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => index += 1,
-                Some(lexer::Token::PUNCT_ASSIGNMENT) => {
+                Some(lexer::Token::PUNCT_ASSIGNMENT | lexer::Token::PUNCT_COMMA) => {
                     index += 1;
                     break;
                 }
@@ -1163,6 +1164,20 @@ mod tests {
                     _
                 )))
             ));
+        }
+        //{
+        //    let src = r#"{}"#.as_bytes();
+        //    let mut str_maps = lexer::ByteVecMaps::new();
+        //    let mut flattened = parser::Flattened::new();
+        //    let tokens = lexer::lexer(src, false, &mut str_maps)?;
+        //    let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+        //}
+        {
+            let src = r#"{[100] = 5}, 8, .baz = "" }"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
         }
         Ok(())
     }
