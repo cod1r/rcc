@@ -202,19 +202,19 @@ pub enum PostFixIncrementDecrement {
 }
 #[derive(Copy, Clone)]
 pub enum PostFixType {
-    PostFixWithSubscript {
+    WithSubscript {
         first: Option<ExpressionIndex>,
     },
-    PostFixWithMember {
+    WithMember {
         member_ident_key: usize,
     },
-    PostFixWithPointerToMember {
+    WithPointerToMember {
         member_ident_key: usize,
     },
-    PostFixWithIncrementDecrement {
+    WithIncrementDecrement {
         op: PostFixIncrementDecrement,
     },
-    PostFixWithTypeNameInitializerList {
+    WithTypeNameInitializerList {
         type_name: Option<parser::declarations::TypeNameIndex>,
     },
 }
@@ -520,7 +520,7 @@ pub fn parse_expressions(
                     }
                 }
                 if !matches!(tokens.get(index), Some(expression_operators!()) | None) {
-                    return Err(format!("unexpected operator: {:?}", tokens));
+                    return Err(format!("unexpected operator: {:?}", tokens.get(index)));
                 }
             }
             lexer::Token::PUNCT_OPEN_PAR => {

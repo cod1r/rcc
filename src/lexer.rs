@@ -1770,6 +1770,7 @@ fn chain_lex(
 }
 pub fn lexer(
     program_str_bytes: &[u8],
+    // when we preprocess, keywords are just identifiers
     is_pp: bool,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Token>, String> {

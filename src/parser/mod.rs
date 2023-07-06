@@ -5,6 +5,9 @@ pub mod expressions;
 pub struct Flattened {
     pub expressions: Vec<expressions::Expr>,
     pub type_names: Vec<declarations::TypeName>,
+    pub initializers: Vec<declarations::Initializer>,
+    pub initializer_lists: Vec<Vec<declarations::InitializerList>>,
+    pub designations: Vec<declarations::Designation>
 }
 
 impl Flattened {
@@ -12,6 +15,9 @@ impl Flattened {
         Self {
             expressions: Vec::new(),
             type_names: Vec::new(),
+            initializers: Vec::new(),
+            initializer_lists: Vec::new(),
+            designations: Vec::new(),
         }
     }
 }

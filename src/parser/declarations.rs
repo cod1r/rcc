@@ -1,5 +1,7 @@
 use crate::lexer;
 use crate::parser;
+
+use super::expressions;
 pub type TypeNameIndex = usize;
 pub type DeclarationIndex = usize;
 pub enum StorageClassSpecifier {
@@ -197,21 +199,27 @@ impl DeclarationSpecifier {
         }
     }
 }
+#[derive(Debug, PartialEq, Clone)]
 pub enum Designator {
-    DesignatorWithConstantExpr(parser::expressions::ExpressionIndex),
-    DesignatorWithIdentifier(usize),
+    WithConstantExpr(parser::expressions::ExpressionIndex),
+    WithIdentifier(usize),
 }
+#[derive(Debug, PartialEq, Clone)]
 pub struct Designation {
     designator_list: Vec<Designator>,
 }
+pub type InitializerIndex = usize;
+pub type DesignationIndex = usize;
+pub type InitializerListIndex = usize;
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct InitializerList {
-    designation: Option<Designation>,
-    initializer_list: Option<Box<InitializerList>>,
-    initializer: Initializer,
+    designation: Option<DesignationIndex>,
+    initializer: Option<InitializerIndex>,
 }
-pub struct Initializer {
-    assignment_expression: Option<parser::expressions::ExpressionIndex>,
-    initializer_list: Vec<Initializer>,
+#[derive(Copy, Clone)]
+pub enum Initializer {
+    AssignmentExpression(parser::expressions::ExpressionIndex),
+    InitializerList(InitializerListIndex),
 }
 pub struct DeclaratorWithInitializer {
     declarator: Declarator,
@@ -362,12 +370,12 @@ fn parse_declarations(
     todo!()
 }
 
-fn parse_initializer_list(
+fn parse_initializer(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(usize, InitializerList), String> {
+) -> Result<(usize, Initializer), String> {
     let mut index = start_index;
     while matches!(
         tokens.get(index),
@@ -376,25 +384,12 @@ fn parse_initializer_list(
     {
         index += 1;
     }
-    let mut designation = Designation {
-        designator_list: Vec::new(),
-    };
     match tokens.get(index) {
-        Some(lexer::Token::PUNCT_OPEN_SQR) => {
-            let starting = index + 1;
-            let mut sqr_br_counter = 1;
-            while sqr_br_counter > 0 {
-                match tokens.get(index) {
-                    Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_br_counter += 1,
-                    Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_br_counter -= 1,
-                    None => return Err(format!("No closing sqr bracket")),
-                    _ => {}
-                }
-                index += 1;
-            }
-            parser::expressions::parse_expressions(&tokens[starting..index], 0, flattened, str_maps);
-        }
-        Some(lexer::Token::PUNCT_DOT) => {
+        Some(lexer::Token::PUNCT_OPEN_CURLY) => {
+            index += 1;
+            let (new_index, il) = parse_initializer_list(tokens, index, flattened, str_maps)?;
+            flattened.initializer_lists.push(il);
+            index = new_index;
             while matches!(
                 tokens.get(index),
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -402,13 +397,119 @@ fn parse_initializer_list(
             {
                 index += 1;
             }
-            if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
-                return Err(format!("Expected identifier, got {:?}", tokens.get(index)));
+            Ok((
+                index,
+                Initializer::InitializerList(flattened.initializer_lists.len() - 1),
+            ))
+        }
+        _ => {
+            let (new_index, expr) =
+                expressions::parse_expressions(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(expr);
+            Ok((
+                new_index,
+                Initializer::AssignmentExpression(flattened.expressions.len() - 1),
+            ))
+        }
+    }
+}
+
+fn parse_initializer_list(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, Vec<InitializerList>), String> {
+    let mut index = start_index;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) && index < tokens.len()
+    {
+        index += 1;
+    }
+    let mut initializer_lists = Vec::new();
+    loop {
+        let mut designation = Designation {
+            designator_list: Vec::new(),
+        };
+        loop {
+            match tokens.get(index) {
+                Some(lexer::Token::PUNCT_OPEN_SQR) => {
+                    let starting = index + 1;
+                    let mut sqr_br_counter = 1;
+                    while sqr_br_counter > 0 {
+                        match tokens.get(index) {
+                            Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_br_counter += 1,
+                            Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_br_counter -= 1,
+                            None => return Err(format!("No closing sqr bracket")),
+                            _ => {}
+                        }
+                        index += 1;
+                    }
+                    let (_, expr) = parser::expressions::parse_expressions(
+                        &tokens[starting..index],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expr);
+                    designation
+                        .designator_list
+                        .push(Designator::WithConstantExpr(
+                            flattened.expressions.len() - 1,
+                        ));
+                }
+                Some(lexer::Token::PUNCT_DOT) => {
+                    index += 1;
+                    while matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) && index < tokens.len()
+                    {
+                        index += 1;
+                    }
+                    if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
+                        return Err(format!("Expected identifier, got {:?}", tokens.get(index)));
+                    }
+                    let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                    designation
+                        .designator_list
+                        .push(Designator::WithIdentifier(*key));
+                    index += 1;
+                }
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => index += 1,
+                Some(lexer::Token::PUNCT_ASSIGNMENT) => {
+                    index += 1;
+                    break;
+                }
+                _ => return Err(format!("Expected '.' or '[', got {:?}", tokens.get(index))),
             }
         }
-        _ => return Err(format!("Expected '.' or '[', got {:?}", tokens.get(index))),
+        let starting = index;
+        while !matches!(
+            tokens.get(index),
+            Some(lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_CLOSE_CURLY)
+        ) && index < tokens.len()
+        {
+            index += 1;
+        }
+        if starting != index {
+            let (_, init) = parse_initializer(&tokens[starting..index], 0, flattened, str_maps)?;
+            flattened.initializers.push(init);
+            flattened.designations.push(designation);
+            let initializer_list = InitializerList {
+                designation: Some(flattened.designations.len() - 1),
+                initializer: Some(flattened.initializers.len() - 1),
+            };
+            initializer_lists.push(initializer_list);
+            index += 1;
+        }
+        if starting == index || matches!(tokens.get(index), None) {
+            break;
+        }
     }
-    todo!()
+    Ok((index, initializer_lists))
 }
 
 fn parse_pointer(tokens: &[lexer::Token], start_index: usize) -> Option<(usize, Vec<Pointer>)> {
@@ -931,8 +1032,11 @@ pub fn parse_type_names(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_enumerator_specifier, Enumerator};
-    use crate::lexer;
+    use super::{
+        parse_enumerator_specifier, parse_initializer, Designation, Designator, Enumerator,
+        Initializer, InitializerList,
+    };
+    use crate::{lexer, parser};
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
         {
@@ -1003,6 +1107,62 @@ mod tests {
                 ],
                 "failed 1"
             );
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_initializer_test() -> Result<(), String> {
+        {
+            let src = r#"{ .hi = 4, .hi2 = 4 }"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let Initializer::InitializerList(ili) = i else { unreachable!() };
+            let il = flattened.initializer_lists[ili].clone();
+            let il1 = il[0];
+            let il2 = il[1];
+            let Some(des1_idx) = il1.designation else { unreachable!() };
+            let des1 = flattened.designations[des1_idx].clone();
+            assert_eq!(
+                Designation {
+                    designator_list: vec![Designator::WithIdentifier(
+                        str_maps.add_byte_vec("hi".as_bytes()),
+                    )],
+                },
+                des1
+            );
+            let Some(ini1_idx) = il1.initializer else { unreachable!() };
+            let ini1 = flattened.initializers[ini1_idx].clone();
+            let Initializer::AssignmentExpression(key) = ini1 else { unreachable!() };
+            let expr = flattened.expressions[key];
+            assert!(matches!(
+                expr,
+                parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(
+                    _
+                )))
+            ));
+
+            let Some(des2_idx) = il2.designation else { unreachable!() };
+            let des2 = flattened.designations[des2_idx].clone();
+            assert_eq!(
+                Designation {
+                    designator_list: vec![Designator::WithIdentifier(
+                        str_maps.add_byte_vec("hi2".as_bytes()),
+                    )],
+                },
+                des2
+            );
+            let Some(ini2_idx) = il2.initializer else { unreachable!() };
+            let ini2 = flattened.initializers[ini2_idx].clone();
+            let Initializer::AssignmentExpression(key) = ini2 else { unreachable!() };
+            let expr = flattened.expressions[key];
+            assert!(matches!(
+                expr,
+                parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(
+                    _
+                )))
+            ));
         }
         Ok(())
     }
