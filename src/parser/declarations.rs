@@ -370,7 +370,7 @@ fn parse_declarations(
     todo!()
 }
 
-fn parse_initializer(
+pub fn parse_initializer(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
