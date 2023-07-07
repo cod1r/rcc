@@ -441,27 +441,8 @@ pub fn parse_expressions(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Expr), String> {
     let mut stack = Vec::<Expr>::new();
-    // if our current expression is 'complete' as in it has all it
-    // needs to be defined as whatever type of expression it is, we
-    // need to look at our expression stack to see if any expression
-    // uses this curr_expr as a sub-expression.
-    // There should be no cases where we have an expression on the
-    // stack that is complete and curr_expr also being complete.
-    //
-    // In the case where curr_expr would use an expression on the stack
-    // as a sub expression, we would pop off the expression on the
-    // stack and put it as a sub expression in the curr_expr.
-    //
-    // curr_expr would be the end result of constructing the expression
-    // tree
-    //
-    //
-    // postfix and cast expressions aren't needed.
-    // (postfix_expr -) isn't an expression that we would construct as we would just construct a
-    // additive expression anyways
     let mut curr_expr: Option<Expr> = None;
     let mut left_expression: Option<Expr> = None;
-    let mut right_expression: Option<Expr> = None;
     let mut index = start_index;
     while index < tokens.len() {
         match &tokens[index] {
@@ -852,7 +833,7 @@ pub fn parse_expressions(
                                     }
                                     _ => {}
                                 }
-                                right_expression = Some(Expr::Additive(Additive {
+                                curr_expr = Some(Expr::Additive(Additive {
                                     op: match tokens[index] {
                                         lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
                                         lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
@@ -861,7 +842,6 @@ pub fn parse_expressions(
                                     first: None,
                                     second: None,
                                 }));
-                                curr_expr = None;
                             }
                             None => {
                                 curr_expr = Some(Expr::Unary(Unary {
@@ -898,7 +878,7 @@ pub fn parse_expressions(
                                         }
                                         _ => {}
                                     }
-                                    right_expression = Some(Expr::Additive(Additive {
+                                    curr_expr = Some(Expr::Additive(Additive {
                                         op: match tokens[index] {
                                             lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
                                             lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
@@ -907,16 +887,14 @@ pub fn parse_expressions(
                                         first: None,
                                         second: None,
                                     }));
-                                    curr_expr = None;
                                 }
                             }
                             $(Some(Expr::$e(i)) => {
                                 case_where_it_could_be_unary_or_additive!(
                                     i,
-                                    right_expression,
+                                    curr_expr,
                                     tokens[index]
                                 );
-                                curr_expr = None;
                             })*
                             _ => unreachable!(),
                         }
@@ -954,8 +932,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::Multiplicative(Multiplicative {
+                curr_expr = Some(Expr::Multiplicative(Multiplicative {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
                         lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
@@ -994,8 +971,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::BitShift(BitShift {
+                curr_expr = Some(Expr::BitShift(BitShift {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_BITSHIFT_LEFT => BitShiftOp::Left,
                         lexer::Token::PUNCT_BITSHIFT_RIGHT => BitShiftOp::Right,
@@ -1037,8 +1013,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::Relational(Relational {
+                curr_expr = Some(Expr::Relational(Relational {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_LESS_THAN => RelationalOp::LessThan,
                         lexer::Token::PUNCT_LESS_THAN_EQ => RelationalOp::LessThanEq,
@@ -1079,8 +1054,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::Equality(Equality {
+                curr_expr = Some(Expr::Equality(Equality {
                     op: match tokens[index] {
                         lexer::Token::PUNCT_EQ_BOOL => EqualityOp::Equal,
                         lexer::Token::PUNCT_NOT_EQ_BOOL => EqualityOp::NotEqual,
@@ -1119,8 +1093,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::BitAND(BitAND {
+                curr_expr = Some(Expr::BitAND(BitAND {
                     first: None,
                     second: None,
                 }));
@@ -1154,8 +1127,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::BitXOR(BitXOR {
+                curr_expr = Some(Expr::BitXOR(BitXOR {
                     first: None,
                     second: None,
                 }));
@@ -1189,8 +1161,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::BitOR(BitOR {
+                curr_expr = Some(Expr::BitOR(BitOR {
                     first: None,
                     second: None,
                 }));
@@ -1224,8 +1195,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::LogicalAND(LogicalAND {
+                curr_expr = Some(Expr::LogicalAND(LogicalAND {
                     first: None,
                     second: None,
                 }));
@@ -1259,8 +1229,7 @@ pub fn parse_expressions(
                     return Err(format!("unexpected token: {:?}", tokens[index]));
                 }
                 left_expression = curr_expr;
-                curr_expr = None;
-                right_expression = Some(Expr::LogicalOR(LogicalOR {
+                curr_expr = Some(Expr::LogicalOR(LogicalOR {
                     first: None,
                     second: None,
                 }));
@@ -1357,9 +1326,9 @@ pub fn parse_expressions(
             }
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
         }
-        if left_expression.is_some() && right_expression.is_some() {
+        if left_expression.is_some() && curr_expr.is_some() {
             let Some(mut left) = left_expression else { unreachable!() };
-            let Some(mut right) = right_expression else { unreachable!() };
+            let Some(mut right) = curr_expr else { unreachable!() };
             if left.priority() >= right.priority() {
                 assert!(left.priority() >= right.priority());
                 flattened.expressions.push(left);
@@ -1370,7 +1339,6 @@ pub fn parse_expressions(
             }
             curr_expr = Some(right);
             left_expression = None;
-            right_expression = None;
         }
     }
     while let Some(mut expr) = stack.pop() {
