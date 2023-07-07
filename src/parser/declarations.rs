@@ -387,18 +387,28 @@ fn parse_initializer(
     match tokens.get(index) {
         Some(lexer::Token::PUNCT_OPEN_CURLY) => {
             index += 1;
-            let (new_index, il) = parse_initializer_list(tokens, index, flattened, str_maps)?;
-            flattened.initializer_lists.push(il);
-            index = new_index;
-            while matches!(
-                tokens.get(index),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-            ) && index < tokens.len()
-            {
+            let starting = index;
+            let mut curly_bal_counter = 1;
+            loop {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_CURLY) => curly_bal_counter += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_CURLY) => curly_bal_counter -= 1,
+                    None => return Err(format!("Missing curly, {:?}", tokens)),
+                    _ => {}
+                }
+                if curly_bal_counter == 0 {
+                    break;
+                }
                 index += 1;
             }
+            let (new_index, il) =
+                parse_initializer_list(&tokens[starting..index], 0, flattened, str_maps)?;
+            if il.is_empty() {
+                return Err(format!("initializer list is empty"));
+            }
+            flattened.initializer_lists.push(il);
             Ok((
-                index,
+                new_index,
                 Initializer::InitializerList(flattened.initializer_lists.len() - 1),
             ))
         }
@@ -430,6 +440,9 @@ fn parse_initializer_list(
     }
     let mut initializer_lists = Vec::new();
     loop {
+        if index >= tokens.len() {
+            break;
+        }
         let mut designation = Designation {
             designator_list: Vec::new(),
         };
@@ -480,35 +493,35 @@ fn parse_initializer_list(
                     index += 1;
                 }
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => index += 1,
-                Some(lexer::Token::PUNCT_ASSIGNMENT | lexer::Token::PUNCT_COMMA) => {
+                Some(lexer::Token::PUNCT_ASSIGNMENT) => {
+                    if designation.designator_list.is_empty() {
+                        return Err(format!("Unexpected =, expected . or ["));
+                    }
                     index += 1;
                     break;
                 }
-                _ => return Err(format!("Expected '.' or '[', got {:?}", tokens.get(index))),
+                _ => {
+                    break;
+                }
             }
         }
         let starting = index;
         while !matches!(
             tokens.get(index),
-            Some(lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_CLOSE_CURLY)
+            Some(lexer::Token::PUNCT_COMMA)
         ) && index < tokens.len()
         {
             index += 1;
         }
-        if starting != index {
-            let (_, init) = parse_initializer(&tokens[starting..index], 0, flattened, str_maps)?;
-            flattened.initializers.push(init);
-            flattened.designations.push(designation);
-            let initializer_list = InitializerList {
-                designation: Some(flattened.designations.len() - 1),
-                initializer: Some(flattened.initializers.len() - 1),
-            };
-            initializer_lists.push(initializer_list);
-            index += 1;
-        }
-        if starting == index || matches!(tokens.get(index), None) {
-            break;
-        }
+        let (_, init) = parse_initializer(&tokens[starting..index], 0, flattened, str_maps)?;
+        flattened.initializers.push(init);
+        flattened.designations.push(designation);
+        let initializer_list = InitializerList {
+            designation: Some(flattened.designations.len() - 1),
+            initializer: Some(flattened.initializers.len() - 1),
+        };
+        initializer_lists.push(initializer_list);
+        index += 1;
     }
     Ok((index, initializer_lists))
 }
@@ -1165,15 +1178,22 @@ mod tests {
                 )))
             ));
         }
-        //{
-        //    let src = r#"{}"#.as_bytes();
-        //    let mut str_maps = lexer::ByteVecMaps::new();
-        //    let mut flattened = parser::Flattened::new();
-        //    let tokens = lexer::lexer(src, false, &mut str_maps)?;
-        //    let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
-        //}
         {
-            let src = r#"{[100] = 5}, 8, .baz = "" }"#.as_bytes();
+            let src = r#"{}"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            assert!(parse_initializer(&tokens, 0, &mut flattened, &mut str_maps).is_err());
+        }
+        {
+            let src = r#"{ {[100] = 5}, 8, .baz = "" }"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+        }
+        {
+            let src = r#"{ 8, 8, .baz = "" }"#.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut flattened = parser::Flattened::new();
             let tokens = lexer::lexer(src, false, &mut str_maps)?;
