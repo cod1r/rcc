@@ -506,10 +506,7 @@ fn parse_initializer_list(
             }
         }
         let starting = index;
-        while !matches!(
-            tokens.get(index),
-            Some(lexer::Token::PUNCT_COMMA)
-        ) && index < tokens.len()
+        while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_COMMA)) && index < tokens.len()
         {
             index += 1;
         }
