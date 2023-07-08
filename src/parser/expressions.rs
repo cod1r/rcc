@@ -432,6 +432,8 @@ macro_rules! expression_operators {
             | lexer::Token::PUNCT_OR_BIT_ASSIGN
             | lexer::Token::PUNCT_INCREMENT
             | lexer::Token::PUNCT_DECREMENT
+            | lexer::Token::PUNCT_DOT
+            | lexer::Token::PUNCT_ARROW
     };
 }
 
@@ -482,33 +484,62 @@ pub fn parse_expressions(
                             })
                         }
                         Some(lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW) => {
-                            let member_ident_key = {
-                                loop {
-                                    index += 1;
-                                    if !matches!(
-                                        tokens.get(index),
-                                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                                    ) {
-                                        break;
-                                    }
-                                }
-                                if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
-                                    return Err(format!(
-                                        "expected identifier, got {:?}",
-                                        tokens.get(index)
-                                    ));
-                                }
-                                let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
-                                *key
-                            };
                             let postfix_type = match tokens.get(index) {
                                 Some(lexer::Token::PUNCT_DOT) => PostFix::WithMember {
                                     first: flattened.expressions.len() - 1,
-                                    member_ident_key,
+                                    member_ident_key: {
+                                        loop {
+                                            index += 1;
+                                            if !matches!(
+                                                tokens.get(index),
+                                                Some(
+                                                    lexer::Token::WHITESPACE
+                                                        | lexer::Token::NEWLINE
+                                                )
+                                            ) {
+                                                break;
+                                            }
+                                        }
+                                        if !matches!(
+                                            tokens.get(index),
+                                            Some(lexer::Token::IDENT(_))
+                                        ) {
+                                            return Err(format!(
+                                                "expected identifier, got {:?}",
+                                                tokens.get(index)
+                                            ));
+                                        }
+                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                                        *key
+                                    },
                                 },
                                 Some(lexer::Token::PUNCT_ARROW) => PostFix::WithPointerToMember {
                                     first: flattened.expressions.len() - 1,
-                                    member_ident_key,
+                                    member_ident_key: {
+                                        loop {
+                                            index += 1;
+                                            if !matches!(
+                                                tokens.get(index),
+                                                Some(
+                                                    lexer::Token::WHITESPACE
+                                                        | lexer::Token::NEWLINE
+                                                )
+                                            ) {
+                                                break;
+                                            }
+                                        }
+                                        if !matches!(
+                                            tokens.get(index),
+                                            Some(lexer::Token::IDENT(_))
+                                        ) {
+                                            return Err(format!(
+                                                "expected identifier, got {:?}",
+                                                tokens.get(index)
+                                            ));
+                                        }
+                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                                        *key
+                                    },
                                 },
                                 _ => unreachable!(),
                             };
@@ -2301,6 +2332,14 @@ mod tests {
                 flattened.expressions[first_idx],
                 expressions::Expr::Unary(_)
             ));
+        }
+        {
+            let src = r#"hi->hi2"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, post) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         }
         Ok(())
     }
