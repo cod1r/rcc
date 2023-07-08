@@ -465,76 +465,91 @@ pub fn parse_expressions(
             | lexer::Token::PUNCT_DOT
             | lexer::Token::PUNCT_ARROW => {
                 if let Some(unwrapped) = curr_expr {
+                    flattened.expressions.push(unwrapped);
                     let expr = match tokens.get(index) {
-                        Some(
-                            lexer::Token::PUNCT_INCREMENT
-                            | lexer::Token::PUNCT_DECREMENT
-                            | lexer::Token::PUNCT_DOT
-                            | lexer::Token::PUNCT_ARROW,
-                        ) => {
-                            flattened.expressions.push(unwrapped);
-                            match tokens.get(index) {
-                                Some(
-                                    lexer::Token::PUNCT_INCREMENT | lexer::Token::PUNCT_DECREMENT,
-                                ) => Expr::PostFix(PostFix::WithIncrementDecrement {
-                                    first: flattened.expressions.len() - 1,
-                                    op: match tokens.get(index) {
-                                        Some(lexer::Token::PUNCT_INCREMENT) => {
-                                            PostFixIncrementDecrement::Increment
-                                        }
-                                        Some(lexer::Token::PUNCT_DECREMENT) => {
-                                            PostFixIncrementDecrement::Decrement
-                                        }
-                                        _ => unreachable!(),
-                                    },
-                                }),
-                                Some(lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW) => {
-                                    let member_ident_key = {
-                                        loop {
-                                            index += 1;
-                                            if !matches!(
-                                                tokens.get(index),
-                                                Some(
-                                                    lexer::Token::WHITESPACE
-                                                        | lexer::Token::NEWLINE
-                                                )
-                                            ) {
-                                                break;
-                                            }
-                                        }
-                                        if !matches!(
-                                            tokens.get(index),
-                                            Some(lexer::Token::IDENT(_))
-                                        ) {
-                                            return Err(format!(
-                                                "expected identifier, got {:?}",
-                                                tokens.get(index)
-                                            ));
-                                        }
-                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
-                                        *key
-                                    };
-                                    let postfix_type = match tokens.get(index) {
-                                        Some(lexer::Token::PUNCT_DOT) => PostFix::WithMember {
-                                            first: flattened.expressions.len() - 1,
-                                            member_ident_key,
-                                        },
-                                        Some(lexer::Token::PUNCT_ARROW) => {
-                                            PostFix::WithPointerToMember {
-                                                first: flattened.expressions.len() - 1,
-                                                member_ident_key,
-                                            }
-                                        }
-                                        _ => unreachable!(),
-                                    };
-                                    Expr::PostFix(postfix_type)
+                        Some(lexer::Token::PUNCT_INCREMENT | lexer::Token::PUNCT_DECREMENT) => {
+                            Expr::PostFix(PostFix::WithIncrementDecrement {
+                                first: flattened.expressions.len() - 1,
+                                op: match tokens.get(index) {
+                                    Some(lexer::Token::PUNCT_INCREMENT) => {
+                                        PostFixIncrementDecrement::Increment
+                                    }
+                                    Some(lexer::Token::PUNCT_DECREMENT) => {
+                                        PostFixIncrementDecrement::Decrement
+                                    }
+                                    _ => unreachable!(),
+                                },
+                            })
+                        }
+                        Some(lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW) => {
+                            let member_ident_key = {
+                                loop {
+                                    index += 1;
+                                    if !matches!(
+                                        tokens.get(index),
+                                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                                    ) {
+                                        break;
+                                    }
                                 }
+                                if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
+                                    return Err(format!(
+                                        "expected identifier, got {:?}",
+                                        tokens.get(index)
+                                    ));
+                                }
+                                let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                                *key
+                            };
+                            let postfix_type = match tokens.get(index) {
+                                Some(lexer::Token::PUNCT_DOT) => PostFix::WithMember {
+                                    first: flattened.expressions.len() - 1,
+                                    member_ident_key,
+                                },
+                                Some(lexer::Token::PUNCT_ARROW) => PostFix::WithPointerToMember {
+                                    first: flattened.expressions.len() - 1,
+                                    member_ident_key,
+                                },
                                 _ => unreachable!(),
-                            }
+                            };
+                            Expr::PostFix(postfix_type)
                         }
                         _ => unreachable!(),
                     };
-                    curr_expr = Some(expr);
+                    flattened.expressions.push(expr);
+                    macro_rules! primary_second_assign_swap {
+                        ($($e:ident)*) => {
+                            match &mut curr_expr {
+                                Some(Expr::Primary(_)) => {
+                                    curr_expr = Some(expr);
+                                }
+                                Some(Expr::PostFix(_)) => {
+                                    return Err(format!("postfix after postfix is not allowed"));
+                                },
+                                Some(Expr::Unary(u)) => {
+                                    u.first = Some(flattened.expressions.len() - 1);
+                                }
+                                Some(Expr::Cast(c)) => {
+                                    c.cast_expr = Some(flattened.expressions.len() - 1);
+                                },
+                                $(Some(Expr::$e(i)) => {
+                                    i.second = Some(flattened.expressions.len() - 1);
+                                })*
+                                Some(Expr::Conditional(c)) => {
+                                    if c.first.is_none() {
+                                        c.first = Some(flattened.expressions.len() - 1);
+                                    } else if c.second.is_none() {
+                                        c.second = Some(flattened.expressions.len() - 1);
+                                    } else if c.third.is_none() {
+                                        c.third = Some(flattened.expressions.len() - 1);
+                                    }
+                                }
+                                Some(Expr::Assignment(_a)) => todo!(),
+                                _ => return Err(format!("err at index: {}", index)),
+                            }
+                        };
+                    }
+                    primary_second_assign_swap!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
                     loop {
                         index += 1;
                         if !matches!(
@@ -551,15 +566,7 @@ pub fn parse_expressions(
                     unreachable!()
                 }
             }
-            lexer::Token::IDENT(_)
-            | lexer::Token::StringLiteral { .. }
-            | lexer::Token::CONSTANT_DEC_INT { .. }
-            | lexer::Token::CONSTANT_HEXA_INT { .. }
-            | lexer::Token::CONSTANT_DEC_FLOAT { .. }
-            | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
-            | lexer::Token::CONSTANT_CHAR { .. }
-            | lexer::Token::CONSTANT_OCTAL_INT { .. }
-            | lexer::Token::CONSTANT_ENUM(_) => {
+            primary_tokens!() => {
                 // TODO: we need to check for the case of sizeof and _Alignof
                 let token_within = tokens[index];
                 let mut temp_index = index;
@@ -723,6 +730,7 @@ pub fn parse_expressions(
                 // having a lower priority (it has to be because that's the only reason our 'stack'
                 // exists) which means that we set curr_expr to that expression with that
                 // expression having the old curr_expr as a child in the expression tree
+                let mut already_popped_primary = false;
                 while let Some(mut e) = stack.pop() {
                     match e {
                         Expr::Primary(ref mut p) => {
@@ -730,7 +738,11 @@ pub fn parse_expressions(
                             flattened.expressions.push(unwrapped);
                             *p = Some(PrimaryInner::new_p_expr(flattened.expressions.len() - 1));
                             curr_expr = Some(e);
-                            break;
+                            if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_))) {
+                                break;
+                            } else {
+                                already_popped_primary = true;
+                            }
                         }
                         Expr::PostFix(_) => {
                             unreachable!()
@@ -740,16 +752,31 @@ pub fn parse_expressions(
                             flattened.expressions.push(unwrapped);
                             u.first = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
+                            if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_)))
+                                && already_popped_primary
+                            {
+                                break;
+                            }
                         }
                         Expr::Cast(ref mut c) => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
                             flattened.expressions.push(unwrapped);
                             c.cast_expr = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
+                            if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_)))
+                                && already_popped_primary
+                            {
+                                break;
+                            }
                         }
                         _ => {
                             let Some(unwrapped) = curr_expr else { unreachable!() };
-                            assert!(e.priority() <= unwrapped.priority());
+                            assert!(
+                                e.priority() <= unwrapped.priority(),
+                                "{} {}",
+                                e.priority(),
+                                unwrapped.priority()
+                            );
                             flattened.expressions.push(unwrapped);
                             let unwrapped = Some(flattened.expressions.len() - 1);
                             macro_rules! set_to_unwrapped {
@@ -2252,6 +2279,28 @@ mod tests {
             let mut flattened = parser::Flattened::new();
             let (_, add) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(add, expressions::Expr::Additive(_)),);
+            let expressions::Expr::Additive(a) = add else { unreachable!() };
+            let Some(first_idx) = a.first else { unreachable!() };
+            assert!(matches!(
+                flattened.expressions[first_idx],
+                expressions::Expr::Unary(_)
+            ));
+        }
+        {
+            let src = r#"!hi-- + -1"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, add) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(add, expressions::Expr::Additive(_)),);
+            let expressions::Expr::Additive(a) = add else { unreachable!() };
+            let Some(first_idx) = a.first else { unreachable!() };
+            assert!(matches!(
+                flattened.expressions[first_idx],
+                expressions::Expr::Unary(_)
+            ));
         }
         Ok(())
     }
