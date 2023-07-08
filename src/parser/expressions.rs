@@ -434,6 +434,20 @@ macro_rules! expression_operators {
             | lexer::Token::PUNCT_DECREMENT
     };
 }
+
+macro_rules! primary_tokens {
+    () => {
+        lexer::Token::IDENT(_)
+            | lexer::Token::StringLiteral { .. }
+            | lexer::Token::CONSTANT_DEC_INT { .. }
+            | lexer::Token::CONSTANT_HEXA_INT { .. }
+            | lexer::Token::CONSTANT_DEC_FLOAT { .. }
+            | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
+            | lexer::Token::CONSTANT_CHAR { .. }
+            | lexer::Token::CONSTANT_OCTAL_INT { .. }
+            | lexer::Token::CONSTANT_ENUM(_)
+    };
+}
 pub fn parse_expressions(
     tokens: &[lexer::Token],
     start_index: usize,
@@ -734,8 +748,8 @@ pub fn parse_expressions(
                             curr_expr = Some(e);
                         }
                         _ => {
-                            assert!(e.priority() <= curr_expr.clone().unwrap().priority());
                             let Some(unwrapped) = curr_expr else { unreachable!() };
+                            assert!(e.priority() <= unwrapped.priority());
                             flattened.expressions.push(unwrapped);
                             let unwrapped = Some(flattened.expressions.len() - 1);
                             macro_rules! set_to_unwrapped {
@@ -770,12 +784,7 @@ pub fn parse_expressions(
                 }
                 if matches!(
                     tokens.get(index),
-                    Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
-                            | lexer::Token::PUNCT_OPEN_PAR
-                    )
+                    Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR)
                 ) {
                     return Err(format!(
                         "not allowed token after operator ')': {:?}",
@@ -876,14 +885,12 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
                             | lexer::Token::PUNCT_NOT_BOOL
                             | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
                     )
                 ) {
                     //TODO: this can panic if unary is the last token
@@ -917,8 +924,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -955,9 +961,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -999,9 +1003,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1038,9 +1040,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1072,9 +1072,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1106,9 +1104,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1140,9 +1136,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1174,9 +1168,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
@@ -1208,9 +1200,7 @@ pub fn parse_expressions(
                 if !matches!(
                     tokens.get(index),
                     Some(
-                        lexer::Token::IDENT(_)
-                            | lexer::Token::CONSTANT_DEC_INT { .. }
-                            | lexer::Token::CONSTANT_CHAR(_)
+                        primary_tokens!()
                             | lexer::Token::PUNCT_OPEN_PAR
                             | lexer::Token::PUNCT_PLUS
                             | lexer::Token::PUNCT_MINUS
