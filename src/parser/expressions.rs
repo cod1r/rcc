@@ -721,8 +721,9 @@ pub fn parse_expressions(
                     index = inside_parenth_index;
                 } else {
                     // Typenames
-                    let (new_index, type_name) =
-                        parser::declarations::parse_type_names(tokens, starting, str_maps)?;
+                    let (new_index, type_name) = parser::declarations::parse_type_names(
+                        tokens, starting, flattened, str_maps,
+                    )?;
                     flattened.type_names.push(type_name);
                     match tokens.get(index) {
                         // Postfix
@@ -2303,6 +2304,10 @@ mod tests {
                 expressions::Expr::Primary(_)
             ));
         }
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_with_unary_postfix() -> Result<(), String> {
         {
             let src = r#"!(hi * 3)-- + -1"#.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
@@ -2333,6 +2338,10 @@ mod tests {
                 expressions::Expr::Unary(_)
             ));
         }
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_post_pointer_member() -> Result<(), String> {
         {
             let src = r#"hi->hi2"#.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
@@ -2343,6 +2352,18 @@ mod tests {
         }
         Ok(())
     }
+    //#[test]
+    //fn parse_expressions_assignment_test() -> Result<(), String> {
+    //    {
+    //        let src = r#"hi = hi2"#.as_bytes();
+    //        let mut str_maps = lexer::ByteVecMaps::new();
+    //        let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+    //        let mut flattened = parser::Flattened::new();
+    //        let (_, assign) =
+    //            expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+    //    }
+    //    Ok(())
+    //}
     //#[test]
     //fn parse_expressions_test() -> Result<(), String> {
     //    let src = r##"++(1 + 1);"##.as_bytes();

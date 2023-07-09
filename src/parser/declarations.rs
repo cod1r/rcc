@@ -244,6 +244,7 @@ impl Declaration {
 fn parse_declarations(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<Option<(Declaration, usize)>, String> {
     let declaration_index = start_index;
@@ -342,7 +343,7 @@ fn parse_declarations(
                 }
                 if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(next_index) {
                     let (new_index, _type_name) =
-                        parse_type_names(&tokens, next_index + 1, str_maps)?;
+                        parse_type_names(&tokens, next_index + 1, flattened, str_maps)?;
                     next_index = new_index;
                     while !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR))
                         && next_index < tokens.len()
@@ -909,6 +910,7 @@ fn parse_type_specifiers(
 fn parse_direct_abstract_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, DirectAbstractDeclarator), String> {
     let mut index = start_index;
@@ -921,7 +923,7 @@ fn parse_direct_abstract_declarator(
             Some(lexer::Token::PUNCT_OPEN_PAR) => {
                 index += 1;
                 let (new_index, abstract_declarator) =
-                    parse_abstract_declarator(tokens, index, str_maps)?;
+                    parse_abstract_declarator(tokens, index, flattened, str_maps)?;
                 index = new_index;
                 if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
                     return Err(format!("Missing closing parenth"));
@@ -990,7 +992,22 @@ fn parse_direct_abstract_declarator(
                 ) {
                     index += 1;
                 }
-                todo!("let assign_expr = parse_assignment_expr(tokens, index)?");
+                let starting = index;
+                let mut sqr_balance = 1;
+                while sqr_balance > 0 {
+                    match tokens.get(index) {
+                        Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
+                        Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
+                        _ => {}
+                    }
+                    index += 1;
+                }
+                let assign_expr = expressions::parse_expressions(
+                    &tokens[starting..index],
+                    0,
+                    flattened,
+                    str_maps,
+                )?;
             }
             _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
         }
@@ -1005,6 +1022,7 @@ fn parse_direct_abstract_declarator(
 fn parse_abstract_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, AbstractDeclarator), String> {
     let mut index = start_index;
@@ -1016,7 +1034,9 @@ fn parse_abstract_declarator(
         index = new_index;
         ad.pointer = pointers;
     }
-    if let Ok((new_index, dad)) = parse_direct_abstract_declarator(tokens, index, str_maps) {
+    if let Ok((new_index, dad)) =
+        parse_direct_abstract_declarator(tokens, index, flattened, str_maps)
+    {
         index = new_index;
         ad.direct_abstract_declarator = Some(dad);
     }
@@ -1026,6 +1046,7 @@ fn parse_abstract_declarator(
 pub fn parse_type_names(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, TypeName), String> {
     let mut index = start_index;
@@ -1034,7 +1055,7 @@ pub fn parse_type_names(
         parse_specifiers_qualifiers(tokens, index, str_maps)?;
     type_name.specifier_qualifier_list = specifier_qualifier_list;
     index = new_index;
-    if let Ok((new_index, ad)) = parse_abstract_declarator(tokens, index, str_maps) {
+    if let Ok((new_index, ad)) = parse_abstract_declarator(tokens, index, flattened, str_maps) {
         index = new_index;
         type_name.abstract_declarator = Some(ad);
     }
