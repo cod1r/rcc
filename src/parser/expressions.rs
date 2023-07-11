@@ -456,12 +456,62 @@ pub fn parse_expressions(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Expr), String> {
+    // stack is used for expressions that have a lower priority
     let mut stack = Vec::<Expr>::new();
+    // curr_expr is used for expressions with higher priority
     let mut curr_expr: Option<Expr> = None;
     let mut left_expression: Option<Expr> = None;
     let mut index = start_index;
     while index < tokens.len() {
         match &tokens[index] {
+            lexer::Token::PUNCT_ASSIGNMENT
+            | lexer::Token::PUNCT_MULT_ASSIGN
+            | lexer::Token::PUNCT_DIV_ASSIGN
+            | lexer::Token::PUNCT_MODULO_ASSIGN
+            | lexer::Token::PUNCT_ADD_ASSIGN
+            | lexer::Token::PUNCT_SUB_ASSIGN
+            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
+            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
+            | lexer::Token::PUNCT_AND_BIT_ASSIGN
+            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
+            | lexer::Token::PUNCT_OR_BIT_ASSIGN => {
+                if curr_expr.is_none() {
+                    return Err(format!("Unexpected operator: {:?}", tokens[index]));
+                }
+                match curr_expr {
+                    Some(Expr::Unary(_) | Expr::Primary(_)) => {
+                        let Some(expr) = curr_expr else { unreachable!() };
+                        flattened.expressions.push(expr);
+                        let assignment = Assignment {
+                            first: Some(flattened.expressions.len() - 1),
+                            second: None,
+                        };
+                        curr_expr = Some(Expr::Assignment(assignment));
+                    }
+                    Some(Expr::Assignment(mut a)) => {
+                        let assignment = Assignment {
+                            first: a.second,
+                            second: None,
+                        };
+                        a.second = None;
+                        stack.push(Expr::Assignment(a));
+                        curr_expr = Some(Expr::Assignment(assignment));
+                    }
+                    _ => return Err(format!("Expected unary expression")),
+                }
+                loop {
+                    index += 1;
+                    if !matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
+                        break;
+                    }
+                }
+                if !matches!(tokens.get(index), Some(primary_tokens!()) | None) {
+                    return Err(format!("unexpected operator: {:?}", tokens.get(index)));
+                }
+            }
             lexer::Token::PUNCT_INCREMENT
             | lexer::Token::PUNCT_DECREMENT
             | lexer::Token::PUNCT_DOT
@@ -641,13 +691,12 @@ pub fn parse_expressions(
                                         c.third = Some(last_index);
                                     }
                                 }
-                                Some(Expr::Assignment(_a)) => todo!(),
                                 _ => return Err(format!("err at index: {}", index)),
                             }
                         };
                     }
 
-                    primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+                    primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
                 }
 
                 loop {
@@ -2352,18 +2401,37 @@ mod tests {
         }
         Ok(())
     }
-    //#[test]
-    //fn parse_expressions_assignment_test() -> Result<(), String> {
-    //    {
-    //        let src = r#"hi = hi2"#.as_bytes();
-    //        let mut str_maps = lexer::ByteVecMaps::new();
-    //        let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-    //        let mut flattened = parser::Flattened::new();
-    //        let (_, assign) =
-    //            expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-    //    }
-    //    Ok(())
-    //}
+    #[test]
+    fn parse_expressions_simple_assignment_test() -> Result<(), String> {
+        {
+            let src = r#"hi = hi2"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, assign) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(assign, expressions::Expr::Assignment(_)));
+            let expressions::Expr::Assignment(a) = assign else { unreachable!() };
+            let Some(first_idx) = a.first else { unreachable!() };
+            assert!(matches!(flattened.expressions[first_idx], expressions::Expr::Primary(_)));
+            let Some(second_idx) = a.second else { unreachable!() };
+            assert!(matches!(flattened.expressions[second_idx], expressions::Expr::Primary(_)));
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_non_unary_left_assignment_test() -> Result<(), String> {
+        {
+            let src = r#"1 * 1 = hi2"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let assign =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps);
+            assert!(assign.is_err());
+        }
+        Ok(())
+    }
     //#[test]
     //fn parse_expressions_test() -> Result<(), String> {
     //    let src = r##"++(1 + 1);"##.as_bytes();

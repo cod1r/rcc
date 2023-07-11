@@ -8,6 +8,7 @@ pub struct Flattened {
     pub initializers: Vec<declarations::Initializer>,
     pub initializer_lists: Vec<Vec<declarations::InitializerList>>,
     pub designations: Vec<declarations::Designation>,
+    pub abstract_declarators: Vec<declarations::AbstractDeclarator>,
 }
 
 impl Flattened {
@@ -18,6 +19,7 @@ impl Flattened {
             initializers: Vec::new(),
             initializer_lists: Vec::new(),
             designations: Vec::new(),
+            abstract_declarators: Vec::new(),
         }
     }
 }
