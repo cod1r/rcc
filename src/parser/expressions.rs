@@ -2413,9 +2413,15 @@ mod tests {
             assert!(matches!(assign, expressions::Expr::Assignment(_)));
             let expressions::Expr::Assignment(a) = assign else { unreachable!() };
             let Some(first_idx) = a.first else { unreachable!() };
-            assert!(matches!(flattened.expressions[first_idx], expressions::Expr::Primary(_)));
+            assert!(matches!(
+                flattened.expressions[first_idx],
+                expressions::Expr::Primary(_)
+            ));
             let Some(second_idx) = a.second else { unreachable!() };
-            assert!(matches!(flattened.expressions[second_idx], expressions::Expr::Primary(_)));
+            assert!(matches!(
+                flattened.expressions[second_idx],
+                expressions::Expr::Primary(_)
+            ));
         }
         Ok(())
     }
@@ -2426,8 +2432,7 @@ mod tests {
             let mut str_maps = lexer::ByteVecMaps::new();
             let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = parser::Flattened::new();
-            let assign =
-                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps);
+            let assign = expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps);
             assert!(assign.is_err());
         }
         Ok(())
