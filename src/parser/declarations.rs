@@ -962,6 +962,29 @@ fn parse_direct_abstract_declarator(
                 ) {
                     index += 1;
                 }
+                if matches!(tokens.get(index), Some(lexer::Token::PUNCT_MULT)) {
+                    index += 1;
+                    dad = Some(DirectAbstractDeclarator {
+                        abstract_declarator: None,
+                        dad_type: Some(DirectAbstractDeclaratorType::Pointer),
+                    });
+                    let mut sqr_balance = 1;
+                    loop {
+                        match tokens.get(index) {
+                            Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
+                            Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
+                            None => return Err("Missing ]".to_string()),
+                            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => {}
+                            Some(_) => return Err(format!("Unexpected {:?}", tokens.get(index))),
+                        }
+                        if sqr_balance == 0 {
+                            break;
+                        }
+                        index += 1;
+                    }
+                    index += 1;
+                    continue;
+                }
                 if let Some(lexer::Token::KEYWORD_STATIC) = tokens.get(index) {
                     let s = StaticTypeQualifiersAssignment {
                         is_static: true,
@@ -1118,9 +1141,9 @@ fn parse_abstract_declarator(
         index = new_index;
         ad.pointer = pointers;
     }
-    if let Ok((new_index, dad)) =
-        parse_direct_abstract_declarator(tokens, index, flattened, str_maps)
-    {
+    if index < tokens.len() {
+        let (new_index, dad) =
+            parse_direct_abstract_declarator(tokens, index, flattened, str_maps)?;
         index = new_index;
         ad.direct_abstract_declarator = Some(dad);
     }
@@ -1306,7 +1329,7 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn parse_type_names_test() -> Result<(), String> {
+    fn parse_type_names_test_pointer_to_int_array_size_3() -> Result<(), String> {
         let src = r#"int (*)[3]"#.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut flattened = parser::Flattened::new();
@@ -1339,6 +1362,31 @@ mod tests {
         let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(t))) = flattened.expressions[expr_idx] else { unreachable!() };
         let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else { unreachable!() };
         assert_eq!(value_key, str_maps.add_byte_vec(b"3"));
+        Ok(())
+    }
+    #[test]
+    fn parse_type_names_test_pointer_to_variable_length_int_array() -> Result<(), String> {
+        let src = r#"int (*)[*]"#.as_bytes();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut flattened = parser::Flattened::new();
+        let tokens = lexer::lexer(src, false, &mut str_maps)?;
+        let (_, type_name) = parse_type_names(&tokens, 0, &mut flattened, &mut str_maps)?;
+        assert!(matches!(
+            type_name.specifier_qualifier_list.type_specifiers.first(),
+            Some(TypeSpecifier::Int)
+        ));
+        assert!(type_name.abstract_declarator.is_some());
+        let Some(abd) = type_name.abstract_declarator else { unreachable!() };
+        assert!(abd.pointer.is_empty());
+        assert!(abd.direct_abstract_declarator.is_some());
+        let Some(dad) = abd.direct_abstract_declarator else { unreachable!() };
+        assert!(dad.abstract_declarator.is_some());
+        let Some(abd) = dad.abstract_declarator else { unreachable!() };
+        assert!(!abd.pointer.is_empty());
+        assert!(matches!(
+            dad.dad_type,
+            Some(DirectAbstractDeclaratorType::Pointer)
+        ));
         Ok(())
     }
 }
