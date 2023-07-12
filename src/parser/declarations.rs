@@ -1151,7 +1151,8 @@ pub fn parse_type_names(
 mod tests {
     use super::{
         parse_enumerator_specifier, parse_initializer, parse_type_names, Designation, Designator,
-        Enumerator, Initializer, InitializerList, TypeQualifier, TypeSpecifier,
+        DirectAbstractDeclaratorType, Enumerator, Initializer, InitializerList,
+        StaticTypeQualifiersAssignment, TypeQualifier, TypeSpecifier,
     };
     use crate::{lexer, parser};
     #[test]
@@ -1319,6 +1320,25 @@ mod tests {
         let Some(abd) = type_name.abstract_declarator else { unreachable!() };
         assert!(abd.pointer.is_empty());
         assert!(abd.direct_abstract_declarator.is_some());
+        let Some(dad) = abd.direct_abstract_declarator else { unreachable!() };
+        assert!(dad.abstract_declarator.is_some());
+        let Some(abd) = dad.abstract_declarator else { unreachable!() };
+        assert!(!abd.pointer.is_empty());
+        assert!(matches!(
+            dad.dad_type,
+            Some(DirectAbstractDeclaratorType::StaticTypeQualifierAssignment(
+                StaticTypeQualifiersAssignment { .. }
+            ))
+        ));
+        let Some(DirectAbstractDeclaratorType::StaticTypeQualifierAssignment(s)) = dad.dad_type else { unreachable!() };
+        let Some(expr_idx) = s.assignment else { unreachable!() };
+        assert!(matches!(
+            flattened.expressions[expr_idx],
+            parser::expressions::Expr::Primary(_)
+        ));
+        let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(t))) = flattened.expressions[expr_idx] else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else { unreachable!() };
+        assert_eq!(value_key, str_maps.add_byte_vec(b"3"));
         Ok(())
     }
 }
