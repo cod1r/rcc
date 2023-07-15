@@ -770,8 +770,11 @@ pub fn parse_expressions(
                     index = inside_parenth_index;
                 } else {
                     // Typenames
-                    let (new_index, type_name) = parser::declarations::parse_type_names(
-                        tokens, starting, flattened, str_maps,
+                    let (_, type_name) = parser::declarations::parse_type_names(
+                        &tokens[starting..index - 1],
+                        0,
+                        flattened,
+                        str_maps,
                     )?;
                     flattened.type_names.push(type_name);
                     match tokens.get(index) {
