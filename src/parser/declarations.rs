@@ -12,11 +12,24 @@ pub enum StorageClassSpecifier {
     Auto,
     Register,
 }
+pub enum ParameterDeclaration {
+    WithOptionalAbstractDeclarator {
+        declaration: Declaration,
+        abstract_declarator: Option<AbstractDeclarator>,
+    },
+    WithDeclarator {
+        declaration: Declaration,
+        declarator: Declarator,
+    },
+}
+pub struct ParameterTypeList {
+    parameter_declarations: Vec<ParameterDeclaration>,
+    ellipsis: bool,
+}
 #[derive(Clone)]
 pub enum DirectAbstractDeclaratorType {
     Pointer,
     StaticTypeQualifierAssignmentMult(StaticTypeQualifiersAssignmentMult),
-    ParameterTypeList(DirectDeclaratorWithParameterTypeList),
 }
 #[derive(Clone)]
 pub struct DirectAbstractDeclarator {
@@ -65,17 +78,6 @@ pub struct StaticTypeQualifiersAssignmentMult {
     is_mult: bool,
 }
 #[derive(Clone)]
-pub struct ParameterType {
-    ellipsis: bool,
-    parameter_list: Vec<ParameterDeclaration>,
-}
-#[derive(Clone)]
-pub struct ParameterDeclaration {}
-#[derive(Clone)]
-pub struct DirectDeclaratorWithParameterTypeList {
-    parameter_type_list: Vec<ParameterType>,
-}
-#[derive(Clone)]
 pub struct DirectDeclaratorWithIdentifierList {
     identifier_list: Vec<usize>,
 }
@@ -85,7 +87,6 @@ pub enum DirectDeclaratorType {
     Ident(usize),
     Declarator(Box<Declarator>),
     WithStaticTypeQualifierAssignmentMult(StaticTypeQualifiersAssignmentMult),
-    WithParameterTypeList(DirectDeclaratorWithParameterTypeList),
     WithIdentifierList(Option<DirectDeclaratorWithIdentifierList>),
 }
 #[derive(Clone)]
@@ -240,7 +241,7 @@ fn parse_declarations(
     start_index: usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Option<(Declaration, usize)>, String> {
+) -> Result<(Declaration, usize), String> {
     let declaration_index = start_index;
     let mut declaration = Declaration::new();
     while declaration_index < tokens.len() {
@@ -1116,6 +1117,88 @@ fn parse_type_specifiers(
     Ok((index, type_specifiers))
 }
 
+fn parse_parameter_type_list(
+    tokens: &[lexer::Token],
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<ParameterTypeList, String> {
+    let mut index = 0;
+    let mut ptl = ParameterTypeList {
+        parameter_declarations: Vec::new(),
+        ellipsis: false,
+    };
+    while index < tokens.len() {
+        let (declaration, new_index) = parse_declarations(tokens, index, flattened, str_maps)?;
+        index = new_index;
+        let starting = index;
+        let has_identifier = {
+            let mut identifier_idx = starting;
+            while matches!(
+                tokens.get(identifier_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                identifier_idx += 1;
+            }
+            if matches!(tokens.get(identifier_idx), Some(lexer::Token::PUNCT_MULT)) {
+                identifier_idx += 1;
+            }
+            while matches!(
+                tokens.get(identifier_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                identifier_idx += 1;
+            }
+            match tokens.get(identifier_idx) {
+                Some(lexer::Token::IDENT(_)) => true,
+                Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    let mut has_ident = false;
+                    let mut parenth_counter = 1;
+                    let mut parenth_idx = identifier_idx + 1;
+                    while parenth_counter > 0 {
+                        match tokens.get(parenth_idx) {
+                            Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_counter += 1,
+                            Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_counter -= 1,
+                            Some(lexer::Token::IDENT(_)) => {
+                                has_ident = true;
+                            }
+                            Some(_) => {}
+                            None => return Err("unbalanced parenths".to_string()),
+                        }
+                        parenth_idx += 1;
+                    }
+                    has_ident
+                }
+                Some(_) => {
+                    return Err(format!("unexpected token {:?}", tokens.get(identifier_idx)))
+                }
+                None => return Err("unexpected end of tokens".to_string()),
+            }
+        };
+        while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_COMMA)) {
+            index += 1;
+        }
+        if has_identifier {
+            let (_, ab) =
+                parse_abstract_declarator(&tokens[starting..index], 0, flattened, str_maps)?;
+            ptl.parameter_declarations
+                .push(ParameterDeclaration::WithOptionalAbstractDeclarator {
+                    abstract_declarator: Some(ab),
+                    declaration,
+                });
+        } else {
+            let (_, declarator) =
+                parse_declarator(&tokens[starting..index], 0, flattened, str_maps)?;
+            ptl.parameter_declarations
+                .push(ParameterDeclaration::WithDeclarator {
+                    declaration,
+                    declarator,
+                });
+        }
+        index += 1;
+    }
+    Ok(ptl)
+}
+
 fn parse_direct_abstract_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
@@ -1125,27 +1208,39 @@ fn parse_direct_abstract_declarator(
     let mut index = start_index;
     let mut dad: Option<DirectAbstractDeclarator> = None;
     let mut ad: Option<AbstractDeclarator> = None;
-    loop {
-        if index >= tokens.len() {
-            break;
-        }
-        match tokens.get(index) {
-            Some(lexer::Token::PUNCT_OPEN_PAR) => {
-                index += 1;
-                let starting = index;
-                let mut parenth_bal_counter = 1;
-                loop {
-                    match tokens.get(index) {
-                        Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_bal_counter += 1,
-                        Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_bal_counter -= 1,
-                        None => return Err(format!("missing closing parenth")),
-                        Some(_) => {}
-                    }
-                    if parenth_bal_counter == 0 {
-                        break;
-                    }
-                    index += 1;
+    match tokens.get(index) {
+        Some(lexer::Token::PUNCT_OPEN_PAR) => {
+            index += 1;
+            let starting = index;
+            let mut parenth_bal_counter = 1;
+            loop {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_bal_counter += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_bal_counter -= 1,
+                    None => return Err(format!("missing closing parenth")),
+                    Some(_) => {}
                 }
+                if parenth_bal_counter == 0 {
+                    break;
+                }
+                index += 1;
+            }
+            let mut first_token_inside_idx = index;
+            while matches!(
+                tokens.get(first_token_inside_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) && first_token_inside_idx < tokens.len()
+            {
+                first_token_inside_idx += 1;
+            }
+            if matches!(
+                tokens.get(first_token_inside_idx),
+                Some(
+                    lexer::Token::PUNCT_MULT
+                        | lexer::Token::PUNCT_OPEN_PAR
+                        | lexer::Token::PUNCT_OPEN_SQR
+                )
+            ) {
                 let (_, abstract_declarator) =
                     parse_abstract_declarator(&tokens[starting..index], 0, flattened, str_maps)?;
                 ad = Some(abstract_declarator);
@@ -1157,85 +1252,71 @@ fn parse_direct_abstract_declarator(
                 {
                     index += 1;
                 }
+            } else {
+                todo!("parse_parameter_type_list()")
             }
-            Some(lexer::Token::PUNCT_OPEN_SQR) => {
+        }
+        Some(lexer::Token::PUNCT_OPEN_SQR) => {
+            index += 1;
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
                 index += 1;
-                while matches!(
-                    tokens.get(index),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                ) {
-                    index += 1;
-                }
-                if matches!(tokens.get(index), Some(lexer::Token::PUNCT_MULT)) {
-                    index += 1;
-                    dad = Some(DirectAbstractDeclarator {
-                        abstract_declarator: None,
-                        dad_type: Some(DirectAbstractDeclaratorType::Pointer),
-                    });
-                    let mut sqr_balance = 1;
-                    loop {
-                        match tokens.get(index) {
-                            Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
-                            Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
-                            None => return Err("Missing ]".to_string()),
-                            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => {}
-                            Some(_) => return Err(format!("Unexpected {:?}", tokens.get(index))),
-                        }
-                        if sqr_balance == 0 {
-                            break;
-                        }
-                        index += 1;
+            }
+            if matches!(tokens.get(index), Some(lexer::Token::PUNCT_MULT)) {
+                index += 1;
+                dad = Some(DirectAbstractDeclarator {
+                    abstract_declarator: None,
+                    dad_type: Some(DirectAbstractDeclaratorType::Pointer),
+                });
+                let mut sqr_balance = 1;
+                loop {
+                    match tokens.get(index) {
+                        Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
+                        Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
+                        None => return Err("Missing ]".to_string()),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE) => {}
+                        Some(_) => return Err(format!("Unexpected {:?}", tokens.get(index))),
+                    }
+                    if sqr_balance == 0 {
+                        break;
                     }
                     index += 1;
-                    continue;
                 }
-                if let Some(lexer::Token::KEYWORD_STATIC) = tokens.get(index) {
-                    let s = StaticTypeQualifiersAssignmentMult {
-                        is_static: true,
-                        type_qualifiers: Vec::new(),
-                        assignment: None,
-                        is_mult: false,
-                    };
-                    dad = Some(DirectAbstractDeclarator {
-                        abstract_declarator: None,
-                        dad_type: Some(
-                            DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(s),
-                        ),
-                    });
-                    index += 1;
-                }
-                while matches!(
-                    tokens.get(index),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                ) {
-                    index += 1;
-                }
-                if let Some((new_index, type_qualifiers)) = parse_type_qualifiers(tokens, index) {
-                    if let Some(local_dad) = &mut dad {
-                        match &mut local_dad.dad_type {
-                            Some(
-                                DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(s),
-                            ) => {
-                                s.type_qualifiers = type_qualifiers;
-                            }
-                            None => {
-                                local_dad.dad_type = Some(
-                                    DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
-                                        StaticTypeQualifiersAssignmentMult {
-                                            is_static: false,
-                                            type_qualifiers,
-                                            assignment: None,
-                                            is_mult: false,
-                                        },
-                                    ),
-                                );
-                            }
-                            _ => unreachable!(),
+                index += 1;
+            }
+            if let Some(lexer::Token::KEYWORD_STATIC) = tokens.get(index) {
+                let s = StaticTypeQualifiersAssignmentMult {
+                    is_static: true,
+                    type_qualifiers: Vec::new(),
+                    assignment: None,
+                    is_mult: false,
+                };
+                dad = Some(DirectAbstractDeclarator {
+                    abstract_declarator: None,
+                    dad_type: Some(
+                        DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(s),
+                    ),
+                });
+                index += 1;
+            }
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                index += 1;
+            }
+            if let Some((new_index, type_qualifiers)) = parse_type_qualifiers(tokens, index) {
+                if let Some(local_dad) = &mut dad {
+                    match &mut local_dad.dad_type {
+                        Some(DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                            s,
+                        )) => {
+                            s.type_qualifiers = type_qualifiers;
                         }
-                    } else {
-                        dad = Some(DirectAbstractDeclarator {
-                            abstract_declarator: None,
-                            dad_type: Some(
+                        None => {
+                            local_dad.dad_type = Some(
                                 DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
                                     StaticTypeQualifiersAssignmentMult {
                                         is_static: false,
@@ -1244,115 +1325,130 @@ fn parse_direct_abstract_declarator(
                                         is_mult: false,
                                     },
                                 ),
-                            ),
-                        });
-                    }
-                    index = new_index;
-                }
-                while matches!(
-                    tokens.get(index),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                ) {
-                    index += 1;
-                }
-                if matches!(tokens.get(index), Some(lexer::Token::KEYWORD_STATIC)) {
-                    index += 1;
-                    if let Some(DirectAbstractDeclarator {
-                        abstract_declarator: _,
-                        dad_type,
-                    }) = &mut dad
-                    {
-                        match dad_type {
-                            Some(
-                                DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(s),
-                            ) => {
-                                if s.is_static {
-                                    return Err("Unexpected 'static'".to_string());
-                                }
-                                s.is_static = true;
-                            }
-                            _ => unreachable!(),
+                            );
                         }
-                    } else {
-                        dad = Some(DirectAbstractDeclarator {
-                            abstract_declarator: None,
-                            dad_type: Some(
-                                DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
-                                    StaticTypeQualifiersAssignmentMult {
-                                        is_static: true,
-                                        type_qualifiers: Vec::new(),
-                                        assignment: None,
-                                        is_mult: false,
-                                    },
-                                ),
+                        _ => unreachable!(),
+                    }
+                } else {
+                    dad = Some(DirectAbstractDeclarator {
+                        abstract_declarator: None,
+                        dad_type: Some(
+                            DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                                StaticTypeQualifiersAssignmentMult {
+                                    is_static: false,
+                                    type_qualifiers,
+                                    assignment: None,
+                                    is_mult: false,
+                                },
                             ),
-                        });
-                    }
+                        ),
+                    });
                 }
-                while matches!(
-                    tokens.get(index),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                ) {
-                    index += 1;
-                }
-                let starting = index;
-                let mut sqr_balance = 1;
-                loop {
-                    match tokens.get(index) {
-                        Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
-                        Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
-                        None => return Err("Missing ]".to_string()),
-                        _ => {}
-                    }
-                    if sqr_balance == 0 {
-                        break;
-                    }
-                    index += 1;
-                }
-                if tokens[starting..index]
-                    .iter()
-                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
-                    .count()
-                    > 0
+                index = new_index;
+            }
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                index += 1;
+            }
+            if matches!(tokens.get(index), Some(lexer::Token::KEYWORD_STATIC)) {
+                index += 1;
+                if let Some(DirectAbstractDeclarator {
+                    abstract_declarator: _,
+                    dad_type,
+                }) = &mut dad
                 {
-                    let (_, assign_expr) = expressions::parse_expressions(
-                        &tokens[starting..index],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
-                    index += 1;
-                    flattened.expressions.push(assign_expr);
-                    if let Some(DirectAbstractDeclarator {
-                        abstract_declarator: _,
-                        dad_type,
-                    }) = &mut dad
-                    {
-                        if let Some(
-                            DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(s),
-                        ) = dad_type
-                        {
-                            s.assignment = Some(flattened.expressions.len() - 1);
+                    match dad_type {
+                        Some(DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                            s,
+                        )) => {
+                            if s.is_static {
+                                return Err("Unexpected 'static'".to_string());
+                            }
+                            s.is_static = true;
                         }
-                    } else {
-                        dad = Some(DirectAbstractDeclarator {
-                            abstract_declarator: None,
-                            dad_type: Some(
-                                DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
-                                    StaticTypeQualifiersAssignmentMult {
-                                        is_static: false,
-                                        type_qualifiers: Vec::new(),
-                                        assignment: Some(flattened.expressions.len() - 1),
-                                        is_mult: false,
-                                    },
-                                ),
-                            ),
-                        });
+                        _ => unreachable!(),
                     }
+                } else {
+                    dad = Some(DirectAbstractDeclarator {
+                        abstract_declarator: None,
+                        dad_type: Some(
+                            DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                                StaticTypeQualifiersAssignmentMult {
+                                    is_static: true,
+                                    type_qualifiers: Vec::new(),
+                                    assignment: None,
+                                    is_mult: false,
+                                },
+                            ),
+                        ),
+                    });
                 }
             }
-            _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
+            while matches!(
+                tokens.get(index),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                index += 1;
+            }
+            let starting = index;
+            let mut sqr_balance = 1;
+            loop {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_SQR) => sqr_balance += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_SQR) => sqr_balance -= 1,
+                    None => return Err("Missing ]".to_string()),
+                    _ => {}
+                }
+                if sqr_balance == 0 {
+                    break;
+                }
+                index += 1;
+            }
+            if tokens[starting..index]
+                .iter()
+                .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+                .count()
+                > 0
+            {
+                let (_, assign_expr) = expressions::parse_expressions(
+                    &tokens[starting..index],
+                    0,
+                    flattened,
+                    str_maps,
+                )?;
+                index += 1;
+                flattened.expressions.push(assign_expr);
+                if let Some(DirectAbstractDeclarator {
+                    abstract_declarator: _,
+                    dad_type,
+                }) = &mut dad
+                {
+                    if let Some(DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                        s,
+                    )) = dad_type
+                    {
+                        s.assignment = Some(flattened.expressions.len() - 1);
+                    }
+                } else {
+                    dad = Some(DirectAbstractDeclarator {
+                        abstract_declarator: None,
+                        dad_type: Some(
+                            DirectAbstractDeclaratorType::StaticTypeQualifierAssignmentMult(
+                                StaticTypeQualifiersAssignmentMult {
+                                    is_static: false,
+                                    type_qualifiers: Vec::new(),
+                                    assignment: Some(flattened.expressions.len() - 1),
+                                    is_mult: false,
+                                },
+                            ),
+                        ),
+                    });
+                }
+            }
         }
+        _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
     }
     if let Some(mut dad) = dad {
         if let Some(inner_ad) = ad {
