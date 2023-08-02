@@ -87,12 +87,9 @@ pub struct Declarator {
     direct_declarator: Option<DirectDeclarator>,
 }
 #[derive(Clone)]
-pub enum StructDeclarator {
-    Declarator(Declarator),
-    DeclaratorBitField {
-        declarator: Option<Declarator>,
-        const_expr: Option<parser::expressions::ExpressionIndex>,
-    },
+pub struct StructDeclarator {
+    declarator: Option<Declarator>,
+    const_expr: Option<parser::expressions::ExpressionIndex>,
 }
 #[derive(Clone)]
 pub struct SpecifierQualifierList {
@@ -771,9 +768,125 @@ fn parse_declarator(
     Ok((index, declarator))
 }
 
+fn parse_struct_declarator(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, StructDeclarator), String> {
+    let mut index = start_index;
+    let mut struct_declarator = StructDeclarator {
+        declarator: None,
+        const_expr: None,
+    };
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    if matches!(tokens.get(index), Some(lexer::Token::PUNCT_COLON)) {
+        index += 1;
+        let (new_index, const_expr) =
+            parser::expressions::parse_expressions(&tokens[index..], 0, flattened, str_maps)?;
+        flattened.expressions.push(const_expr);
+        struct_declarator.const_expr = Some(flattened.expressions.len() - 1);
+        index = new_index;
+    } else {
+        let (new_index, declarator) = parse_declarator(tokens, index, flattened, str_maps)?;
+        index = new_index;
+        struct_declarator.declarator = Some(declarator);
+        while matches!(
+            tokens.get(index),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            index += 1;
+        }
+        if matches!(tokens.get(index), Some(lexer::Token::PUNCT_COLON)) {
+            index += 1;
+            let (new_index, const_expr) =
+                parser::expressions::parse_expressions(&tokens[index..], 0, flattened, str_maps)?;
+            flattened.expressions.push(const_expr);
+            struct_declarator.const_expr = Some(flattened.expressions.len() - 1);
+            index = new_index;
+        }
+    }
+    Ok((index, struct_declarator))
+}
+
+fn parse_struct_declaration(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(usize, StructDeclaration), String> {
+    let mut struct_declaration = StructDeclaration {
+        specifier_qualifier_list: SpecifierQualifierList::new(),
+        struct_declarator_list: Vec::new(),
+    };
+    let mut index = start_index;
+    while matches!(
+        tokens.get(index),
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+    ) {
+        index += 1;
+    }
+    let (new_index, specifier_qualifier_list) =
+        parse_specifiers_qualifiers(tokens, index, str_maps)?;
+    struct_declaration.specifier_qualifier_list = specifier_qualifier_list;
+    index = new_index;
+    let starting = index;
+    while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON)) && index < tokens.len()
+    {
+        index += 1;
+    }
+    if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+        return Err("Expected ;".to_string());
+    }
+    let mut parse_struct_declarator_idx = starting;
+    if tokens[starting..index]
+        .iter()
+        .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+        .count()
+        == 0
+    {
+        return Ok((index, struct_declaration));
+    }
+    while parse_struct_declarator_idx < index {
+        let start_of_struct_declarator = parse_struct_declarator_idx;
+        while matches!(
+            tokens.get(parse_struct_declarator_idx),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            parse_struct_declarator_idx += 1;
+        }
+        if !matches!(
+            tokens.get(parse_struct_declarator_idx),
+            Some(lexer::Token::PUNCT_COMMA)
+        ) {
+            return Err(format!(
+                "Expected ',', got {:?}",
+                tokens.get(parse_struct_declarator_idx)
+            ));
+        }
+        let (new_index, struct_declarator) = parse_struct_declarator(
+            &tokens[start_of_struct_declarator..parse_struct_declarator_idx],
+            0,
+            flattened,
+            str_maps,
+        )?;
+        parse_struct_declarator_idx = new_index;
+        struct_declaration
+            .struct_declarator_list
+            .push(struct_declarator);
+    }
+    Ok((index, struct_declaration))
+}
+
 fn parse_struct_union_specifier(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, StructUnionSpecifier), String> {
     let mut index = start_index + 1;
@@ -802,29 +915,37 @@ fn parse_struct_union_specifier(
     ) {
         index += 1;
     }
+    if matches!(tokens.get(index), None) {
+        return Ok((index, struct_union_specifier));
+    }
     if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_OPEN_CURLY)) {
-        return Err(format!("Expected open curly bracket"));
+        return Err(format!(
+            "Expected open curly bracket, got {:?}",
+            tokens.get(index)
+        ));
     }
     index += 1;
-    while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_CURLY))
-        && index < tokens.len()
-    {
-        while !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON))
-            && index < tokens.len()
-        {
-            let (new_index, _specifier_qualifier_list) =
-                parse_specifiers_qualifiers(tokens, index, str_maps)?;
-            index = new_index;
-            loop {
-                //let (new_index, declarator) = parse_declarators()?;
-                //index = new_index;
-                //if next thing is not comma {
-                //    break;
-                //}
-            }
+    let starting = index;
+    let mut curly_counter = 1;
+    while curly_counter > 0 {
+        match tokens.get(index) {
+            Some(lexer::Token::PUNCT_OPEN_CURLY) => curly_counter += 1,
+            Some(lexer::Token::PUNCT_CLOSE_CURLY) => curly_counter -= 1,
+            Some(_) => {}
+            None => return Err("missing closing curly".to_string()),
         }
+        index += 1;
     }
-    todo!()
+    let mut parse_struct_declarator_idx = starting;
+    while parse_struct_declarator_idx < index {
+        let (new_index, struct_declaration) =
+            parse_struct_declaration(tokens, parse_struct_declarator_idx, flattened, str_maps)?;
+        parse_struct_declarator_idx = new_index;
+        struct_union_specifier
+            .struct_declaration_list
+            .push(struct_declaration);
+    }
+    Ok((index, struct_union_specifier))
 }
 
 fn parse_enumerator_specifier(
