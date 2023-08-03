@@ -590,7 +590,7 @@ fn parse_direct_declarator(
             }
         }
         _ => {
-            return Err("Expected identifier or open parentheses".to_string());
+            return Err(format!("Expected identifier or open parentheses, got {:?}", tokens.get(index)));
         }
     }
     match tokens.get(index) {
@@ -809,7 +809,7 @@ fn parse_struct_declarator(
             parser::expressions::parse_expressions(&tokens[index..], 0, flattened, str_maps)?;
         flattened.expressions.push(const_expr);
         struct_declarator.const_expr = Some(flattened.expressions.len() - 1);
-        index = new_index;
+        index += new_index;
     } else {
         let (new_index, declarator) = parse_declarator(tokens, index, flattened, str_maps)?;
         index = new_index;
@@ -859,7 +859,7 @@ fn parse_struct_declaration(
         index += 1;
     }
     if !matches!(tokens.get(index), Some(lexer::Token::PUNCT_SEMI_COLON)) {
-        return Err("Expected ;".to_string());
+        return Err(format!("Expected ;, got {:?}", tokens.get(index)));
     }
     let mut parse_struct_declarator_idx = starting;
     if tokens[starting..index]
@@ -871,25 +871,9 @@ fn parse_struct_declaration(
         return Ok((index, struct_declaration));
     }
     while parse_struct_declarator_idx < index {
-        let start_of_struct_declarator = parse_struct_declarator_idx;
-        while matches!(
-            tokens.get(parse_struct_declarator_idx),
-            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-        ) {
-            parse_struct_declarator_idx += 1;
-        }
-        if !matches!(
-            tokens.get(parse_struct_declarator_idx),
-            Some(lexer::Token::PUNCT_COMMA)
-        ) {
-            return Err(format!(
-                "Expected ',', got {:?}",
-                tokens.get(parse_struct_declarator_idx)
-            ));
-        }
         let (new_index, struct_declarator) = parse_struct_declarator(
-            &tokens[start_of_struct_declarator..parse_struct_declarator_idx],
-            0,
+            &tokens[0..index],
+            parse_struct_declarator_idx,
             flattened,
             str_maps,
         )?;
@@ -898,7 +882,7 @@ fn parse_struct_declaration(
             .struct_declarator_list
             .push(struct_declarator);
     }
-    Ok((index, struct_declaration))
+    Ok((index + 1, struct_declaration))
 }
 
 fn parse_struct_union_specifier(
@@ -917,7 +901,7 @@ fn parse_struct_union_specifier(
         identifier: None,
         struct_declaration_list: Vec::new(),
     };
-    while !matches!(
+    while matches!(
         tokens.get(index),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
     ) {
@@ -927,7 +911,7 @@ fn parse_struct_union_specifier(
         struct_union_specifier.identifier = Some(*key);
         index += 1;
     }
-    while !matches!(
+    while matches!(
         tokens.get(index),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
     ) {
@@ -955,13 +939,19 @@ fn parse_struct_union_specifier(
         index += 1;
     }
     let mut parse_struct_declarator_idx = starting;
-    while parse_struct_declarator_idx < index {
+    while parse_struct_declarator_idx < index - 1 {
         let (new_index, struct_declaration) =
             parse_struct_declaration(tokens, parse_struct_declarator_idx, flattened, str_maps)?;
         parse_struct_declarator_idx = new_index;
         struct_union_specifier
             .struct_declaration_list
             .push(struct_declaration);
+        while matches!(
+            tokens.get(parse_struct_declarator_idx),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            parse_struct_declarator_idx += 1;
+        }
     }
     Ok((index, struct_union_specifier))
 }
@@ -1554,9 +1544,9 @@ pub fn parse_type_names(
 mod tests {
     use super::{
         parse_declarator, parse_enumerator_specifier, parse_initializer, parse_parameter_type_list,
-        parse_struct_declarator, parse_type_names, Declarator, Designation, Designator,
-        DirectAbstractDeclarator, DirectDeclarator, Enumerator, Initializer, InitializerList,
-        TypeQualifier, TypeSpecifier,
+        parse_struct_declarator, parse_struct_union_specifier, parse_type_names, Declarator,
+        Designation, Designator, DirectAbstractDeclarator, DirectDeclarator, Enumerator,
+        Initializer, InitializerList, TypeQualifier, TypeSpecifier,
     };
     use crate::{lexer, parser};
     #[test]
@@ -1835,9 +1825,22 @@ mod tests {
                     .unwrap(),
                 str_maps.add_byte_vec("hi".as_bytes())
             );
-            assert!(struct_declarator
-                .const_expr
-                .is_some());
+            assert!(struct_declarator.const_expr.is_some());
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_struct_union_specifier_test() -> Result<(), String> {
+        {
+            let src = r#"struct {
+int : 4;
+};"#
+            .as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (new_index, struct_union_specifier) =
+                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
         }
         Ok(())
     }
