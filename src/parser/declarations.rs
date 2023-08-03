@@ -590,7 +590,10 @@ fn parse_direct_declarator(
             }
         }
         _ => {
-            return Err(format!("Expected identifier or open parentheses, got {:?}", tokens.get(index)));
+            return Err(format!(
+                "Expected identifier or open parentheses, got {:?}",
+                tokens.get(index)
+            ));
         }
     }
     match tokens.get(index) {
@@ -1839,8 +1842,21 @@ int : 4;
             let mut str_maps = lexer::ByteVecMaps::new();
             let mut flattened = parser::Flattened::new();
             let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (new_index, struct_union_specifier) =
+            let (_, struct_union_specifier) =
                 parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
+            assert!(
+                struct_union_specifier.struct_declaration_list[0]
+                    .specifier_qualifier_list
+                    .type_specifiers
+                    .len()
+                    == 1
+            );
+            assert!(
+                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
+                    .const_expr
+                    .is_some()
+            );
         }
         Ok(())
     }
