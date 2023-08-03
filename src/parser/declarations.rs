@@ -733,8 +733,26 @@ fn parse_direct_declarator(
                 }
             }
         }
-        None => {}
-        _ => todo!("{}", index),
+        Some(lexer::Token::PUNCT_OPEN_PAR) => {
+            index += 1;
+            let starting = index;
+            let mut parenth_bal_counter = 1;
+            loop {
+                match tokens.get(index) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_bal_counter += 1,
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_bal_counter -= 1,
+                    None => return Err(format!("missing closing parenth")),
+                    Some(_) => {}
+                }
+                if parenth_bal_counter == 0 {
+                    break;
+                }
+                index += 1;
+            }
+            let ptl = parse_parameter_type_list(&tokens[starting..index], flattened, str_maps)?;
+            direct_declarator.parameter_type_list = Some(ptl);
+        }
+        _ => {}
     }
     Ok((index, direct_declarator))
 }
@@ -1483,7 +1501,7 @@ fn parse_direct_abstract_declarator(
             let ptl = parse_parameter_type_list(&tokens[starting..index], flattened, str_maps)?;
             dad.parameter_type_list = Some(ptl);
         }
-        _ => return Err(format!("Expected '(' or '[', got: {:?}", tokens[index])),
+        _ => {}
     }
     Ok((index, dad))
 }
@@ -1536,8 +1554,9 @@ pub fn parse_type_names(
 mod tests {
     use super::{
         parse_declarator, parse_enumerator_specifier, parse_initializer, parse_parameter_type_list,
-        parse_type_names, Declarator, Designation, Designator, DirectAbstractDeclarator,
-        DirectDeclarator, Enumerator, Initializer, InitializerList, TypeQualifier, TypeSpecifier,
+        parse_struct_declarator, parse_type_names, Declarator, Designation, Designator,
+        DirectAbstractDeclarator, DirectDeclarator, Enumerator, Initializer, InitializerList,
+        TypeQualifier, TypeSpecifier,
     };
     use crate::{lexer, parser};
     #[test]
@@ -1787,6 +1806,39 @@ mod tests {
         let tokens = lexer::lexer(src, false, &mut str_maps)?;
         let ptl = parse_parameter_type_list(&tokens, &mut flattened, &mut str_maps)?;
         assert!(ptl.parameter_declarations.len() == 3);
+        Ok(())
+    }
+    #[test]
+    fn parse_struct_declarator_test() -> Result<(), String> {
+        {
+            let src = r#"hi : 4"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, struct_declarator) =
+                parse_struct_declarator(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                struct_declarator.declarator,
+                Some(Declarator {
+                    direct_declarator: Some(DirectDeclarator { .. }),
+                    ..
+                })
+            ));
+            assert_eq!(
+                struct_declarator
+                    .declarator
+                    .clone()
+                    .unwrap()
+                    .direct_declarator
+                    .unwrap()
+                    .identifier
+                    .unwrap(),
+                str_maps.add_byte_vec("hi".as_bytes())
+            );
+            assert!(struct_declarator
+                .const_expr
+                .is_some());
+        }
         Ok(())
     }
 }
