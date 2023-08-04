@@ -143,6 +143,7 @@ pub enum TypeSpecifier {
     _Atomic(TypeName),
     StructUnion(StructUnionSpecifier),
     Enum(EnumSpecifier),
+    IdentTypeDef(usize),
 }
 #[derive(Copy, Clone)]
 pub enum TypeQualifier {
@@ -1161,7 +1162,10 @@ fn parse_type_specifiers(
                 type_specifiers.push(TypeSpecifier::Enum(enum_specifier));
             }
             // TODO: typedef identifiers
-            lexer::Token::IDENT(_) => todo!(),
+            lexer::Token::IDENT(key) if type_specifiers.is_empty() => {
+                type_specifiers.push(TypeSpecifier::IdentTypeDef(key));
+                break;
+            }
             _ => break,
         }
         index += 1;
@@ -1855,6 +1859,35 @@ int : 4;
             assert!(
                 struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
                     .const_expr
+                    .is_some()
+            );
+        }
+        {
+            let src = r#"struct {
+int hi;
+};"#
+            .as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, struct_union_specifier) =
+                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
+            assert!(
+                struct_union_specifier.struct_declaration_list[0]
+                    .specifier_qualifier_list
+                    .type_specifiers
+                    .len()
+                    == 1
+            );
+            assert!(
+                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
+                    .declarator
+                    .clone()
+                    .unwrap()
+                    .direct_declarator
+                    .unwrap()
+                    .identifier
                     .is_some()
             );
         }
