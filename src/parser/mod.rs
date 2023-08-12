@@ -1,6 +1,7 @@
 use crate::lexer;
 pub mod declarations;
 pub mod expressions;
+pub mod statements;
 
 pub struct Flattened {
     pub expressions: Vec<expressions::Expr>,

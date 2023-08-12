@@ -854,7 +854,7 @@ fn parse_struct_declaration(
         index += 1;
     }
     let (new_index, specifier_qualifier_list) =
-        parse_specifiers_qualifiers(tokens, index, str_maps)?;
+        parse_specifiers_qualifiers(tokens, index, flattened, str_maps)?;
     struct_declaration.specifier_qualifier_list = specifier_qualifier_list;
     index = new_index;
     let starting = index;
@@ -1045,18 +1045,21 @@ fn parse_enumerator_specifier(
         }
         index += 1;
     }
-    Ok((index, enum_specifier))
+    Ok((index + 1, enum_specifier))
 }
 
 fn parse_specifiers_qualifiers(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, SpecifierQualifierList), String> {
     let mut index = start_index;
     let mut specifier_qualifier = SpecifierQualifierList::new();
     loop {
-        if let Ok((next_index, mut specifiers)) = parse_type_specifiers(tokens, index, str_maps) {
+        if let Ok((next_index, mut specifiers)) =
+            parse_type_specifiers(tokens, index, flattened, str_maps)
+        {
             // Avoids cloning
             while let Some(type_specifier) = specifiers.pop() {
                 specifier_qualifier.type_specifiers.push(type_specifier);
@@ -1110,6 +1113,7 @@ fn parse_type_qualifiers(
 fn parse_type_specifiers(
     tokens: &[lexer::Token],
     start_index: usize,
+    flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(usize, Vec<TypeSpecifier>), String> {
     let mut index = start_index;
@@ -1151,8 +1155,11 @@ fn parse_type_specifiers(
                 type_specifiers.push(TypeSpecifier::_Complex);
             }
             lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => {
-                todo!()
-                // TODO: parse_struct_union_specifier()?;
+                let (new_index, struct_union_specifier) =
+                    parse_struct_union_specifier(tokens, index, flattened, str_maps)?;
+                index = new_index;
+                type_specifiers.push(TypeSpecifier::StructUnion(struct_union_specifier));
+                continue;
             }
             lexer::Token::KEYWORD__ATOMIC => todo!(),
             lexer::Token::KEYWORD_ENUM => {
@@ -1160,6 +1167,7 @@ fn parse_type_specifiers(
                     parse_enumerator_specifier(tokens, index, str_maps)?;
                 index = new_index;
                 type_specifiers.push(TypeSpecifier::Enum(enum_specifier));
+                continue;
             }
             // TODO: typedef identifiers
             lexer::Token::IDENT(key) if type_specifiers.is_empty() => {
@@ -1536,7 +1544,7 @@ pub fn parse_type_names(
     let mut index = start_index;
     let mut type_name = TypeName::new();
     let (new_index, specifier_qualifier_list) =
-        parse_specifiers_qualifiers(tokens, index, str_maps)?;
+        parse_specifiers_qualifiers(tokens, index, flattened, str_maps)?;
     type_name.specifier_qualifier_list = specifier_qualifier_list;
     index = new_index;
     if index < tokens.len() {
@@ -1873,6 +1881,39 @@ int hi;
             let (_, struct_union_specifier) =
                 parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(struct_union_specifier.struct_declaration_list.len() == 1);
+            assert!(
+                struct_union_specifier.struct_declaration_list[0]
+                    .specifier_qualifier_list
+                    .type_specifiers
+                    .len()
+                    == 1
+            );
+            assert!(
+                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
+                    .declarator
+                    .clone()
+                    .unwrap()
+                    .direct_declarator
+                    .unwrap()
+                    .identifier
+                    .is_some()
+            );
+        }
+        {
+            let src = r#"struct HEHE {
+int hi;
+};"#
+            .as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src, false, &mut str_maps)?;
+            let (_, struct_union_specifier) =
+                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
+            assert!(
+                struct_union_specifier.identifier.unwrap()
+                    == str_maps.add_byte_vec("HEHE".as_bytes())
+            );
             assert!(
                 struct_union_specifier.struct_declaration_list[0]
                     .specifier_qualifier_list
