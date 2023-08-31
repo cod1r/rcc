@@ -182,9 +182,15 @@ fn include_directive(
             .count()
             > 0
         {
-            let Some(t) = tokens.get(include_index) else { unreachable!() };
-            let Some(bv) = t.to_byte_vec(str_maps) else { unreachable!() };
-            let Ok(s) = String::from_utf8(bv) else { unreachable!() };
+            let Some(t) = tokens.get(include_index) else {
+                unreachable!()
+            };
+            let Some(bv) = t.to_byte_vec(str_maps) else {
+                unreachable!()
+            };
+            let Ok(s) = String::from_utf8(bv) else {
+                unreachable!()
+            };
             eprintln!("Warning: Tokens after {s} are skipped",);
         }
     }
@@ -547,7 +553,12 @@ fn if_directive(
                         eval_vec
                     ));
                 }
-                let Some(lexer::Token::IDENT(ident_key)) = eval_vec.iter().find(|t| matches!(t, lexer::Token::IDENT(_))) else { unreachable!() };
+                let Some(lexer::Token::IDENT(ident_key)) = eval_vec
+                    .iter()
+                    .find(|t| matches!(t, lexer::Token::IDENT(_)))
+                else {
+                    unreachable!()
+                };
                 defines.contains_key(ident_key)
             }
             b"ifndef" => {
@@ -560,7 +571,12 @@ fn if_directive(
                         eval_vec
                     ));
                 }
-                let Some(lexer::Token::IDENT(ident_key)) = eval_vec.iter().find(|t| matches!(t, lexer::Token::IDENT(_))) else { unreachable!() };
+                let Some(lexer::Token::IDENT(ident_key)) = eval_vec
+                    .iter()
+                    .find(|t| matches!(t, lexer::Token::IDENT(_)))
+                else {
+                    unreachable!()
+                };
                 !defines.contains_key(ident_key)
             }
             b"else" => true,
@@ -690,7 +706,9 @@ fn define_directive(
             || *identifier_of_macro == *b"__STDC_VERSION__"
             || *identifier_of_macro == *b"__TIME__"
         {
-            let Ok(s) = String::from_utf8(identifier_of_macro.to_vec()) else { unreachable!() };
+            let Ok(s) = String::from_utf8(identifier_of_macro.to_vec()) else {
+                unreachable!()
+            };
             return Err(format!("cannot define '{s}' as it is a cpp keyword",));
         }
         if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) {
@@ -799,7 +817,12 @@ fn get_end_of_fn_macro(tokens: &[lexer::Token], index: usize) -> Result<usize, S
                 Some(_) => {}
                 None => break,
             }
-            if parenth_bal_counter == 0 {
+            if parenth_bal_counter == 0
+                && matches!(
+                    tokens.get(starting_index),
+                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                )
+            {
                 starting_index += 1;
                 break;
             }
@@ -865,8 +888,12 @@ fn parse_macro_and_replace(
     str_maps: &mut lexer::ByteVecMaps,
     already_replaced_macros: &mut Vec<(usize, usize)>,
 ) -> Result<(), String> {
-    let Some(first_macro_section) = macro_stack.pop() else { unreachable!() };
-    let Some(defines_data) = defines.get(&first_macro_section.macro_key) else { unreachable!() };
+    let Some(first_macro_section) = macro_stack.pop() else {
+        unreachable!()
+    };
+    let Some(defines_data) = defines.get(&first_macro_section.macro_key) else {
+        unreachable!()
+    };
     let mut actual_replacement_list = defines_data.replacement_list.clone();
     let mut hash_hash_from_args = Vec::new();
     if let Some(parameters) = &defines_data.parameters {
@@ -902,7 +929,12 @@ fn parse_macro_and_replace(
                             Some(_) => {}
                             None => unreachable!(),
                         }
-                        if parenth_bal_counter == 0 {
+                        if parenth_bal_counter == 0
+                            && matches!(
+                                curr_token_list.get(argument_index),
+                                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                            )
+                        {
                             break;
                         }
                         argument_index += 1;
@@ -932,7 +964,9 @@ fn parse_macro_and_replace(
             || (defines_data.var_arg && seen_args.len() < parameters.len() + 1)
         {
             let byte_vec = &str_maps.key_to_byte_vec[first_macro_section.macro_key];
-            let Ok(macro_str) = String::from_utf8(byte_vec.to_vec()) else { unreachable!() };
+            let Ok(macro_str) = String::from_utf8(byte_vec.to_vec()) else {
+                unreachable!()
+            };
             return Err(format!(
                 "Wrong number of arguments given to macro {}, num arguments given: {}, num parameters: {}",
                 macro_str, seen_args.len(), parameters.len()
@@ -1052,7 +1086,9 @@ fn parse_macro_and_replace(
     }
     let mut byte_vec = Vec::new();
     for t in actual_replacement_list {
-        let Some(inner_byte_vec) = t.to_byte_vec(str_maps) else {unreachable!()};
+        let Some(inner_byte_vec) = t.to_byte_vec(str_maps) else {
+            unreachable!()
+        };
         byte_vec.extend_from_slice(inner_byte_vec.as_slice());
     }
     let actual_replacement_list = lexer::lexer(byte_vec.as_slice(), true, str_maps)?;
@@ -1080,7 +1116,9 @@ fn parse_macro_and_replace(
                 }
             }
             if defines.contains_key(key) {
-                let Some(defined_data) = defines.get(key) else { unreachable!() };
+                let Some(defined_data) = defines.get(key) else {
+                    unreachable!()
+                };
                 let mut new_end = moar_macros_index + 1;
                 if defined_data.parameters.is_some() {
                     new_end = get_end_of_fn_macro(&replacement_list, moar_macros_index)?;
@@ -1104,12 +1142,19 @@ fn expand_macro(
     str_maps: &mut lexer::ByteVecMaps,
     final_tokens: &mut Vec<lexer::Token>,
 ) -> Result<usize, String> {
-    let lexer::Token::IDENT(macro_id_key) = tokens[index] else { unreachable!("tried matching on ident but instead got {:?}", tokens[index]) };
+    let lexer::Token::IDENT(macro_id_key) = tokens[index] else {
+        unreachable!(
+            "tried matching on ident but instead got {:?}",
+            tokens[index]
+        )
+    };
     if !defines.contains_key(&macro_id_key) {
         return Ok(index);
     }
     let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
-    let Some(def_data) = defines.get(&macro_id_key) else { unreachable!() };
+    let Some(def_data) = defines.get(&macro_id_key) else {
+        unreachable!()
+    };
     let ending_index = {
         let mut take_ident_and_parenths = if def_data.parameters.is_some() {
             let mut first_open_par = index + 1;
@@ -1143,7 +1188,12 @@ fn expand_macro(
                         if parenth_balance_counter < 0 {
                             return Err(format!("parentheses aren't balanced"));
                         }
-                        if parenth_balance_counter == 0 {
+                        if parenth_balance_counter == 0
+                            && matches!(
+                                tokens.get(take_ident_and_parenths),
+                                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                            )
+                        {
                             break;
                         }
                         take_ident_and_parenths += 1;

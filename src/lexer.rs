@@ -19,7 +19,9 @@ impl ByteVecMaps {
             self.byte_vec_to_key.insert(bytes_vec.to_vec(), key);
             key
         } else {
-            let Some(key) = self.byte_vec_to_key.get(bytes_vec) else { unreachable!() };
+            let Some(key) = self.byte_vec_to_key.get(bytes_vec) else {
+                unreachable!()
+            };
             *key
         }
     }
@@ -80,7 +82,9 @@ impl ConstantChar {
                             let octal_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
                                 [byte_index + 1..octal_seq_index]
                                 .to_vec();
-                            let Ok(octal_str) = String::from_utf8(octal_seq_vec) else { unreachable!() };
+                            let Ok(octal_str) = String::from_utf8(octal_seq_vec) else {
+                                unreachable!()
+                            };
                             match u8::from_str_radix(octal_str.as_str(), 8) {
                                 Ok(v) => {
                                     byte_vec.push(v);
@@ -137,7 +141,9 @@ impl ConstantChar {
                                 let hex_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
                                     [start_of_seq..start_of_seq + 2]
                                     .to_vec();
-                                let Ok(hex_str) = String::from_utf8(hex_seq_vec) else { unreachable!() };
+                                let Ok(hex_str) = String::from_utf8(hex_seq_vec) else {
+                                    unreachable!()
+                                };
                                 match u8::from_str_radix(hex_str.as_str(), 16) {
                                     Ok(v) => {
                                         byte_vec.push(v);
@@ -248,7 +254,9 @@ impl StringLiteral {
                             let octal_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
                                 [byte_index + 1..octal_seq_index]
                                 .to_vec();
-                            let Ok(octal_str) = String::from_utf8(octal_seq_vec) else { unreachable!() };
+                            let Ok(octal_str) = String::from_utf8(octal_seq_vec) else {
+                                unreachable!()
+                            };
                             match u8::from_str_radix(octal_str.as_str(), 8) {
                                 Ok(v) => {
                                     byte_vec.push(v);
@@ -305,7 +313,9 @@ impl StringLiteral {
                                 let hex_seq_vec = str_maps.key_to_byte_vec[self.sequence_key]
                                     [start_of_seq..start_of_seq + 2]
                                     .to_vec();
-                                let Ok(hex_str) = String::from_utf8(hex_seq_vec) else { unreachable!() };
+                                let Ok(hex_str) = String::from_utf8(hex_seq_vec) else {
+                                    unreachable!()
+                                };
                                 match u8::from_str_radix(hex_str.as_str(), 16) {
                                     Ok(v) => {
                                         byte_vec.push(v);
@@ -524,7 +534,9 @@ impl Token {
                 suffix,
             } => {
                 if let Some(suff_key) = suffix {
-                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
+                    let Suffix::Float { float_type, key } = suff_key else {
+                        unreachable!()
+                    };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
@@ -537,7 +549,9 @@ impl Token {
             }
             Token::CONSTANT_HEXA_INT { value_key, suffix } => {
                 if let Some(suff_key) = suffix {
-                    let Suffix::Integer { integer_type, key } = suff_key else { unreachable!() };
+                    let Suffix::Integer { integer_type, key } = suff_key else {
+                        unreachable!()
+                    };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
@@ -551,14 +565,18 @@ impl Token {
                 suffix,
             } => match (exp_part_key, suffix) {
                 (Some(ep_key), Some(suff_key)) => {
-                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
+                    let Suffix::Float { float_type, key } = suff_key else {
+                        unreachable!()
+                    };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*ep_key]);
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
                 }
                 (_, Some(suff_key)) => {
-                    let Suffix::Float { float_type, key } = suff_key else { unreachable!() };
+                    let Suffix::Float { float_type, key } = suff_key else {
+                        unreachable!()
+                    };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
@@ -602,7 +620,9 @@ impl Token {
             }
             Token::CONSTANT_DEC_INT { value_key, suffix } => {
                 if let Some(suff_key) = suffix {
-                    let Suffix::Integer { integer_type, key } = suff_key else { unreachable!() };
+                    let Suffix::Integer { integer_type, key } = suff_key else {
+                        unreachable!()
+                    };
                     let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
                     vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
                     Some(vec)
@@ -734,8 +754,12 @@ fn match_universal_character_name<'a>(
                 if slice.len() == 2 {
                     return Err(format!("empty universal character name"));
                 }
-                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else { unreachable!() };
-                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else { unreachable!() };
+                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else {
+                    unreachable!()
+                };
+                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else {
+                    unreachable!()
+                };
                 //A universal character name shall not specify a character whose short identifier is less than 00A0
                 //other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive
                 if (v != b'$'.into() && v != b'@'.into() && v != b'`'.into() && v < 160)
@@ -759,8 +783,12 @@ other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through 
                 if slice.len() == 2 {
                     return Err(format!("empty universal character name"));
                 }
-                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else { unreachable!() };
-                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else { unreachable!() };
+                let Ok(hex_str) = String::from_utf8(slice[2..].to_vec()) else {
+                    unreachable!()
+                };
+                let Ok(v) = u32::from_str_radix(hex_str.as_str(), 16) else {
+                    unreachable!()
+                };
                 //A universal character name shall not specify a character whose short identifier is less than 00A0
                 //other than 0024 ($), 0040 (@), or 0060 (‘), nor one in the range D800 through DFFF inclusive
                 if (v != b'$'.into() && v != b'@'.into() && v != b'`'.into() && v < 160)
@@ -786,7 +814,13 @@ fn match_string_literal(
         prefix_key: None,
         sequence_key: 0,
     });
-    let Token::StringLiteral(StringLiteral { prefix_key, sequence_key }) = &mut token else { unreachable!() };
+    let Token::StringLiteral(StringLiteral {
+        prefix_key,
+        sequence_key,
+    }) = &mut token
+    else {
+        unreachable!()
+    };
     if byte_index < program_str_bytes.len()
         && [b'u', b'U', b'L'].contains(&program_str_bytes[byte_index])
     {
@@ -2062,7 +2096,9 @@ mod tests {
                 exp_part_key,
                 suffix,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                    unreachable!()
+                };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
                 let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
@@ -2087,7 +2123,9 @@ mod tests {
                 binary_exp_part_key,
                 suffix,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                    unreachable!()
+                };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
                 let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
@@ -2112,7 +2150,9 @@ mod tests {
                 binary_exp_part_key,
                 suffix,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else { unreachable!() };
+                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                    unreachable!()
+                };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
                 let suffix = str_maps.key_to_byte_vec.get(*key).unwrap();
@@ -2130,7 +2170,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(char token)")
+        };
         match &char_token {
             super::Token::CONSTANT_CHAR(ConstantChar {
                 prefix: _,
@@ -2148,7 +2190,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(char token)")
+        };
         match &char_token {
             super::Token::CONSTANT_CHAR(ConstantChar {
                 prefix,
@@ -2167,7 +2211,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(char token)")
+        };
         match &char_token {
             super::Token::CONSTANT_CHAR(ConstantChar {
                 prefix,
@@ -2186,7 +2232,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(char token)") };
+        let Some(char_token) = match_character_constant(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(char token)")
+        };
         match &char_token {
             super::Token::CONSTANT_CHAR(ConstantChar {
                 prefix,
@@ -2205,7 +2253,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(string literal)")
+        };
         match &string_literal {
             super::Token::StringLiteral(StringLiteral {
                 prefix_key,
@@ -2227,7 +2277,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(string literal)")
+        };
         match &string_literal {
             super::Token::StringLiteral(StringLiteral {
                 prefix_key,
@@ -2246,7 +2298,9 @@ mod tests {
         let s_bytes = s.as_bytes();
         let mut index = 0;
         let mut str_maps = ByteVecMaps::new();
-        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else { panic!("Didn't get Some(string literal)") };
+        let Some(string_literal) = match_string_literal(s_bytes, &mut index, &mut str_maps)? else {
+            panic!("Didn't get Some(string literal)")
+        };
         match &string_literal {
             super::Token::StringLiteral(StringLiteral {
                 prefix_key,

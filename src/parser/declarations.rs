@@ -382,7 +382,9 @@ pub fn parse_initializer(
                     None => return Err(format!("Missing curly, {:?}", tokens)),
                     _ => {}
                 }
-                if curly_bal_counter == 0 {
+                if curly_bal_counter == 0
+                    && matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_CURLY))
+                {
                     break;
                 }
                 index += 1;
@@ -447,6 +449,9 @@ fn parse_initializer_list(
                         }
                         index += 1;
                     }
+                    if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                        return Err(format!("No closing sqr bracket"));
+                    }
                     let (_, expr) = parser::expressions::parse_expressions(
                         &tokens[starting..index - 1],
                         0,
@@ -472,7 +477,9 @@ fn parse_initializer_list(
                     if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
                         return Err(format!("Expected identifier, got {:?}", tokens.get(index)));
                     }
-                    let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                    let Some(lexer::Token::IDENT(key)) = tokens.get(index) else {
+                        unreachable!()
+                    };
                     designation
                         .designator_list
                         .push(Designator::WithIdentifier(*key));
@@ -517,7 +524,9 @@ fn parse_pointer(tokens: &[lexer::Token], start_index: usize) -> Option<(usize, 
         index += 1;
         let parsed_type_qualified = parse_type_qualifiers(tokens, index);
         if let Some((new_index, qualifiers)) = parsed_type_qualified {
-            let Some(pointer) = pointer_stack.last_mut() else { unreachable!() };
+            let Some(pointer) = pointer_stack.last_mut() else {
+                unreachable!()
+            };
             pointer
                 .type_qualifier_list
                 .extend_from_slice(qualifiers.as_slice());
@@ -578,6 +587,9 @@ fn parse_direct_declarator(
                     Some(_) => {}
                 }
                 index += 1;
+            }
+            if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                return Err(format!("missing )"));
             }
             let (_, inner_declarator) =
                 parse_declarator(&tokens[starting..index - 1], 0, flattened, str_maps)?;
@@ -645,6 +657,9 @@ fn parse_direct_declarator(
                         }
                         index += 1;
                     }
+                    if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                        return Err(format!("missing closing sqr bracket"));
+                    }
                     if tokens[starting..index - 1]
                         .iter()
                         .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
@@ -694,6 +709,9 @@ fn parse_direct_declarator(
                             }
                             index += 1;
                         }
+                        if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                            return Err(format!("missing closing sqr bracket"));
+                        }
                         let (_, expr) = parser::expressions::parse_expressions(
                             &tokens[starting..index - 1],
                             0,
@@ -714,6 +732,9 @@ fn parse_direct_declarator(
                                 None => return Err("missing closing sqr bracket".to_string()),
                             }
                             index += 1;
+                        }
+                        if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                            return Err(format!("missing closing sqr bracket"));
                         }
                         if tokens[starting..index - 1]
                             .iter()
@@ -748,7 +769,9 @@ fn parse_direct_declarator(
                     None => return Err(format!("missing closing parenth")),
                     Some(_) => {}
                 }
-                if parenth_bal_counter == 0 {
+                if parenth_bal_counter == 0
+                    && matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR))
+                {
                     break;
                 }
                 index += 1;
@@ -942,6 +965,9 @@ fn parse_struct_union_specifier(
         }
         index += 1;
     }
+    if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_CURLY)) {
+        return Err("missing closing curly".to_string());
+    }
     let mut parse_struct_declarator_idx = starting;
     while parse_struct_declarator_idx < index - 1 {
         let (new_index, struct_declaration) =
@@ -1048,7 +1074,7 @@ fn parse_enumerator_specifier(
     Ok((index + 1, enum_specifier))
 }
 
-fn parse_specifiers_qualifiers(
+pub fn parse_specifiers_qualifiers(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
@@ -1078,7 +1104,7 @@ fn parse_specifiers_qualifiers(
     Ok((index, specifier_qualifier))
 }
 
-fn parse_type_qualifiers(
+pub fn parse_type_qualifiers(
     tokens: &[lexer::Token],
     start_index: usize,
 ) -> Option<(usize, Vec<TypeQualifier>)> {
@@ -1110,7 +1136,7 @@ fn parse_type_qualifiers(
     }
 }
 
-fn parse_type_specifiers(
+pub fn parse_type_specifiers(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
@@ -1181,7 +1207,7 @@ fn parse_type_specifiers(
     Ok((index, type_specifiers))
 }
 
-fn parse_parameter_type_list(
+pub fn parse_parameter_type_list(
     tokens: &[lexer::Token],
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
@@ -1229,6 +1255,12 @@ fn parse_parameter_type_list(
                             None => return Err("unbalanced parenths".to_string()),
                         }
                         parenth_idx += 1;
+                    }
+                    if !matches!(
+                        tokens.get(parenth_idx - 1),
+                        Some(lexer::Token::PUNCT_CLOSE_PAR)
+                    ) {
+                        return Err("unbalanced parenths".to_string());
                     }
                     has_ident
                 }
@@ -1284,7 +1316,7 @@ fn parse_parameter_type_list(
     Ok(ptl)
 }
 
-fn parse_direct_abstract_declarator(
+pub fn parse_direct_abstract_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
@@ -1310,7 +1342,9 @@ fn parse_direct_abstract_declarator(
                 None => return Err(format!("missing closing parenth")),
                 Some(_) => {}
             }
-            if parenth_bal_counter == 0 {
+            if parenth_bal_counter == 0
+                && matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR))
+            {
                 break;
             }
             index += 1;
@@ -1395,6 +1429,9 @@ fn parse_direct_abstract_declarator(
                         }
                         index += 1;
                     }
+                    if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                        return Err("missing closing sqr bracket".to_string());
+                    }
                     if tokens[starting..index - 1]
                         .iter()
                         .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
@@ -1444,6 +1481,9 @@ fn parse_direct_abstract_declarator(
                             }
                             index += 1;
                         }
+                        if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                            return Err("missing closing sqr bracket".to_string());
+                        }
                         let (_, expr) = parser::expressions::parse_expressions(
                             &tokens[starting..index - 1],
                             0,
@@ -1464,6 +1504,9 @@ fn parse_direct_abstract_declarator(
                                 None => return Err("missing closing sqr bracket".to_string()),
                             }
                             index += 1;
+                        }
+                        if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_SQR)) {
+                            return Err("missing closing sqr bracket".to_string());
                         }
                         if tokens[starting..index - 1]
                             .iter()
@@ -1498,7 +1541,9 @@ fn parse_direct_abstract_declarator(
                     None => return Err(format!("missing closing parenth")),
                     Some(_) => {}
                 }
-                if parenth_bal_counter == 0 {
+                if parenth_bal_counter == 0
+                    && matches!(tokens.get(index), Some(lexer::Token::PUNCT_CLOSE_PAR))
+                {
                     break;
                 }
                 index += 1;
@@ -1511,7 +1556,7 @@ fn parse_direct_abstract_declarator(
     Ok((index, dad))
 }
 
-fn parse_abstract_declarator(
+pub fn parse_abstract_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
@@ -1645,11 +1690,15 @@ mod tests {
             let mut flattened = parser::Flattened::new();
             let tokens = lexer::lexer(src, false, &mut str_maps)?;
             let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
-            let Initializer::InitializerList(ili) = i else { unreachable!() };
+            let Initializer::InitializerList(ili) = i else {
+                unreachable!()
+            };
             let il = flattened.initializer_lists[ili].clone();
             let il1 = il[0];
             let il2 = il[1];
-            let Some(des1_idx) = il1.designation else { unreachable!() };
+            let Some(des1_idx) = il1.designation else {
+                unreachable!()
+            };
             let des1 = flattened.designations[des1_idx].clone();
             assert_eq!(
                 Designation {
@@ -1659,9 +1708,13 @@ mod tests {
                 },
                 des1
             );
-            let Some(ini1_idx) = il1.initializer else { unreachable!() };
+            let Some(ini1_idx) = il1.initializer else {
+                unreachable!()
+            };
             let ini1 = flattened.initializers[ini1_idx].clone();
-            let Initializer::AssignmentExpression(key) = ini1 else { unreachable!() };
+            let Initializer::AssignmentExpression(key) = ini1 else {
+                unreachable!()
+            };
             let expr = flattened.expressions[key];
             assert!(matches!(
                 expr,
@@ -1670,7 +1723,9 @@ mod tests {
                 )))
             ));
 
-            let Some(des2_idx) = il2.designation else { unreachable!() };
+            let Some(des2_idx) = il2.designation else {
+                unreachable!()
+            };
             let des2 = flattened.designations[des2_idx].clone();
             assert_eq!(
                 Designation {
@@ -1680,9 +1735,13 @@ mod tests {
                 },
                 des2
             );
-            let Some(ini2_idx) = il2.initializer else { unreachable!() };
+            let Some(ini2_idx) = il2.initializer else {
+                unreachable!()
+            };
             let ini2 = flattened.initializers[ini2_idx].clone();
-            let Initializer::AssignmentExpression(key) = ini2 else { unreachable!() };
+            let Initializer::AssignmentExpression(key) = ini2 else {
+                unreachable!()
+            };
             let expr = flattened.expressions[key];
             assert!(matches!(
                 expr,
@@ -1726,12 +1785,18 @@ mod tests {
             Some(TypeSpecifier::Int)
         ));
         assert!(type_name.abstract_declarator.is_some());
-        let Some(abd) = type_name.abstract_declarator else { unreachable!() };
+        let Some(abd) = type_name.abstract_declarator else {
+            unreachable!()
+        };
         assert!(abd.pointer.is_empty());
         assert!(abd.direct_abstract_declarator.is_some());
-        let Some(dad) = abd.direct_abstract_declarator else { unreachable!() };
+        let Some(dad) = abd.direct_abstract_declarator else {
+            unreachable!()
+        };
         assert!(dad.abstract_declarator.is_some());
-        let Some(abd) = &dad.abstract_declarator else { unreachable!() };
+        let Some(abd) = &dad.abstract_declarator else {
+            unreachable!()
+        };
         assert!(!abd.pointer.is_empty());
         assert!(matches!(
             dad,
@@ -1742,13 +1807,21 @@ mod tests {
                 ..
             }
         ));
-        let Some(expr_idx) = dad.assign_expr else { unreachable!() };
+        let Some(expr_idx) = dad.assign_expr else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[expr_idx],
             parser::expressions::Expr::Primary(_)
         ));
-        let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(t))) = flattened.expressions[expr_idx] else { unreachable!() };
-        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else { unreachable!() };
+        let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Token(t))) =
+            flattened.expressions[expr_idx]
+        else {
+            unreachable!()
+        };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else {
+            unreachable!()
+        };
         assert_eq!(value_key, str_maps.add_byte_vec(b"3"));
         Ok(())
     }
@@ -1764,12 +1837,18 @@ mod tests {
             Some(TypeSpecifier::Int)
         ));
         assert!(type_name.abstract_declarator.is_some());
-        let Some(abd) = type_name.abstract_declarator else { unreachable!() };
+        let Some(abd) = type_name.abstract_declarator else {
+            unreachable!()
+        };
         assert!(abd.pointer.is_empty());
         assert!(abd.direct_abstract_declarator.is_some());
-        let Some(dad) = abd.direct_abstract_declarator else { unreachable!() };
+        let Some(dad) = abd.direct_abstract_declarator else {
+            unreachable!()
+        };
         assert!(dad.abstract_declarator.is_some());
-        let Some(abd) = &dad.abstract_declarator else { unreachable!() };
+        let Some(abd) = &dad.abstract_declarator else {
+            unreachable!()
+        };
         assert!(!abd.pointer.is_empty());
         assert!(matches!(
             dad,
@@ -1796,8 +1875,12 @@ mod tests {
                 direct_declarator,
             } = dec;
             assert!(direct_declarator.is_some());
-            let Some(direct_declarator) = direct_declarator else { unreachable!() };
-            let Some(key) = direct_declarator.identifier else { unreachable!() };
+            let Some(direct_declarator) = direct_declarator else {
+                unreachable!()
+            };
+            let Some(key) = direct_declarator.identifier else {
+                unreachable!()
+            };
             assert_eq!(key, str_maps.add_byte_vec("hi".as_bytes()));
             assert!(!pointer.is_empty());
         }

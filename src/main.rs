@@ -115,7 +115,9 @@ fn main() -> Result<(), String> {
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
         match std::fs::read(file) {
             Ok(contents) => {
-                let Ok(pathbuf) = std::fs::canonicalize(file) else { unreachable!() };
+                let Ok(pathbuf) = std::fs::canonicalize(file) else {
+                    unreachable!()
+                };
                 let path = pathbuf.as_path().to_string_lossy().to_string();
                 let tokens = cpp::cpp(
                     contents,
@@ -128,12 +130,15 @@ fn main() -> Result<(), String> {
                 let tokens = concat_adjacent_strings(tokens.as_slice(), &mut str_maps)?;
                 let mut new_tokens = Vec::new();
                 for t in tokens {
-                    let Some(byte_vec) = t.to_byte_vec(&str_maps) else { panic!("We should not have a token that isn't to_byte_vec-able") };
+                    let Some(byte_vec) = t.to_byte_vec(&str_maps) else {
+                        panic!("We should not have a token that isn't to_byte_vec-able")
+                    };
                     new_tokens.extend_from_slice(byte_vec.as_slice());
                 }
                 let tokens = new_tokens;
                 let tokens = lexer::lexer(tokens.as_slice(), false, &mut str_maps)?;
-                cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
+                //cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
+                parser::parser(&tokens, &mut str_maps);
             }
             Err(_) => println!("error"),
         }

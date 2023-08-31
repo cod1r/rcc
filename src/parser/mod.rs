@@ -3,6 +3,8 @@ pub mod declarations;
 pub mod expressions;
 pub mod statements;
 
+type ParserTypeIndex = usize;
+
 pub struct Flattened {
     pub expressions: Vec<expressions::Expr>,
     pub type_names: Vec<declarations::TypeName>,
@@ -25,10 +27,15 @@ impl Flattened {
     }
 }
 
-pub fn parser(tokens: &[lexer::Token]) -> Result<(), String> {
+pub enum ParserTypes {}
+
+pub fn parser(
+    tokens: &[lexer::Token],
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<ParserTypes, String> {
+    // TODO: we need to finish parsing statements or syntax that encapsulates a lot of things
+    let mut flattened = Flattened::new();
     let mut parser_index = 0;
-    while parser_index < tokens.len() {
-        parser_index += 1;
-    }
+    while parser_index < tokens.len() {}
     todo!()
 }

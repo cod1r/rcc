@@ -480,7 +480,9 @@ pub fn parse_expressions(
                 }
                 match curr_expr {
                     Some(Expr::Unary(_) | Expr::Primary(_)) => {
-                        let Some(expr) = curr_expr else { unreachable!() };
+                        let Some(expr) = curr_expr else {
+                            unreachable!()
+                        };
                         flattened.expressions.push(expr);
                         let assignment = Assignment {
                             first: Some(flattened.expressions.len() - 1),
@@ -559,7 +561,10 @@ pub fn parse_expressions(
                                                 tokens.get(index)
                                             ));
                                         }
-                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index)
+                                        else {
+                                            unreachable!()
+                                        };
                                         *key
                                     },
                                 },
@@ -587,7 +592,10 @@ pub fn parse_expressions(
                                                 tokens.get(index)
                                             ));
                                         }
-                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index) else { unreachable!() };
+                                        let Some(lexer::Token::IDENT(key)) = tokens.get(index)
+                                        else {
+                                            unreachable!()
+                                        };
                                         *key
                                     },
                                 },
@@ -725,6 +733,9 @@ pub fn parse_expressions(
                     }
                     index += 1;
                 }
+                if !matches!(tokens.get(index - 1), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                    return Err(format!("Missing closing parenth"));
+                }
                 while matches!(
                     tokens.get(index),
                     Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -818,7 +829,9 @@ pub fn parse_expressions(
                 while let Some(mut e) = stack.pop() {
                     match e {
                         Expr::Primary(ref mut p) => {
-                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            let Some(unwrapped) = curr_expr else {
+                                unreachable!()
+                            };
                             flattened.expressions.push(unwrapped);
                             *p = Some(PrimaryInner::new_p_expr(flattened.expressions.len() - 1));
                             curr_expr = Some(e);
@@ -832,7 +845,9 @@ pub fn parse_expressions(
                             unreachable!()
                         }
                         Expr::Unary(ref mut u) => {
-                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            let Some(unwrapped) = curr_expr else {
+                                unreachable!()
+                            };
                             flattened.expressions.push(unwrapped);
                             u.first = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
@@ -843,7 +858,9 @@ pub fn parse_expressions(
                             }
                         }
                         Expr::Cast(ref mut c) => {
-                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            let Some(unwrapped) = curr_expr else {
+                                unreachable!()
+                            };
                             flattened.expressions.push(unwrapped);
                             c.cast_expr = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
@@ -854,7 +871,9 @@ pub fn parse_expressions(
                             }
                         }
                         _ => {
-                            let Some(unwrapped) = curr_expr else { unreachable!() };
+                            let Some(unwrapped) = curr_expr else {
+                                unreachable!()
+                            };
                             assert!(
                                 e.priority() <= unwrapped.priority(),
                                 "{} {}",
@@ -1352,7 +1371,9 @@ pub fn parse_expressions(
                     return Err(format!("expected expression before ':'"));
                 }
                 while let Some(mut expr) = stack.pop() {
-                    let Some(unwrapped) = curr_expr else { unreachable!() };
+                    let Some(unwrapped) = curr_expr else {
+                        unreachable!()
+                    };
                     flattened.expressions.push(unwrapped);
                     let unwrapped = Some(flattened.expressions.len() - 1);
                     macro_rules! set_to_unwrapped {
@@ -1394,8 +1415,12 @@ pub fn parse_expressions(
             _ => return Err(format!("unknown token: {:?}", tokens[index])),
         }
         if left_expression.is_some() && curr_expr.is_some() {
-            let Some(mut left) = left_expression else { unreachable!() };
-            let Some(mut right) = curr_expr else { unreachable!() };
+            let Some(mut left) = left_expression else {
+                unreachable!()
+            };
+            let Some(mut right) = curr_expr else {
+                unreachable!()
+            };
             if left.priority() >= right.priority() {
                 assert!(left.priority() >= right.priority());
                 flattened.expressions.push(left);
@@ -1437,7 +1462,9 @@ pub fn parse_expressions(
         }
         curr_expr = Some(expr);
     }
-    let Some(curr_expr) = curr_expr else { unreachable!() };
+    let Some(curr_expr) = curr_expr else {
+        unreachable!()
+    };
     Ok((index, curr_expr))
 }
 //Notes:
@@ -1545,7 +1572,9 @@ fn recursive_eval(
                             // compare and not have to do any weird casts.
                             // TODO: add overflow checks...
                             let value = &str_maps.key_to_byte_vec[*value_key];
-                            let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else { unreachable!() };
+                            let Ok(to_be_parsed) = String::from_utf8(value.to_vec()) else {
+                                unreachable!()
+                            };
                             match to_be_parsed.parse::<i128>() {
                                 Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => Ok(v),
                                 _ => {
@@ -1603,7 +1632,9 @@ fn recursive_eval(
         }
         Expr::Multiplicative(m) => {
             let Some(first) = m.first else { unreachable!() };
-            let Some(second) = m.second else { unreachable!() };
+            let Some(second) = m.second else {
+                unreachable!()
+            };
             match m.op {
                 MultiplicativeOps::Mult => {
                     Ok(recursive_eval(&expressions[first], str_maps, expressions)?
@@ -1628,7 +1659,9 @@ fn recursive_eval(
         }
         Expr::Additive(a) => {
             let Some(left) = a.first else { unreachable!() };
-            let Some(right) = a.second else { unreachable!() };
+            let Some(right) = a.second else {
+                unreachable!()
+            };
             match a.op {
                 AdditiveOps::Add => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
                     + recursive_eval(&expressions[right], str_maps, expressions)?),
@@ -1638,7 +1671,9 @@ fn recursive_eval(
         }
         Expr::BitShift(bs) => {
             let Some(left) = bs.first else { unreachable!() };
-            let Some(right) = bs.second else { unreachable!() };
+            let Some(right) = bs.second else {
+                unreachable!()
+            };
             match bs.op {
                 BitShiftOp::Left => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
                     << recursive_eval(&expressions[right], str_maps, expressions)?),
@@ -1648,7 +1683,9 @@ fn recursive_eval(
         }
         Expr::Relational(r) => {
             let Some(first) = r.first else { unreachable!() };
-            let Some(second) = r.second else { unreachable!() };
+            let Some(second) = r.second else {
+                unreachable!()
+            };
             match r.op {
                 RelationalOp::LessThan => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
@@ -1690,7 +1727,9 @@ fn recursive_eval(
         }
         Expr::Equality(e) => {
             let Some(first) = e.first else { unreachable!() };
-            let Some(second) = e.second else { unreachable!() };
+            let Some(second) = e.second else {
+                unreachable!()
+            };
             match e.op {
                 EqualityOp::Equal => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
@@ -1713,8 +1752,12 @@ fn recursive_eval(
             }
         }
         Expr::BitAND(ba) => {
-            let Some(first) = ba.first else { unreachable!() };
-            let Some(second) = ba.second else { unreachable!() };
+            let Some(first) = ba.first else {
+                unreachable!()
+            };
+            let Some(second) = ba.second else {
+                unreachable!()
+            };
             Ok(
                 if (recursive_eval(&expressions[first], str_maps, expressions)?
                     & recursive_eval(&expressions[second], str_maps, expressions)?)
@@ -1727,8 +1770,12 @@ fn recursive_eval(
             )
         }
         Expr::BitXOR(bx) => {
-            let Some(first) = bx.first else { unreachable!() };
-            let Some(second) = bx.second else { unreachable!() };
+            let Some(first) = bx.first else {
+                unreachable!()
+            };
+            let Some(second) = bx.second else {
+                unreachable!()
+            };
             Ok(
                 if (recursive_eval(&expressions[first], str_maps, expressions)?
                     ^ recursive_eval(&expressions[second], str_maps, expressions)?)
@@ -1741,8 +1788,12 @@ fn recursive_eval(
             )
         }
         Expr::BitOR(bo) => {
-            let Some(first) = bo.first else { unreachable!() };
-            let Some(second) = bo.second else { unreachable!() };
+            let Some(first) = bo.first else {
+                unreachable!()
+            };
+            let Some(second) = bo.second else {
+                unreachable!()
+            };
             Ok(
                 if (recursive_eval(&expressions[first], str_maps, expressions)?
                     | recursive_eval(&expressions[second], str_maps, expressions)?)
@@ -1755,8 +1806,12 @@ fn recursive_eval(
             )
         }
         Expr::LogicalAND(la) => {
-            let Some(first) = la.first else { unreachable!() };
-            let Some(second) = la.second else { unreachable!() };
+            let Some(first) = la.first else {
+                unreachable!()
+            };
+            let Some(second) = la.second else {
+                unreachable!()
+            };
             Ok(
                 if recursive_eval(&expressions[first], str_maps, expressions)? != 0
                     && recursive_eval(&expressions[second], str_maps, expressions)? != 0
@@ -1768,8 +1823,12 @@ fn recursive_eval(
             )
         }
         Expr::LogicalOR(lo) => {
-            let Some(first) = lo.first else { unreachable!() };
-            let Some(second) = lo.second else { unreachable!() };
+            let Some(first) = lo.first else {
+                unreachable!()
+            };
+            let Some(second) = lo.second else {
+                unreachable!()
+            };
             Ok(
                 if recursive_eval(&expressions[first], str_maps, expressions)? != 0
                     || recursive_eval(&expressions[second], str_maps, expressions)? != 0
@@ -1782,7 +1841,9 @@ fn recursive_eval(
         }
         Expr::Conditional(c) => {
             let Some(first) = c.first else { unreachable!() };
-            let Some(second) = c.second else { unreachable!() };
+            let Some(second) = c.second else {
+                unreachable!()
+            };
             let Some(third) = c.third else { unreachable!() };
             if recursive_eval(&expressions[first], str_maps, expressions)? != 0 {
                 Ok(recursive_eval(&expressions[second], str_maps, expressions)?)
@@ -2220,15 +2281,22 @@ mod tests {
         let (_, cast_expr) =
             expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(cast_expr, expressions::Expr::Cast(_)));
-        let expressions::Expr::Cast(c) = cast_expr else { unreachable!() };
+        let expressions::Expr::Cast(c) = cast_expr else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[c.cast_expr.unwrap()],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            flattened.expressions[c.cast_expr.unwrap()] else { unreachable!() };
+            flattened.expressions[c.cast_expr.unwrap()]
+        else {
+            unreachable!()
+        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+            unreachable!()
+        };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
@@ -2240,9 +2308,15 @@ mod tests {
         let mut flattened = parser::Flattened::new();
         let (_, add) = expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
-        let expressions::Expr::Additive(a) = add else { unreachable!() };
-        let Some(first_idx) = a.first else { unreachable!() };
-        let Some(second_idx) = a.second else { unreachable!() };
+        let expressions::Expr::Additive(a) = add else {
+            unreachable!()
+        };
+        let Some(first_idx) = a.first else {
+            unreachable!()
+        };
+        let Some(second_idx) = a.second else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[first_idx],
             expressions::Expr::Primary(_)
@@ -2252,24 +2326,38 @@ mod tests {
             expressions::Expr::Cast(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            flattened.expressions[first_idx] else { unreachable!() };
-        let expressions::Expr::Cast(c) =
-            flattened.expressions[second_idx] else { unreachable!() };
+            flattened.expressions[first_idx]
+        else {
+            unreachable!()
+        };
+        let expressions::Expr::Cast(c) = flattened.expressions[second_idx] else {
+            unreachable!()
+        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+            unreachable!()
+        };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         assert!(matches!(a.op, expressions::AdditiveOps::Add));
-        let expressions::Expr::Cast(c) =
-            flattened.expressions[second_idx] else { unreachable!() };
-        let Some(c_idx) = c.cast_expr else { unreachable!() };
+        let expressions::Expr::Cast(c) = flattened.expressions[second_idx] else {
+            unreachable!()
+        };
+        let Some(c_idx) = c.cast_expr else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[c_idx],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            flattened.expressions[c_idx] else { unreachable!() };
+            flattened.expressions[c_idx]
+        else {
+            unreachable!()
+        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+            unreachable!()
+        };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
@@ -2281,39 +2369,63 @@ mod tests {
         let mut flattened = parser::Flattened::new();
         let (_, add) = expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(add, expressions::Expr::Additive(_)));
-        let expressions::Expr::Additive(a) = add else { unreachable!() };
-        let Some(first_idx) = a.first else { unreachable!() };
+        let expressions::Expr::Additive(a) = add else {
+            unreachable!()
+        };
+        let Some(first_idx) = a.first else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[first_idx],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            flattened.expressions[first_idx] else { unreachable!() };
+            flattened.expressions[first_idx]
+        else {
+            unreachable!()
+        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix }  = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+            unreachable!()
+        };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
-        let Some(second_idx) = a.second else { unreachable!() };
+        let Some(second_idx) = a.second else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[second_idx],
             expressions::Expr::Unary(_)
         ));
-        let expressions::Expr::Unary(u) = flattened.expressions[second_idx] else { unreachable!() };
+        let expressions::Expr::Unary(u) = flattened.expressions[second_idx] else {
+            unreachable!()
+        };
         assert!(matches!(u.op, expressions::UnaryOp::LogicalNOT));
-        let Some(cast_idx) = u.first else { unreachable!() };
+        let Some(cast_idx) = u.first else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[cast_idx],
             expressions::Expr::Cast(_)
         ));
-        let expressions::Expr::Cast(c) = flattened.expressions[cast_idx] else { unreachable!() };
-        let Some(p_idx) = c.cast_expr else { unreachable!() };
+        let expressions::Expr::Cast(c) = flattened.expressions[cast_idx] else {
+            unreachable!()
+        };
+        let Some(p_idx) = c.cast_expr else {
+            unreachable!()
+        };
         assert!(matches!(
             flattened.expressions[p_idx],
             expressions::Expr::Primary(_)
         ));
         let expressions::Expr::Primary(Some(expressions::PrimaryInner::Token(t))) =
-            flattened.expressions[p_idx] else { unreachable!() };
+            flattened.expressions[p_idx]
+        else {
+            unreachable!()
+        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else { unreachable!() };
+        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+            unreachable!()
+        };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         Ok(())
     }
@@ -2327,20 +2439,28 @@ mod tests {
             let (_, add) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(add, expressions::Expr::Additive(_)));
-            let expressions::Expr::Additive(a) = add else { unreachable!() };
+            let expressions::Expr::Additive(a) = add else {
+                unreachable!()
+            };
             assert!(matches!(a.op, expressions::AdditiveOps::Add));
 
-            let Some(left_idx) = a.first else { unreachable!() };
+            let Some(left_idx) = a.first else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[left_idx],
                 expressions::Expr::PostFix(_)
             ));
-            let expressions::Expr::PostFix(p) = flattened.expressions[left_idx] else { unreachable!() };
+            let expressions::Expr::PostFix(p) = flattened.expressions[left_idx] else {
+                unreachable!()
+            };
             assert!(matches!(
                 p,
                 expressions::PostFix::WithIncrementDecrement { .. }
             ));
-            let expressions::PostFix::WithIncrementDecrement { first, op } = p else { unreachable!() };
+            let expressions::PostFix::WithIncrementDecrement { first, op } = p else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[first],
                 expressions::Expr::Primary(_)
@@ -2350,7 +2470,9 @@ mod tests {
                 expressions::PostFixIncrementDecrement::Decrement
             ));
 
-            let Some(right_idx) = a.second else { unreachable!() };
+            let Some(right_idx) = a.second else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[right_idx],
                 expressions::Expr::Primary(_)
@@ -2368,8 +2490,12 @@ mod tests {
             let (_, add) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(add, expressions::Expr::Additive(_)),);
-            let expressions::Expr::Additive(a) = add else { unreachable!() };
-            let Some(first_idx) = a.first else { unreachable!() };
+            let expressions::Expr::Additive(a) = add else {
+                unreachable!()
+            };
+            let Some(first_idx) = a.first else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[first_idx],
                 expressions::Expr::Unary(_)
@@ -2383,8 +2509,12 @@ mod tests {
             let (_, add) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(add, expressions::Expr::Additive(_)),);
-            let expressions::Expr::Additive(a) = add else { unreachable!() };
-            let Some(first_idx) = a.first else { unreachable!() };
+            let expressions::Expr::Additive(a) = add else {
+                unreachable!()
+            };
+            let Some(first_idx) = a.first else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[first_idx],
                 expressions::Expr::Unary(_)
@@ -2414,13 +2544,19 @@ mod tests {
             let (_, assign) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(assign, expressions::Expr::Assignment(_)));
-            let expressions::Expr::Assignment(a) = assign else { unreachable!() };
-            let Some(first_idx) = a.first else { unreachable!() };
+            let expressions::Expr::Assignment(a) = assign else {
+                unreachable!()
+            };
+            let Some(first_idx) = a.first else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[first_idx],
                 expressions::Expr::Primary(_)
             ));
-            let Some(second_idx) = a.second else { unreachable!() };
+            let Some(second_idx) = a.second else {
+                unreachable!()
+            };
             assert!(matches!(
                 flattened.expressions[second_idx],
                 expressions::Expr::Primary(_)
