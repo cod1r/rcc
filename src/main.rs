@@ -4,13 +4,13 @@ mod parser;
 use std::collections::HashMap;
 use std::env;
 
+#[derive(Debug, PartialEq)]
 struct ArgumentInfo {
     files: Vec<String>,
     include_paths: Vec<String>,
     library_paths: Vec<String>,
 }
-fn parse_args(args: std::env::Args) -> Result<ArgumentInfo, String> {
-    let args = args.collect::<Vec<String>>();
+fn parse_args(args: Vec<String>) -> Result<ArgumentInfo, String> {
     let mut arg_info = ArgumentInfo {
         files: Vec::new(),
         include_paths: Vec::new(),
@@ -84,13 +84,16 @@ fn parse_args(args: std::env::Args) -> Result<ArgumentInfo, String> {
             },
         }
     }
+    if arg_info.files.is_empty() {
+        return Err(format!("no input files passed in"));
+    }
     Ok(arg_info)
 }
 
 // TODO: add flag to enable trigraphs
 fn main() -> Result<(), String> {
     let args = env::args();
-    let arg_info = parse_args(args)?;
+    let arg_info = parse_args(args.collect::<Vec<String>>())?;
     let mut defines: HashMap<usize, cpp::Define> = HashMap::new();
     let mut str_maps = lexer::ByteVecMaps::new();
     let stdc_version = cpp::Define {
@@ -152,4 +155,28 @@ fn main() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_args, ArgumentInfo};
+    #[test]
+    fn parse_arg_test() -> Result<(), String> {
+        let vec_args = vec![
+            String::from("rcc"),
+            String::from("temp.c"),
+            String::from("--include"),
+            String::from("/usr"),
+        ];
+        let arg_info = parse_args(vec_args)?;
+        assert_eq!(
+            arg_info,
+            ArgumentInfo {
+                files: vec![String::from("temp.c")],
+                include_paths: vec![String::from("/usr")],
+                library_paths: vec![],
+            }
+        );
+        Ok(())
+    }
 }
