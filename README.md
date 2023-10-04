@@ -8,6 +8,11 @@ status: VAPORWARE
     - `#error`, `#pragma`, etc. aren't implemented yet.
 - Currently working on parsing C declarations.
 
+## TODO:
+- Finish parsing statements
+- Finish parsing declarations
+- Apply semantic analysis (constraints etc)
+
 # References
 
-[C17 Spec](https://web.archive.org/web/20181230041359/http://www.open-std.org/jtc1/sc22/wg14/www/abq/c17_updated_proposed_fdis.pdf)
+[C17 Spec](https://open-std.org/JTC1/SC22/WG14/www/docs/n2310.pdf)
