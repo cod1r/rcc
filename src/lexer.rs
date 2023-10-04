@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::error::{RccErrorType};
 
 pub struct ByteVecMaps {
     pub key_to_byte_vec: Vec<Vec<u8>>,
@@ -1823,7 +1824,7 @@ pub fn lexer(
                     "unexpected token: '{}' at index: {}, {}",
                     program_str_bytes[index] as char,
                     index,
-                    program_str_bytes
+                    program_str_bytes[if 50 > index { 0 } else { index - 50 }..index + 50]
                         .to_vec()
                         .iter()
                         .fold(String::new(), |s, b| s + &(*b as char).to_string())

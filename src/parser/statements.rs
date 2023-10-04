@@ -58,13 +58,18 @@ pub enum Iteration {
         second_expr_index: Option<parser::expressions::ExpressionIndex>,
         third_expr_index: Option<parser::expressions::ExpressionIndex>,
     },
+    ForDeclaration {
+        declaration_index: parser::declarations::DeclarationIndex,
+        expression1: Option<parser::expressions::ExpressionIndex>,
+        expression2: Option<parser::expressions::ExpressionIndex>,
+    },
 }
 #[derive(Copy, Clone)]
 pub enum Jump {
     Goto(usize),
     Continue,
     Break,
-    Return(Option<parser::expressions::ExpressionIndex>,
+    Return(Option<parser::expressions::ExpressionIndex>),
 }
 #[derive(Copy, Clone)]
 pub enum Statement {
