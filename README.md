@@ -12,6 +12,7 @@ status: VAPORWARE
 - Finish parsing statements
 - Finish parsing declarations
 - Apply semantic analysis (constraints etc)
+- Write library headers (stdio, math, etc)
 
 # References
 
