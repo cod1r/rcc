@@ -4,82 +4,93 @@ mod parser;
 use std::collections::HashMap;
 use std::env;
 
-fn concat_adjacent_strings(
-    tokens: &[lexer::Token],
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Vec<lexer::Token>, String> {
-    let mut adjacent_strings_concated = Vec::new();
-    let mut token_string_concated_index = 0;
-    while token_string_concated_index < tokens.len() {
-        if let Some(lexer::Token::StringLiteral(first_string_lit)) =
-            tokens.get(token_string_concated_index)
-        {
-            let mut prev_prefix = first_string_lit.prefix_key;
-            let mut first_byte_vec =
-                str_maps.key_to_byte_vec[first_string_lit.sequence_key].clone();
-            let mut adjacent_string_lit_index = token_string_concated_index + 1;
-            while matches!(
-                tokens.get(adjacent_string_lit_index),
-                Some(
-                    lexer::Token::WHITESPACE
-                        | lexer::Token::NEWLINE
-                        | lexer::Token::StringLiteral(_)
-                )
-            ) && adjacent_string_lit_index < tokens.len()
-            {
-                if let Some(lexer::Token::StringLiteral(_second_string_lit)) =
-                    tokens.get(adjacent_string_lit_index)
-                {
-                    while let Some(lexer::Token::StringLiteral(second_string_lit)) =
-                        tokens.get(adjacent_string_lit_index)
-                    {
-                        match (prev_prefix, second_string_lit.prefix_key) {
-                            (Some(prev_key), Some(second_prefix_key)) => {
-                                let first_prefix = str_maps.key_to_byte_vec[prev_key].as_slice();
-                                let second_prefix =
-                                    str_maps.key_to_byte_vec[second_prefix_key].as_slice();
-                                if *first_prefix != *second_prefix {
-                                    return Err(format!(
-                                    "Cannot concatenate string literals with differing prefixes"
-                                ));
-                                }
-                            }
-                            _ => {}
-                        }
-                        let second_byte_vec =
-                            &str_maps.key_to_byte_vec[second_string_lit.sequence_key];
-                        first_byte_vec.extend_from_slice(second_byte_vec);
-                        prev_prefix = second_string_lit.prefix_key;
-                        adjacent_string_lit_index += 1;
-                    }
-                    continue;
-                }
-                adjacent_string_lit_index += 1;
-            }
-            adjacent_strings_concated.push(lexer::Token::StringLiteral(lexer::StringLiteral {
-                prefix_key: prev_prefix,
-                sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
-            }));
-            token_string_concated_index = adjacent_string_lit_index;
-            continue;
-        }
-        if token_string_concated_index < tokens.len() {
-            adjacent_strings_concated.push(tokens[token_string_concated_index]);
-        }
-        token_string_concated_index += 1;
+struct ArgumentInfo {
+    files: Vec<String>,
+    include_paths: Vec<String>,
+    library_paths: Vec<String>,
+}
+fn parse_args(args: std::env::Args) -> Result<ArgumentInfo, String> {
+    let args = args.collect::<Vec<String>>();
+    let mut arg_info = ArgumentInfo {
+        files: Vec::new(),
+        include_paths: Vec::new(),
+        library_paths: Vec::new(),
+    };
+    enum State {
+        File,
+        IncludePath,
+        LibraryPath,
     }
-    Ok(adjacent_strings_concated)
+    let mut flag_state = State::File;
+    if args.len() <= 2 {
+        if args[0].as_str() == "--help"
+            || (args.len() > 1 && args[1].as_str() == "--help")
+            || args.len() == 1
+        {
+            return Err(format!("Usage: rcc <file1> <file2> ... [--include|--library] <include/library path 1> <include/library path 2> ... "));
+        }
+    }
+    for arg in args {
+        match &flag_state {
+            State::File => match arg.as_str() {
+                "--include" => flag_state = State::IncludePath,
+                "--library" => flag_state = State::LibraryPath,
+                _ => {
+                    if arg.ends_with(".c") || arg.ends_with(".h") {
+                        if arg.len() == 2 {
+                            return Err(format!(
+                                "file {} needs to have a name that is longer than two characters",
+                                arg
+                            ));
+                        }
+                        if arg_info.files.contains(&arg) {
+                            return Err(format!("file {} already passed in", arg));
+                        }
+                        arg_info.files.push(arg);
+                    }
+                }
+            },
+            State::IncludePath => match arg.as_str() {
+                "--library" => {
+                    flag_state = State::LibraryPath;
+                }
+                _ => match std::fs::metadata(&arg) {
+                    Ok(metadata) => {
+                        if !metadata.is_dir() {
+                            return Err(format!("{} is not a directory", arg));
+                        }
+                        arg_info.include_paths.push(arg);
+                    }
+                    Err(err) => {
+                        return Err(err.to_string());
+                    }
+                },
+            },
+            State::LibraryPath => match arg.as_str() {
+                "--include" => {
+                    flag_state = State::IncludePath;
+                }
+                _ => match std::fs::metadata(&arg) {
+                    Ok(metadata) => {
+                        if !metadata.is_dir() {
+                            return Err(format!("{} is not a directory", arg));
+                        }
+                        arg_info.library_paths.push(arg);
+                    }
+                    Err(err) => {
+                        return Err(err.to_string());
+                    }
+                },
+            },
+        }
+    }
+    Ok(arg_info)
 }
 
 // TODO: add flag to enable trigraphs
 fn main() -> Result<(), String> {
     let args = env::args();
-    let mut files = Vec::new();
-    for arg in args {
-        if (arg.ends_with(".c") || arg.ends_with(".h")) && arg.len() > 2 && !files.contains(&arg) {
-            files.push(arg);
-        }
-    }
+    let arg_info = parse_args(args)?;
     let mut defines: HashMap<usize, cpp::Define> = HashMap::new();
     let mut str_maps = lexer::ByteVecMaps::new();
     let stdc_version = cpp::Define {
@@ -97,13 +108,12 @@ fn main() -> Result<(), String> {
         str_maps.add_byte_vec("__STDC_VERSION__".as_bytes()),
         stdc_version,
     );
-    let include_paths = &[
-        "./test_c_files",
-        "/usr/include",
-        "/usr/include/linux",
-        "/usr/lib/gcc/x86_64-pc-linux-gnu/13.1.1/include",
-    ];
-    for file in &files {
+    let vec_of_str = arg_info
+        .include_paths
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<&str>>();
+    for file in &arg_info.files {
         let define = cpp::Define {
             parameters: None,
             var_arg: false,
@@ -122,12 +132,10 @@ fn main() -> Result<(), String> {
                 let tokens = cpp::cpp(
                     contents,
                     path.as_str(),
-                    include_paths,
+                    &vec_of_str,
                     &mut defines,
                     &mut str_maps,
                 )?;
-                // concatenating adjacent string literals together
-                let tokens = concat_adjacent_strings(tokens.as_slice(), &mut str_maps)?;
                 let mut new_tokens = Vec::new();
                 for t in tokens {
                     let Some(byte_vec) = t.to_byte_vec(&str_maps) else {
@@ -137,8 +145,8 @@ fn main() -> Result<(), String> {
                 }
                 let tokens = new_tokens;
                 let tokens = lexer::lexer(tokens.as_slice(), false, &mut str_maps)?;
-                //cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
-                parser::parser(&tokens, &mut str_maps);
+                cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
+                todo!("parser::parser(&tokens, &mut str_maps)");
             }
             Err(_) => println!("error"),
         }
