@@ -39,32 +39,25 @@ fn concat_adjacent_strings(
                 )
             ) && adjacent_string_lit_index < tokens.len()
             {
-                if let Some(lexer::Token::StringLiteral(_second_string_lit)) =
+                if let Some(lexer::Token::StringLiteral(second_string_lit)) =
                     tokens.get(adjacent_string_lit_index)
                 {
-                    while let Some(lexer::Token::StringLiteral(second_string_lit)) =
-                        tokens.get(adjacent_string_lit_index)
-                    {
-                        match (prev_prefix, second_string_lit.prefix_key) {
-                            (Some(prev_key), Some(second_prefix_key)) => {
-                                let first_prefix = str_maps.key_to_byte_vec[prev_key].as_slice();
-                                let second_prefix =
-                                    str_maps.key_to_byte_vec[second_prefix_key].as_slice();
-                                if *first_prefix != *second_prefix {
-                                    return Err(format!(
+                    match (prev_prefix, second_string_lit.prefix_key) {
+                        (Some(prev_key), Some(second_prefix_key)) => {
+                            let first_prefix = str_maps.key_to_byte_vec[prev_key].as_slice();
+                            let second_prefix =
+                                str_maps.key_to_byte_vec[second_prefix_key].as_slice();
+                            if *first_prefix != *second_prefix {
+                                return Err(format!(
                                     "Cannot concatenate string literals with differing prefixes"
                                 ));
-                                }
                             }
-                            _ => {}
                         }
-                        let second_byte_vec =
-                            &str_maps.key_to_byte_vec[second_string_lit.sequence_key];
-                        first_byte_vec.extend_from_slice(second_byte_vec);
-                        prev_prefix = second_string_lit.prefix_key;
-                        adjacent_string_lit_index += 1;
+                        _ => {}
                     }
-                    continue;
+                    let second_byte_vec = &str_maps.key_to_byte_vec[second_string_lit.sequence_key];
+                    first_byte_vec.extend_from_slice(second_byte_vec);
+                    prev_prefix = second_string_lit.prefix_key;
                 }
                 adjacent_string_lit_index += 1;
             }
@@ -72,7 +65,18 @@ fn concat_adjacent_strings(
                 prefix_key: prev_prefix,
                 sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
             }));
-            token_string_concated_index = adjacent_string_lit_index;
+            // If there is a StringLiteral at adjacent_string_lit_index, then we
+            // set token_string_concated_index = adjacent_string_lit_index.
+            // else we just increment token_string_concated_index so that it moves on from
+            // the current StringLiteral
+            if matches!(
+                tokens.get(adjacent_string_lit_index),
+                Some(lexer::Token::StringLiteral(_))
+            ) {
+                token_string_concated_index = adjacent_string_lit_index;
+            } else {
+                token_string_concated_index += 1;
+            }
             continue;
         }
         if token_string_concated_index < tokens.len() {
