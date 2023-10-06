@@ -11,7 +11,7 @@ impl Display for RccError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             RccError::UnknownToken => f.write_str("UnknownToken"),
-            RccError::ExpectedToken(t) => f.write_fmt(format_args!("ExpectedToken: {}", t)),
+            RccError::ExpectedToken(t) => f.write_fmt(format_args!("ExpectedToken: {:?}", t)),
         }
     }
 }
@@ -92,12 +92,7 @@ impl Display for RccErrorInfo {
             RccError::UnknownToken => {
                 let mut mappings = String::new();
                 for (line, columns) in &self.columns {
-                    mappings += &("Line: ".to_string() + &line.to_string());
-                    mappings += &(" Columns: ".to_string()
-                        + &columns.start.to_string()
-                        + ".."
-                        + &columns.end.to_string());
-                    mappings += "\n";
+                    mappings += &format!("Line: {} Columns: {} .. {}\n", line, columns.start, columns.end);
                 }
                 f.write_fmt(format_args!("{}\n{}", self.error, mappings))
             }
