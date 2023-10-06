@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use crate::error::{RccErrorType};
 
 pub struct ByteVecMaps {
     pub key_to_byte_vec: Vec<Vec<u8>>,

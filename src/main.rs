@@ -1,7 +1,7 @@
 mod cpp;
+mod error;
 mod lexer;
 mod parser;
-mod error;
 use std::collections::HashMap;
 use std::env;
 
