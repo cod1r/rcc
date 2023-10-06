@@ -1,3 +1,4 @@
+use crate::error;
 use std::collections::HashMap;
 
 pub struct ByteVecMaps {
@@ -1820,13 +1821,13 @@ pub fn lexer(
                 tokens.push(t);
             } else {
                 return Err(format!(
-                    "unexpected token: '{}' at index: {}, {}",
-                    program_str_bytes[index] as char,
-                    index,
-                    program_str_bytes[if 50 > index { 0 } else { index - 50 }..index + 50]
-                        .to_vec()
-                        .iter()
-                        .fold(String::new(), |s, b| s + &(*b as char).to_string())
+                    "{}",
+                    error::RccErrorInfo::new(
+                        error::RccError::UnknownToken,
+                        index..index + 1,
+                        &tokens,
+                        str_maps
+                    )
                 ));
             }
         } else {

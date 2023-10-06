@@ -22,7 +22,7 @@ pub struct RccErrorInfo {
     columns: Vec<(usize, Range<usize>)>,
 }
 impl RccErrorInfo {
-    fn new(
+    pub fn new(
         error: RccError,
         index_range: Range<usize>,
         tokens: &[lexer::Token],
@@ -121,7 +121,6 @@ BRUH"#;
                 columns: vec![(0, 0..8), (1, 0..4)]
             }
         );
-        println!("{}", rcc_error_info);
         Ok(())
     }
 }
