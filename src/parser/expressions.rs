@@ -463,6 +463,8 @@ pub fn parse_expressions(
     let mut stack = Vec::<Expr>::new();
     // curr_expr is used for expressions with higher priority
     let mut curr_expr: Option<Expr> = None;
+    // left_expression is used for expressions that have two operands
+    // and priority needs to be set between right vs left
     let mut left_expression: Option<Expr> = None;
     let mut index = start_index;
     while index < tokens.len() {
@@ -672,7 +674,6 @@ pub fn parse_expressions(
                                 }));
                             }
                         }
-                        index += 1;
                     }
                     // PUNCT_DOT and PUNCT_ARROW means postfix
                     Some(lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW) => {
@@ -801,6 +802,15 @@ pub fn parse_expressions(
                     }
                     _ => unreachable!(),
                 };
+                loop {
+                    index += 1;
+                    if !matches!(
+                        tokens.get(index),
+                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    ) {
+                        break;
+                    }
+                }
             }
             primary_tokens!() => {
                 // TODO: we need to check for the case of sizeof and _Alignof
@@ -862,9 +872,6 @@ pub fn parse_expressions(
                     ) {
                         break;
                     }
-                }
-                if !matches!(tokens.get(index), Some(expression_operators!()) | None) {
-                    return Err(format!("unexpected operator: {:?}", tokens.get(index)));
                 }
             }
             lexer::Token::PUNCT_OPEN_PAR => {
@@ -1178,20 +1185,81 @@ pub fn parse_expressions(
                 }
             }
             lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
-                left_expression = curr_expr;
-                curr_expr = Some(Expr::Multiplicative(Multiplicative {
-                    op: match tokens[index] {
-                        lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
-                        lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
-                        lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
-                        _ => unreachable!(),
+                match curr_expr {
+                    Some(curr_expr_inside) => match curr_expr_inside {
+                        Expr::Conditional(_) => unreachable!(),
+                        _ => {
+                            macro_rules! check_if_second_is_some_or_none {
+                                ($($e:ident)*) => {
+                                    match curr_expr_inside {
+                                        Expr::Primary(_) | Expr::PostFix(_) => {
+                                            left_expression = curr_expr;
+                                            curr_expr = Some(Expr::Multiplicative(Multiplicative {
+                                                op: match tokens[index] {
+                                                    lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
+                                                    lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
+                                                    lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
+                                                    _ => unreachable!(),
+                                                },
+                                                first: None,
+                                                second: None,
+                                            }));
+                                        }
+                                        $(Expr::$e(inside) => {
+                                            if inside.second.is_none() {
+                                                stack.push(curr_expr_inside);
+                                                curr_expr = Some(Expr::Unary(Unary {
+                                                    op: match tokens[index] {
+                                                        lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                                        _ => {
+                                                            return Err(format!("unexpected token {:?}", tokens[index]))
+                                                        }
+                                                    },
+                                                    first: None,
+                                                }));
+                                            } else {
+                                                left_expression = curr_expr;
+                                                curr_expr = Some(Expr::Multiplicative(Multiplicative {
+                                                    op: match tokens[index] {
+                                                        lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
+                                                        lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
+                                                        lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
+                                                        _ => unreachable!(),
+                                                    },
+                                                    first: None,
+                                                    second: None,
+                                                }));
+                                            }
+                                        })*
+                                        Expr::Cast(_) | Expr::Unary(_) => {
+                                            stack.push(curr_expr_inside);
+                                            curr_expr = Some(Expr::Unary(Unary {
+                                                op: match tokens[index] {
+                                                    lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                                    _ => {
+                                                        return Err(format!("unexpected token {:?}", tokens[index]))
+                                                    }
+                                                },
+                                                first: None,
+                                            }));
+                                        }
+                                        Expr::Conditional(_) => unreachable!()
+                                    }
+                                };
+                            }
+                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                        }
                     },
-                    first: None,
-                    second: None,
-                }));
+                    None => {
+                        curr_expr = Some(Expr::Unary(Unary {
+                            op: match tokens[index] {
+                                lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                _ => return Err(format!("unexpected token {:?}", tokens[index])),
+                            },
+                            first: None,
+                        }));
+                    }
+                }
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1207,6 +1275,10 @@ pub fn parse_expressions(
                             | lexer::Token::PUNCT_MINUS
                             | lexer::Token::PUNCT_NOT_BOOL
                             | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::PUNCT_MULT
+                            | lexer::Token::PUNCT_AND_BIT
+                            | lexer::Token::KEYWORD_SIZEOF
+                            | lexer::Token::KEYWORD__ALIGNOF
                     )
                 ) {
                     return Err(format!(
@@ -1332,14 +1404,56 @@ pub fn parse_expressions(
                 }
             }
             lexer::Token::PUNCT_AND_BIT => {
-                if curr_expr.is_none() {
-                    return Err(format!("unexpected token: {:?}", tokens[index]));
-                }
+                match curr_expr {
+                    Some(curr_expr_inside) => match curr_expr_inside {
+                        Expr::Conditional(_) => unreachable!(),
+                        _ => {
+                            macro_rules! check_if_second_is_some_or_none {
+                                ($($e:ident)*) => {
+                                    match curr_expr_inside {
+                                        Expr::Primary(_) | Expr::PostFix(_) => {
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::BitAND(BitAND {
                     first: None,
                     second: None,
                 }));
+                                        }
+                                        $(Expr::$e(inside) => {
+                                            if inside.second.is_none() {
+                                                stack.push(curr_expr_inside);
+                                                curr_expr = Some(Expr::Unary(Unary {
+                                                    op: UnaryOp::Ampersand,
+                                                    first: None,
+                                                }));
+                                            } else {
+                left_expression = curr_expr;
+                curr_expr = Some(Expr::BitAND(BitAND {
+                    first: None,
+                    second: None,
+                }));
+                                            }
+                                        })*
+                                        Expr::Cast(_) | Expr::Unary(_) => {
+                                            stack.push(curr_expr_inside);
+                                            curr_expr = Some(Expr::Unary(Unary {
+                                                    op: UnaryOp::Ampersand,
+                                                first: None,
+                                            }));
+                                        }
+                                        Expr::Conditional(_) => unreachable!()
+                                    }
+                                };
+                            }
+                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                        }
+                    },
+                    None => {
+                        curr_expr = Some(Expr::Unary(Unary {
+                            op: UnaryOp::Ampersand,
+                            first: None,
+                        }));
+                    }
+                }
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1355,6 +1469,10 @@ pub fn parse_expressions(
                             | lexer::Token::PUNCT_MINUS
                             | lexer::Token::PUNCT_NOT_BOOL
                             | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::PUNCT_MULT
+                            | lexer::Token::PUNCT_AND_BIT
+                            | lexer::Token::KEYWORD_SIZEOF
+                            | lexer::Token::KEYWORD__ALIGNOF
                     )
                 ) {
                     return Err(format!(
@@ -1581,12 +1699,13 @@ pub fn parse_expressions(
         }
     }
     while let Some(mut expr) = stack.pop() {
-        if let Some(unwrapped) = curr_expr {
-            flattened.expressions.push(unwrapped);
+        if let Some(curr_expr_inside) = curr_expr {
+            flattened.expressions.push(curr_expr_inside);
             let unwrapped = Some(flattened.expressions.len() - 1);
             macro_rules! set_to_unwrapped {
                 ($($e: ident) *) => {
                     match expr {
+                        Expr::Primary(_) => todo!("{} {}", expr.priority(), curr_expr_inside.priority()),
                         Expr::PostFix(_) => todo!(),
                         Expr::Unary(ref mut u) => {
                             u.first = unwrapped;
@@ -1601,11 +1720,10 @@ pub fn parse_expressions(
                             assert!(c.first.is_some() && c.second.is_some());
                             c.third = unwrapped;
                         }
-                        _ => unreachable!(),
                     }
                 };
                     }
-            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
         }
         curr_expr = Some(expr);
     }
@@ -1769,7 +1887,7 @@ fn recursive_eval(
                 | UnaryOp::Decrement
                 | UnaryOp::Sizeof
                 | UnaryOp::AlignOf => {
-                    unreachable!()
+                    unreachable!("{:?}", u.op)
                 }
             }
         }
@@ -2731,16 +2849,122 @@ mod tests {
             let mut str_maps = lexer::ByteVecMaps::new();
             let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = parser::Flattened::new();
-            let (_, unary) =
+            let (_, unary_increment) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                unary_increment,
+                parser::expressions::Expr::Unary(_)
+            ));
+            let parser::expressions::Expr::Unary(u) = unary_increment else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Increment));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
         }
         {
             let src = r#"--variable"#.as_bytes();
             let mut str_maps = lexer::ByteVecMaps::new();
             let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = parser::Flattened::new();
-            let (_, unary) =
+            let (_, unary_decrement) =
                 expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                unary_decrement,
+                parser::expressions::Expr::Unary(_)
+            ));
+            let parser::expressions::Expr::Unary(u) = unary_decrement else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Decrement));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_unary_ops_test() -> Result<(), String> {
+        {
+            let src = r#"*hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_deref) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_deref, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_deref else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Deref));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        {
+            let src = r#"&hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_amper) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_amper, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_amper else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Ampersand));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        {
+            let src = r#"+hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_plus) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_plus, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_plus else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Add));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        {
+            let src = r#"-hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_minus) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_minus, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_minus else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::Sub));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        {
+            let src = r#"~hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_tilde) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_tilde, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_tilde else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::BitNOT));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        {
+            let src = r#"!hi"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, unary_not) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_not, parser::expressions::Expr::Unary(_)));
+            let parser::expressions::Expr::Unary(u) = unary_not else {
+                unreachable!()
+            };
+            assert!(matches!(u.op, parser::expressions::UnaryOp::LogicalNOT));
+            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
         }
         Ok(())
     }
