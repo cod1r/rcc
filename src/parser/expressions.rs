@@ -469,6 +469,7 @@ pub fn parse_expressions(
     let mut index = start_index;
     while index < tokens.len() {
         match &tokens[index] {
+            lexer::Token::PUNCT_COMMA => todo!(),
             //Assignment
             lexer::Token::PUNCT_ASSIGNMENT
             | lexer::Token::PUNCT_MULT_ASSIGN
@@ -2613,7 +2614,7 @@ mod tests {
             unreachable!()
         };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
@@ -2649,11 +2650,8 @@ mod tests {
         else {
             unreachable!()
         };
-        let expressions::Expr::Cast(c) = flattened.expressions[second_idx] else {
-            unreachable!()
-        };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
@@ -2674,10 +2672,22 @@ mod tests {
             unreachable!()
         };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+        let lexer::Token::CONSTANT_DEC_INT { value_key, .. } = t else {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
+        assert!(c.type_name.is_some());
+        let Some(type_name_index) = c.type_name else {
+            unreachable!()
+        };
+        assert!(flattened.type_names.get(type_name_index).is_some());
+        let Some(type_name) = flattened.type_names.get(type_name_index) else {
+            unreachable!()
+        };
+        assert!(matches!(
+            type_name.specifier_qualifier_list.type_specifiers.get(0),
+            Some(parser::declarations::TypeSpecifier::Int)
+        ));
         Ok(())
     }
     #[test]
