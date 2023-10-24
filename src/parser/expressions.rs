@@ -234,7 +234,14 @@ pub struct Assignment {
 }
 
 #[derive(Copy, Clone)]
+pub struct Comma {
+    pub first: Option<ExpressionIndex>,
+    pub second: Option<ExpressionIndex>,
+}
+
+#[derive(Copy, Clone)]
 pub enum Expr {
+    Comma(Comma),
     Assignment(Assignment),
     Conditional(Conditional),
     LogicalOR(LogicalOR),
@@ -271,7 +278,8 @@ impl Expr {
             Expr::LogicalAND(_) => u8::MAX - 12,
             Expr::LogicalOR(_) => u8::MAX - 13,
             Expr::Conditional(_) => u8::MAX - 14,
-            Expr::Assignment(_) => todo!(),
+            Expr::Assignment(_) => u8::MAX - 15,
+            Expr::Comma(_) => u8::MAX - 16,
         }
     }
 }
@@ -317,6 +325,8 @@ macro_rules! case_where_it_could_be_unary_or_additive {
    Expr::LogicalAND
    Expr::LogicalOR
    Expr::Conditional
+   Expr::Assignment
+   Expr::Comma
 */
 fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
     assert!(right.priority() > left.priority());
@@ -376,14 +386,11 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                     assert!(c.second.is_some());
                     match_right_assign_to_third!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR, c);
                 }
-                Expr::Assignment(a) => {
-                    match_right_and_do_operation!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR, a)
-                }
                 _ => unreachable!(),
             }
         };
     }
-    match_left_and_match_right!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+    match_left_and_match_right!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
 }
 
 fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
@@ -398,7 +405,7 @@ fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
             }
         };
     }
-    set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+    set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
 }
 macro_rules! expression_operators {
     () => {
@@ -470,7 +477,34 @@ pub fn parse_expressions(
     let mut index = start_index;
     while index < tokens.len() {
         match &tokens[index] {
-            lexer::Token::PUNCT_COMMA => todo!(),
+            //Comma expressions
+            lexer::Token::PUNCT_COMMA => {
+                if curr_expr.is_none() {
+                    let Some(token_byte_vec) = lexer::Token::PUNCT_COMMA.to_byte_vec(str_maps)
+                    else {
+                        unreachable!()
+                    };
+                    let Ok(s) = String::from_utf8(token_byte_vec) else {
+                        unreachable!()
+                    };
+                    return Err(error::RccErrorInfo::new(
+                        error::RccError::UnexpectedToken(s),
+                        index..index + 1,
+                        tokens,
+                        str_maps,
+                    )
+                    .to_string());
+                }
+                let Some(curr_expr_inside) = curr_expr else {
+                    unreachable!()
+                };
+                flattened.expressions.push(curr_expr_inside);
+                curr_expr = Some(Expr::Comma(Comma {
+                    first: Some(flattened.expressions.len() - 1),
+                    second: None,
+                }));
+                index += 1;
+            }
             //Assignment
             lexer::Token::PUNCT_ASSIGNMENT
             | lexer::Token::PUNCT_MULT_ASSIGN
@@ -637,7 +671,7 @@ pub fn parse_expressions(
                                         | Expr::Unary(_)
                                         | Expr::PostFix(_)
                                 ) {
-                                    check_if_second_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                                    check_if_second_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                                 } else {
                                     match curr_expr_inside {
                                         Expr::Cast(ref mut c) => {
@@ -823,7 +857,7 @@ pub fn parse_expressions(
                                     | Expr::Unary(_)
                                     | Expr::PostFix(_)
                             ) {
-                                match_on_every_expr_with_only_two_operands!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                                match_on_every_expr_with_only_two_operands!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                             } else {
                                 match curr_expr_inside {
                                     Expr::Conditional(_) => {
@@ -1081,7 +1115,7 @@ pub fn parse_expressions(
                         };
                     }
 
-                    primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                    primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                 }
 
                 loop {
@@ -1272,12 +1306,12 @@ pub fn parse_expressions(
                 // expression having the old curr_expr as a child in the expression tree
                 let mut already_popped_primary = false;
                 while let Some(mut e) = stack.pop() {
+                    let Some(unwrapped) = curr_expr else {
+                        unreachable!()
+                    };
+                    flattened.expressions.push(unwrapped);
                     match e {
                         Expr::Primary(ref mut p) => {
-                            let Some(unwrapped) = curr_expr else {
-                                unreachable!()
-                            };
-                            flattened.expressions.push(unwrapped);
                             *p = Some(PrimaryInner::new_p_expr(flattened.expressions.len() - 1));
                             curr_expr = Some(e);
                             if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_))) {
@@ -1290,10 +1324,6 @@ pub fn parse_expressions(
                             unreachable!()
                         }
                         Expr::Unary(ref mut u) => {
-                            let Some(unwrapped) = curr_expr else {
-                                unreachable!()
-                            };
-                            flattened.expressions.push(unwrapped);
                             u.first = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
                             if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_)))
@@ -1303,10 +1333,6 @@ pub fn parse_expressions(
                             }
                         }
                         Expr::Cast(ref mut c) => {
-                            let Some(unwrapped) = curr_expr else {
-                                unreachable!()
-                            };
-                            flattened.expressions.push(unwrapped);
                             c.cast_expr = Some(flattened.expressions.len() - 1);
                             curr_expr = Some(e);
                             if !matches!(stack.last(), Some(Expr::Unary(_) | Expr::Cast(_)))
@@ -1316,16 +1342,12 @@ pub fn parse_expressions(
                             }
                         }
                         _ => {
-                            let Some(unwrapped) = curr_expr else {
-                                unreachable!()
-                            };
                             assert!(
                                 e.priority() <= unwrapped.priority(),
                                 "{} {}",
                                 e.priority(),
                                 unwrapped.priority()
                             );
-                            flattened.expressions.push(unwrapped);
                             let unwrapped = Some(flattened.expressions.len() - 1);
                             macro_rules! set_to_unwrapped {
                                 ($($e: ident) *) => {
@@ -1343,7 +1365,7 @@ pub fn parse_expressions(
                                     }
                                 };
                             }
-                            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
+                            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                             curr_expr = Some(e);
                         }
                     }
@@ -1491,7 +1513,7 @@ pub fn parse_expressions(
                         }
                     };
                 }
-                left_expression_handle_in_unary_expression!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                left_expression_handle_in_unary_expression!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                 loop {
                     index += 1;
                     if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
@@ -1646,7 +1668,7 @@ pub fn parse_expressions(
                                     }
                                 };
                             }
-                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                         }
                     },
                     None => {
@@ -1951,7 +1973,7 @@ pub fn parse_expressions(
                                     }
                                 };
                             }
-                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                         }
                     },
                     None => {
@@ -2402,7 +2424,7 @@ pub fn parse_expressions(
                     }
                 };
                     }
-            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment);
+            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
         }
         curr_expr = Some(expr);
     }
@@ -3752,6 +3774,109 @@ mod tests {
             };
             assert!(matches!(u.op, parser::expressions::UnaryOp::AlignOf));
             assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_expressions_comma_operator() -> Result<(), String> {
+        {
+            let src = r#"(1, 5)"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, primary_comma) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                primary_comma,
+                parser::expressions::Expr::Primary(_)
+            ));
+            let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Expr(
+                c,
+            ))) = primary_comma
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                flattened.expressions[c],
+                parser::expressions::Expr::Comma(_)
+            ));
+            let parser::expressions::Expr::Comma(c) = flattened.expressions[c] else {
+                unreachable!()
+            };
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
+            let Some(first) = c.first else { unreachable!() };
+            let Some(second) = c.second else {
+                unreachable!()
+            };
+            assert!(first < flattened.expressions.len());
+            assert!(second < flattened.expressions.len());
+            assert!(matches!(
+                flattened.expressions[first],
+                parser::expressions::Expr::Primary(_)
+            ));
+            assert!(matches!(
+                flattened.expressions[second],
+                parser::expressions::Expr::Primary(_)
+            ));
+        }
+        {
+            let src = r#"(1, 3, 5)"#.as_bytes();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = parser::Flattened::new();
+            let (_, primary_comma_nested) =
+                expressions::parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                primary_comma_nested,
+                parser::expressions::Expr::Primary(_)
+            ));
+            let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Expr(
+                c,
+            ))) = primary_comma_nested
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                flattened.expressions[c],
+                parser::expressions::Expr::Comma(_)
+            ));
+            let parser::expressions::Expr::Comma(c) = flattened.expressions[c] else {
+                unreachable!()
+            };
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
+            let Some(first) = c.first else { unreachable!() };
+            let Some(second) = c.second else {
+                unreachable!()
+            };
+            assert!(first < flattened.expressions.len());
+            assert!(second < flattened.expressions.len());
+            assert!(matches!(
+                flattened.expressions[first],
+                parser::expressions::Expr::Comma(_)
+            ));
+            assert!(matches!(
+                flattened.expressions[second],
+                parser::expressions::Expr::Primary(Some(_))
+            ));
+            let parser::expressions::Expr::Comma(c) = flattened.expressions[first] else {
+                unreachable!()
+            };
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
+            let Some(first) = c.first else { unreachable!() };
+            let Some(second) = c.second else {
+                unreachable!()
+            };
+            assert!(matches!(
+                flattened.expressions[first],
+                parser::expressions::Expr::Primary(Some(_))
+            ));
+            assert!(matches!(
+                flattened.expressions[second],
+                parser::expressions::Expr::Primary(Some(_))
+            ));
         }
         Ok(())
     }
