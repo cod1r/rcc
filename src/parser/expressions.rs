@@ -345,10 +345,18 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                 }
                 Expr::PostFix(p) => {
                     match p {
-                        PostFix::WithSubscript { first, .. } => todo!(),
-                        PostFix::WithFunctionCall { first, .. } => todo!(),
-                        PostFix::WithMember { first, .. } => todo!(),
-                        PostFix::WithPointerToMember { first, .. } => todo!(),
+                        PostFix::WithSubscript { first, .. } => {
+                            *first = $a.second;
+                        },
+                        PostFix::WithFunctionCall { first, .. } => {
+                            *first = $a.second;
+                        },
+                        PostFix::WithMember { first, .. } => {
+                            *first = $a.second;
+                        },
+                        PostFix::WithPointerToMember { first, .. } => {
+                            *first = $a.second;
+                        },
                         _ => todo!(),
                     }
                 },
@@ -4034,6 +4042,21 @@ mod tests {
                     parser::expressions::PostFix::WithFunctionCall { .. }
                 )
             ));
+            let parser::expressions::Expr::PostFix(
+                parser::expressions::PostFix::WithFunctionCall {
+                    argument_expr_idx,
+                    first,
+                },
+            ) = postfix_arg_expr_list
+            else {
+                unreachable!()
+            };
+            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
+            assert!(flattened.expressions.len() > first.unwrap());
+            assert!(matches!(
+                flattened.expressions[first.unwrap()],
+                parser::expressions::Expr::Primary(_)
+            ));
         }
         {
             let src = r#"me->hi(1, 3, 5)"#.as_bytes();
@@ -4048,6 +4071,23 @@ mod tests {
                     parser::expressions::PostFix::WithFunctionCall { .. }
                 )
             ));
+            let parser::expressions::Expr::PostFix(
+                parser::expressions::PostFix::WithFunctionCall {
+                    argument_expr_idx,
+                    first,
+                },
+            ) = postfix_arg_expr_list
+            else {
+                unreachable!()
+            };
+            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
+            assert!(flattened.expressions.len() > first.unwrap());
+            assert!(matches!(
+                flattened.expressions[first.unwrap()],
+                parser::expressions::Expr::PostFix(
+                    parser::expressions::PostFix::WithPointerToMember { .. }
+                )
+            ));
         }
         {
             let src = r#"me->hi.meow(1, 3, 5)"#.as_bytes();
@@ -4060,6 +4100,34 @@ mod tests {
                 postfix_arg_expr_list,
                 parser::expressions::Expr::PostFix(
                     parser::expressions::PostFix::WithFunctionCall { .. }
+                )
+            ));
+            let parser::expressions::Expr::PostFix(
+                parser::expressions::PostFix::WithFunctionCall {
+                    argument_expr_idx,
+                    first,
+                },
+            ) = postfix_arg_expr_list
+            else {
+                unreachable!()
+            };
+            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
+            assert!(flattened.expressions.len() > first.unwrap());
+            assert!(matches!(
+                flattened.expressions[first.unwrap()],
+                parser::expressions::Expr::PostFix(parser::expressions::PostFix::WithMember { .. })
+            ));
+            let parser::expressions::Expr::PostFix(parser::expressions::PostFix::WithMember {
+                first,
+                member_ident_key,
+            }) = flattened.expressions[first.unwrap()]
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                flattened.expressions[first.unwrap()],
+                parser::expressions::Expr::PostFix(
+                    parser::expressions::PostFix::WithPointerToMember { .. }
                 )
             ));
         }
