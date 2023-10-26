@@ -5,13 +5,17 @@ use std::ops::Range;
 #[derive(Debug, PartialEq)]
 pub enum RccError {
     UnknownToken,
-    ExpectedToken(lexer::Token),
+    ExpectedToken(String),
+    UnexpectedToken(String),
+    Custom(String),
 }
 impl Display for RccError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             RccError::UnknownToken => f.write_str("UnknownToken"),
-            RccError::ExpectedToken(t) => f.write_fmt(format_args!("ExpectedToken: {:?}", t)),
+            RccError::ExpectedToken(t) => f.write_fmt(format_args!("ExpectedToken: {}", t)),
+            RccError::UnexpectedToken(t) => f.write_fmt(format_args!("UnexpectedToken: {}", t)),
+            RccError::Custom(s) => f.write_str(s),
         }
     }
 }
@@ -88,16 +92,14 @@ impl RccErrorInfo {
 }
 impl Display for RccErrorInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        match self.error {
-            RccError::UnknownToken => {
-                let mut mappings = String::new();
-                for (line, columns) in &self.columns {
-                    mappings += &format!("Line: {} Columns: {} .. {}\n", line, columns.start, columns.end);
-                }
-                f.write_fmt(format_args!("{}\n{}", self.error, mappings))
-            }
-            _ => todo!(),
+        let mut mappings = String::new();
+        for (line, columns) in &self.columns {
+            mappings += &format!(
+                "Line: {} Columns: {} .. {}\n",
+                line, columns.start, columns.end
+            );
         }
+        f.write_fmt(format_args!("{}\n{}", self.error, mappings))
     }
 }
 impl Error for RccErrorInfo {}

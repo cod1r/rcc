@@ -23,7 +23,7 @@ fn parse_args(args: Vec<String>) -> Result<ArgumentInfo, String> {
         LibraryPath,
     }
     let mut flag_state = State::File;
-    if args.len() <= 2 {
+    if args.len() <= 2 && !args.is_empty() {
         if args[0].as_str() == "--help"
             || (args.len() > 1 && args[1].as_str() == "--help")
             || args.len() == 1

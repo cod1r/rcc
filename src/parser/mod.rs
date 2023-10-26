@@ -12,6 +12,8 @@ pub struct Flattened {
     pub initializer_lists: Vec<Vec<declarations::InitializerList>>,
     pub designations: Vec<declarations::Designation>,
     pub abstract_declarators: Vec<declarations::AbstractDeclarator>,
+    pub statements: Vec<statements::Statement>,
+    pub argument_expr_list_list: Vec<Vec<expressions::Expr>>,
 }
 
 impl Flattened {
@@ -23,6 +25,8 @@ impl Flattened {
             initializer_lists: Vec::new(),
             designations: Vec::new(),
             abstract_declarators: Vec::new(),
+            statements: Vec::new(),
+            argument_expr_list_list: Vec::new(),
         }
     }
 }
