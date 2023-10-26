@@ -1,6 +1,10 @@
 use crate::error;
 use std::collections::HashMap;
 
+// TODO: it'd be faster to just push slices into the vec and keep the original bytes vector
+// from reading the file alive for the rest of the program.
+// This should only be used for identifiers but as of right now, it's being used for both string
+// literals and identifiers.
 pub struct ByteVecMaps {
     pub key_to_byte_vec: Vec<Vec<u8>>,
     pub byte_vec_to_key: HashMap<Vec<u8>, usize>,
@@ -200,6 +204,8 @@ impl ConstantChar {
     }
 }
 
+// TODO: create another data structure for storing string literal
+// It isn't a good idea to use str_maps to store identifiers and string_literals
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct StringLiteral {
     pub prefix_key: Option<usize>,
