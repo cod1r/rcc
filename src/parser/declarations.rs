@@ -226,6 +226,37 @@ impl Declaration {
         }
     }
 }
+fn is_declaration_token(t: lexer::Token) -> bool {
+    match t {
+        lexer::Token::KEYWORD_TYPEDEF => true,
+        lexer::Token::KEYWORD_EXTERN => true,
+        lexer::Token::KEYWORD_STATIC => true,
+        lexer::Token::KEYWORD__THREAD_LOCAL => true,
+        lexer::Token::KEYWORD_AUTO => true,
+        lexer::Token::KEYWORD_REGISTER => true,
+        lexer::Token::KEYWORD_VOID => true,
+        lexer::Token::KEYWORD_CHAR => true,
+        lexer::Token::KEYWORD_SHORT => true,
+        lexer::Token::KEYWORD_INT => true,
+        lexer::Token::KEYWORD_LONG => true,
+        lexer::Token::KEYWORD_FLOAT => true,
+        lexer::Token::KEYWORD_DOUBLE => true,
+        lexer::Token::KEYWORD_SIGNED => true,
+        lexer::Token::KEYWORD_UNSIGNED => true,
+        lexer::Token::KEYWORD__BOOL => true,
+        lexer::Token::KEYWORD__COMPLEX => true,
+        lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => true,
+        lexer::Token::KEYWORD_ENUM => todo!(),
+        lexer::Token::KEYWORD_CONST => true,
+        lexer::Token::KEYWORD_RESTRICT => true,
+        lexer::Token::KEYWORD_VOLATILE => true,
+        lexer::Token::KEYWORD__ATOMIC => true,
+        lexer::Token::KEYWORD_INLINE => true,
+        lexer::Token::KEYWORD__NORETURN => true,
+        lexer::Token::KEYWORD__ALIGNAS => true,
+        _ => false,
+    }
+}
 fn parse_declarations(
     tokens: &[lexer::Token],
     start_index: usize,

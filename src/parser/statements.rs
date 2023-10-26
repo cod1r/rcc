@@ -83,6 +83,24 @@ pub enum Statement {
     Iteration(IterationIndex),
     Jump(JumpIndex),
 }
+fn is_statement_token(t: lexer::Token) -> bool {
+    match t {
+        lexer::Token::IDENT(_) => true,
+        lexer::Token::KEYWORD_CASE => true,
+        lexer::Token::KEYWORD_DEFAULT => true,
+        lexer::Token::PUNCT_OPEN_CURLY => true,
+        lexer::Token::KEYWORD_IF => true,
+        lexer::Token::KEYWORD_SWITCH => true,
+        lexer::Token::KEYWORD_WHILE => true,
+        lexer::Token::KEYWORD_DO => true,
+        lexer::Token::KEYWORD_FOR => true,
+        lexer::Token::KEYWORD_GOTO => true,
+        lexer::Token::KEYWORD_CONTINUE => true,
+        lexer::Token::KEYWORD_BREAK => true,
+        lexer::Token::KEYWORD_RETURN => true,
+        _ => false,
+    }
+}
 pub fn parse_statement(
     tokens: &[lexer::Token],
     start_index: usize,
@@ -245,7 +263,8 @@ pub fn parse_compound_statement(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Compound, usize), String> {
-    todo!()
+    let mut idx = start_index;
+    idx += 1; // first is guaranteed to be open curly
 }
 pub fn parse_selection_statement(
     tokens: &[lexer::Token],
