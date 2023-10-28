@@ -1,3 +1,4 @@
+use crate::error;
 use crate::lexer;
 use crate::parser;
 
@@ -15,11 +16,11 @@ pub enum StorageClassSpecifier {
 #[derive(Clone)]
 pub enum ParameterDeclaration {
     WithOptionalAbstractDeclarator {
-        declaration: Declaration,
+        declaration_specifier: DeclarationSpecifier,
         abstract_declarator: Option<AbstractDeclarator>,
     },
     WithDeclarator {
-        declaration: Declaration,
+        declaration_specifier: DeclarationSpecifier,
         declarator: Declarator,
     },
 }
@@ -226,7 +227,7 @@ impl Declaration {
         }
     }
 }
-fn is_declaration_token(t: lexer::Token) -> bool {
+pub fn is_declaration_token(t: lexer::Token) -> bool {
     match t {
         lexer::Token::KEYWORD_TYPEDEF => true,
         lexer::Token::KEYWORD_EXTERN => true,
@@ -257,7 +258,7 @@ fn is_declaration_token(t: lexer::Token) -> bool {
         _ => false,
     }
 }
-fn parse_declarations(
+pub fn parse_declarations(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,
@@ -265,124 +266,93 @@ fn parse_declarations(
 ) -> Result<(Declaration, usize), String> {
     let mut declaration_index = start_index;
     let mut declaration = Declaration::new();
-    while declaration_index < tokens.len() {
-        match tokens[declaration_index] {
-            lexer::Token::KEYWORD_TYPEDEF => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::TypeDef),
-            lexer::Token::KEYWORD_EXTERN => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Extern),
-            lexer::Token::KEYWORD_STATIC => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Static),
-            lexer::Token::KEYWORD__THREAD_LOCAL => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::ThreadLocal),
-            lexer::Token::KEYWORD_AUTO => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Auto),
-            lexer::Token::KEYWORD_REGISTER => declaration
-                .declaration_specifiers
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Register),
-            lexer::Token::KEYWORD_VOID => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Void),
-            lexer::Token::KEYWORD_CHAR => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Char),
-            lexer::Token::KEYWORD_SHORT => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Short),
-            lexer::Token::KEYWORD_INT => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Int),
-            lexer::Token::KEYWORD_LONG => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Long),
-            lexer::Token::KEYWORD_FLOAT => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Float),
-            lexer::Token::KEYWORD_DOUBLE => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Double),
-            lexer::Token::KEYWORD_SIGNED => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Signed),
-            lexer::Token::KEYWORD_UNSIGNED => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::Unsigned),
-            lexer::Token::KEYWORD__BOOL => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::_Bool),
-            lexer::Token::KEYWORD__COMPLEX => declaration
-                .declaration_specifiers
-                .type_specifiers
-                .push(TypeSpecifier::_Complex),
-            lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => todo!(),
-            lexer::Token::KEYWORD_ENUM => todo!(),
-            lexer::Token::KEYWORD_CONST => declaration
-                .declaration_specifiers
-                .type_qualifiers
-                .push(TypeQualifier::Const),
-            lexer::Token::KEYWORD_RESTRICT => declaration
-                .declaration_specifiers
-                .type_qualifiers
-                .push(TypeQualifier::Restrict),
-            lexer::Token::KEYWORD_VOLATILE => declaration
-                .declaration_specifiers
-                .type_qualifiers
-                .push(TypeQualifier::Volatile),
-            lexer::Token::KEYWORD__ATOMIC => {
-                let mut next_index = declaration_index + 1;
-                while matches!(
-                    tokens.get(next_index),
+    let (declaration_specifier, new_index) =
+        parse_declaration_specifiers(tokens, start_index, flattened, str_maps)?;
+    declaration.declaration_specifiers = declaration_specifier;
+    declaration_index = new_index;
+    loop {
+        declaration_index += 1;
+        if !matches!(
+            tokens.get(declaration_index),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            break;
+        }
+    }
+    if !matches!(
+        tokens.get(declaration_index),
+        Some(lexer::Token::PUNCT_SEMI_COLON)
+    ) && !tokens.get(declaration_index).is_none()
+    {
+        loop {
+            let (new_index, declarator) =
+                parse_declarator(tokens, declaration_index, flattened, str_maps)?;
+            declaration_index = new_index;
+            loop {
+                if !matches!(
+                    tokens.get(declaration_index),
                     Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
                 ) {
-                    next_index += 1;
+                    break;
                 }
-                if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(next_index) {
-                    let (new_index, _type_name) =
-                        parse_type_names(&tokens, next_index + 1, flattened, str_maps)?;
-                    next_index = new_index;
-                    while !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR))
-                        && next_index < tokens.len()
-                    {
-                        next_index += 1;
-                    }
-                    if !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
-                        return Err(format!("Missing closing parenthesis"));
-                    }
-                }
+                declaration_index += 1;
             }
-            lexer::Token::KEYWORD_INLINE => declaration
-                .declaration_specifiers
-                .function_specifiers
-                .push(FunctionSpecifier::Inline),
-            lexer::Token::KEYWORD__NORETURN => declaration
-                .declaration_specifiers
-                .function_specifiers
-                .push(FunctionSpecifier::_Noreturn),
-            lexer::Token::KEYWORD__ALIGNAS => todo!(),
-            _ => break,
+            if !matches!(
+                tokens.get(declaration_index),
+                Some(lexer::Token::PUNCT_ASSIGNMENT)
+            ) {
+                declaration
+                    .init_declarator_list
+                    .push(InitDeclarator::Declarator(declarator));
+                declaration_index += 1;
+            } else {
+                let start = declaration_index + 1;
+                loop {
+                    declaration_index += 1;
+                    if matches!(
+                        tokens.get(declaration_index),
+                        Some(lexer::Token::PUNCT_COMMA | lexer::Token::PUNCT_SEMI_COLON) | None
+                    ) {
+                        break;
+                    }
+                }
+                if !matches!(
+                    tokens.get(declaration_index),
+                    Some(lexer::Token::PUNCT_COMMA)
+                ) {
+                    if !matches!(
+                        tokens.get(declaration_index),
+                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                    ) {
+                        return Err(error::RccErrorInfo::new(
+                            error::RccError::Custom("Expected semi colon".to_string()),
+                            start_index..declaration_index,
+                            tokens,
+                            str_maps,
+                        )
+                        .to_string());
+                    }
+                }
+                let (_, initializer) =
+                    parse_initializer(&tokens[start..declaration_index], 0, flattened, str_maps)?;
+                declaration
+                    .init_declarator_list
+                    .push(InitDeclarator::DeclaratorWithInitializer(
+                        DeclaratorWithInitializer {
+                            declarator,
+                            initializer,
+                        },
+                    ));
+            }
+            if matches!(
+                tokens.get(declaration_index),
+                Some(lexer::Token::PUNCT_SEMI_COLON)
+            ) {
+                declaration_index += 1;
+                break;
+            }
+            declaration_index += 1;
         }
-        declaration_index += 1;
     }
     Ok((declaration, declaration_index))
 }
@@ -1238,6 +1208,114 @@ pub fn parse_type_specifiers(
     Ok((index, type_specifiers))
 }
 
+pub fn parse_declaration_specifiers(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(DeclarationSpecifier, usize), String> {
+    let mut declaration_specifier = DeclarationSpecifier::new();
+    let mut declaration_specifier_idx = start_index;
+    while declaration_specifier_idx < tokens.len() {
+        match tokens[declaration_specifier_idx] {
+            lexer::Token::KEYWORD_TYPEDEF => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::TypeDef),
+            lexer::Token::KEYWORD_EXTERN => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::Extern),
+            lexer::Token::KEYWORD_STATIC => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::Static),
+            lexer::Token::KEYWORD__THREAD_LOCAL => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::ThreadLocal),
+            lexer::Token::KEYWORD_AUTO => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::Auto),
+            lexer::Token::KEYWORD_REGISTER => declaration_specifier
+                .storage_class_specifiers
+                .push(StorageClassSpecifier::Register),
+            lexer::Token::KEYWORD_VOID => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Void),
+            lexer::Token::KEYWORD_CHAR => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Char),
+            lexer::Token::KEYWORD_SHORT => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Short),
+            lexer::Token::KEYWORD_INT => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Int),
+            lexer::Token::KEYWORD_LONG => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Long),
+            lexer::Token::KEYWORD_FLOAT => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Float),
+            lexer::Token::KEYWORD_DOUBLE => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Double),
+            lexer::Token::KEYWORD_SIGNED => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Signed),
+            lexer::Token::KEYWORD_UNSIGNED => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::Unsigned),
+            lexer::Token::KEYWORD__BOOL => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::_Bool),
+            lexer::Token::KEYWORD__COMPLEX => declaration_specifier
+                .type_specifiers
+                .push(TypeSpecifier::_Complex),
+            lexer::Token::KEYWORD_STRUCT | lexer::Token::KEYWORD_UNION => todo!(),
+            lexer::Token::KEYWORD_ENUM => todo!(),
+            lexer::Token::KEYWORD_CONST => declaration_specifier
+                .type_qualifiers
+                .push(TypeQualifier::Const),
+            lexer::Token::KEYWORD_RESTRICT => declaration_specifier
+                .type_qualifiers
+                .push(TypeQualifier::Restrict),
+            lexer::Token::KEYWORD_VOLATILE => declaration_specifier
+                .type_qualifiers
+                .push(TypeQualifier::Volatile),
+            lexer::Token::KEYWORD__ATOMIC => {
+                let mut next_index = declaration_specifier_idx + 1;
+                while matches!(
+                    tokens.get(next_index),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    next_index += 1;
+                }
+                if let Some(lexer::Token::PUNCT_OPEN_PAR) = tokens.get(next_index) {
+                    let (new_index, _type_name) =
+                        parse_type_names(&tokens, next_index + 1, flattened, str_maps)?;
+                    next_index = new_index;
+                    while !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR))
+                        && next_index < tokens.len()
+                    {
+                        next_index += 1;
+                    }
+                    if !matches!(tokens.get(next_index), Some(lexer::Token::PUNCT_CLOSE_PAR)) {
+                        return Err(format!("Missing closing parenthesis"));
+                    }
+                }
+            }
+            lexer::Token::KEYWORD_INLINE => declaration_specifier
+                .function_specifiers
+                .push(FunctionSpecifier::Inline),
+            lexer::Token::KEYWORD__NORETURN => declaration_specifier
+                .function_specifiers
+                .push(FunctionSpecifier::_Noreturn),
+            lexer::Token::KEYWORD__ALIGNAS => todo!(),
+            _ => break,
+        }
+        declaration_specifier_idx += 1;
+    }
+    Ok((declaration_specifier, declaration_specifier_idx))
+}
+
 pub fn parse_parameter_type_list(
     tokens: &[lexer::Token],
     flattened: &mut parser::Flattened,
@@ -1249,7 +1327,8 @@ pub fn parse_parameter_type_list(
         ellipsis: false,
     };
     while index < tokens.len() {
-        let (declaration, new_index) = parse_declarations(tokens, index, flattened, str_maps)?;
+        let (declaration_specifier, new_index) =
+            parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
         index = new_index;
         let starting = index;
         let has_identifier = {
@@ -1310,7 +1389,7 @@ pub fn parse_parameter_type_list(
                 parse_declarator(&tokens[starting..index], 0, flattened, str_maps)?;
             ptl.parameter_declarations
                 .push(ParameterDeclaration::WithDeclarator {
-                    declaration,
+                    declaration_specifier,
                     declarator,
                 });
         } else {
@@ -1319,7 +1398,7 @@ pub fn parse_parameter_type_list(
             ptl.parameter_declarations
                 .push(ParameterDeclaration::WithOptionalAbstractDeclarator {
                     abstract_declarator: Some(ab),
-                    declaration,
+                    declaration_specifier,
                 });
         }
         index += 1;
@@ -1634,10 +1713,10 @@ pub fn parse_type_names(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_declarator, parse_enumerator_specifier, parse_initializer, parse_parameter_type_list,
-        parse_struct_declarator, parse_struct_union_specifier, parse_type_names, Declarator,
-        Designation, Designator, DirectAbstractDeclarator, DirectDeclarator, Enumerator,
-        Initializer, InitializerList, TypeQualifier, TypeSpecifier,
+        parse_declarations, parse_declarator, parse_enumerator_specifier, parse_initializer,
+        parse_parameter_type_list, parse_struct_declarator, parse_struct_union_specifier,
+        parse_type_names, Declarator, Designation, Designator, DirectAbstractDeclarator,
+        DirectDeclarator, Enumerator, Initializer, InitializerList, TypeQualifier, TypeSpecifier,
     };
     use crate::{lexer, parser};
     #[test]
@@ -1919,7 +1998,7 @@ mod tests {
     }
     #[test]
     fn parse_parameter_type_list_test() -> Result<(), String> {
-        let src = r#"int hi, int hi2, int hi3"#.as_bytes();
+        let src = r#"int hi, int hi2, int hi3;"#.as_bytes();
         let mut str_maps = lexer::ByteVecMaps::new();
         let mut flattened = parser::Flattened::new();
         let tokens = lexer::lexer(src, false, &mut str_maps)?;
@@ -2045,6 +2124,17 @@ int hi;
                     .identifier
                     .is_some()
             );
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_declarations_test() -> Result<(), String> {
+        {
+            let src = r#"int hi = 4;"#;
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (declaration, _) = parse_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
         }
         Ok(())
     }
