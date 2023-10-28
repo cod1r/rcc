@@ -83,7 +83,7 @@ pub enum Statement {
     Iteration(IterationIndex),
     Jump(JumpIndex),
 }
-fn is_statement_token(t: lexer::Token) -> bool {
+pub fn is_statement_token(t: lexer::Token) -> bool {
     match t {
         lexer::Token::IDENT(_) => true,
         lexer::Token::KEYWORD_CASE => true,
@@ -264,7 +264,85 @@ pub fn parse_compound_statement(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Compound, usize), String> {
     let mut idx = start_index;
-    idx += 1; // first is guaranteed to be open curly
+    loop {
+        idx += 1; // first is guaranteed to be open curly
+        if !matches!(
+            tokens.get(idx),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE),
+        ) {
+            break;
+        }
+    }
+    let mut curly_balancer = 1;
+    let mut curly_balance_idx = idx;
+    while curly_balancer > 0 {
+        match tokens.get(curly_balance_idx) {
+            Some(lexer::Token::PUNCT_OPEN_CURLY) => curly_balancer += 1,
+            Some(lexer::Token::PUNCT_CLOSE_CURLY) => curly_balancer -= 1,
+            None => {
+                return Err(error::RccErrorInfo::new(
+                    error::RccError::Custom("Unexpected end of tokens".to_string()),
+                    idx..curly_balance_idx + 1,
+                    tokens,
+                    str_maps,
+                )
+                .to_string())
+            }
+            _ => {}
+        }
+        curly_balance_idx += 1;
+    }
+    if !matches!(
+        tokens.get(curly_balance_idx - 1),
+        Some(lexer::Token::PUNCT_CLOSE_CURLY)
+    ) {
+        return Err(error::RccErrorInfo::new(
+            error::RccError::ExpectedToken("{".to_string()),
+            idx..curly_balance_idx + 1,
+            tokens,
+            str_maps,
+        )
+        .to_string());
+    }
+    let mut compound = Compound {
+        block_item_list: Vec::new(),
+    };
+    let mut compound_idx = idx;
+    let end_compound = curly_balance_idx - 1;
+    while compound_idx < end_compound {
+        if let Some(t) = tokens.get(compound_idx) {
+            if is_statement_token(*t) {
+                let (statement, new_index_offset) =
+                    parse_statement(&tokens[idx..end_compound], 0, flattened, str_maps)?;
+                flattened.statements.push(statement);
+                compound
+                    .block_item_list
+                    .push(BlockItem::Statement(flattened.statements.len() - 1));
+                compound_idx += new_index_offset;
+            } else if parser::declarations::is_declaration_token(*t) {
+                let (declaration, new_index_offset) = parser::declarations::parse_declarations(
+                    &tokens[idx..end_compound],
+                    0,
+                    flattened,
+                    str_maps,
+                )?;
+                flattened.declarations.push(declaration);
+                compound
+                    .block_item_list
+                    .push(BlockItem::Declaration(flattened.declarations.len() - 1));
+                compound_idx += new_index_offset;
+            } else {
+                unreachable!("What the fuck bro: {:?}", t);
+            }
+        }
+        while matches!(
+            tokens.get(compound_idx),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            compound_idx += 1;
+        }
+    }
+    Ok((compound, curly_balance_idx))
 }
 pub fn parse_selection_statement(
     tokens: &[lexer::Token],
@@ -289,4 +367,26 @@ pub fn parse_jump_statement(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Jump, usize), String> {
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_compound_statement, parse_statement, BlockItem, Compound};
+    use crate::{lexer, parser};
+    #[test]
+    fn parse_compound_statement_test() -> Result<(), String> {
+        {
+            let src = r#"{ int hi = 5; }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (stmt, _) = parse_compound_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let Compound { block_item_list } = stmt;
+            assert!(matches!(
+                block_item_list.get(0),
+                Some(BlockItem::Declaration(_))
+            ));
+        }
+        Ok(())
+    }
 }
