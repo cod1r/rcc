@@ -2163,6 +2163,65 @@ int hi;
                 Initializer::AssignmentExpression(_)
             ));
         }
+        {
+            // gnarly
+            let src = r#"void (*(*f[])())();"#;
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut flattened = parser::Flattened::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (declaration, _) = parse_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let Declaration {
+                declaration_specifiers,
+                init_declarator_list,
+            } = declaration;
+            assert!(
+                matches!(
+                    declaration_specifiers.type_specifiers.get(0),
+                    Some(TypeSpecifier::Void)
+                ),
+                "int was not added to the type specifier list"
+            );
+            assert!(
+                matches!(
+                    init_declarator_list.get(0),
+                    Some(InitDeclarator::Declarator(_))
+                ),
+                "declarator and initializer not added to list",
+            );
+            let Some(InitDeclarator::Declarator(d)) = init_declarator_list.get(0) else {
+                unreachable!()
+            };
+            assert!(d.pointer.is_empty());
+            assert!(d.direct_declarator.is_some());
+            let Some(dd) = &d.direct_declarator else {
+                unreachable!()
+            };
+            assert!(dd.declarator.is_some());
+            assert!(dd.parameter_type_list.is_some());
+            let Some(ddd) = &dd.declarator else {
+                unreachable!()
+            };
+            assert!(!ddd.pointer.is_empty());
+            assert!(ddd.direct_declarator.is_some());
+            let Some(ddddd) = &ddd.direct_declarator else {
+                unreachable!()
+            };
+            assert!(ddddd.parameter_type_list.is_some());
+            assert!(ddddd.declarator.is_some());
+            let Some(dddddd) = &ddddd.declarator else {
+                unreachable!()
+            };
+            assert!(!dddddd.pointer.is_empty());
+            assert!(dddddd.direct_declarator.is_some());
+            let Some(ddddddd) = &dddddd.direct_declarator else {
+                unreachable!()
+            };
+            assert!(ddddddd.identifier.is_some());
+            let Some(key) = ddddddd.identifier else {
+                unreachable!()
+            };
+            assert_eq!(str_maps.key_to_byte_vec[key], b"f");
+        }
         Ok(())
     }
 }
