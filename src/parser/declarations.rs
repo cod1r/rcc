@@ -1715,8 +1715,9 @@ mod tests {
     use super::{
         parse_declarations, parse_declarator, parse_enumerator_specifier, parse_initializer,
         parse_parameter_type_list, parse_struct_declarator, parse_struct_union_specifier,
-        parse_type_names, Declarator, Designation, Designator, DirectAbstractDeclarator,
-        DirectDeclarator, Enumerator, Initializer, InitializerList, TypeQualifier, TypeSpecifier,
+        parse_type_names, Declaration, Declarator, Designation, Designator,
+        DirectAbstractDeclarator, DirectDeclarator, Enumerator, InitDeclarator, Initializer,
+        InitializerList, TypeQualifier, TypeSpecifier,
     };
     use crate::{lexer, parser};
     #[test]
@@ -2135,6 +2136,32 @@ int hi;
             let mut flattened = parser::Flattened::new();
             let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
             let (declaration, _) = parse_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let Declaration {
+                declaration_specifiers,
+                init_declarator_list,
+            } = declaration;
+            assert!(
+                matches!(
+                    declaration_specifiers.type_specifiers.get(0),
+                    Some(TypeSpecifier::Int)
+                ),
+                "int was not added to the type specifier list"
+            );
+            assert!(
+                matches!(
+                    init_declarator_list.get(0),
+                    Some(InitDeclarator::DeclaratorWithInitializer(_))
+                ),
+                "declarator and initializer not added to list",
+            );
+            let Some(InitDeclarator::DeclaratorWithInitializer(di)) = init_declarator_list.get(0)
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                di.initializer,
+                Initializer::AssignmentExpression(_)
+            ));
         }
         Ok(())
     }
