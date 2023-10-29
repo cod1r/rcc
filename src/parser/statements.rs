@@ -108,40 +108,60 @@ pub fn parse_statement(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Statement, usize), String> {
     let mut idx = start_index;
-    while idx < tokens.len() {
-        match tokens.get(idx) {
-            Some(
-                lexer::Token::IDENT(_) | lexer::Token::KEYWORD_CASE | lexer::Token::KEYWORD_DEFAULT,
-            ) => {
-                let (labeled, new_index) =
-                    parse_labeled_statement(tokens, idx, flattened, str_maps)?;
-            }
-            Some(lexer::Token::PUNCT_OPEN_CURLY) => {
-                let (compound, new_index) =
-                    parse_compound_statement(tokens, idx, flattened, str_maps)?;
-            }
-            Some(lexer::Token::KEYWORD_IF | lexer::Token::KEYWORD_SWITCH) => {
-                let (selection, new_index) =
-                    parse_selection_statement(tokens, idx, flattened, str_maps)?;
-            }
-            Some(
-                lexer::Token::KEYWORD_WHILE | lexer::Token::KEYWORD_DO | lexer::Token::KEYWORD_FOR,
-            ) => {
-                let (iteration, new_index) =
-                    parse_iteration_statement(tokens, idx, flattened, str_maps)?;
-            }
-            Some(
-                lexer::Token::KEYWORD_GOTO
-                | lexer::Token::KEYWORD_CONTINUE
-                | lexer::Token::KEYWORD_BREAK
-                | lexer::Token::KEYWORD_RETURN,
-            ) => {
-                let (jump, new_index) = parse_jump_statement(tokens, idx, flattened, str_maps)?;
-            }
-            _ => todo!("parse expression-statement"),
+    match tokens.get(idx) {
+        Some(
+            lexer::Token::IDENT(_) | lexer::Token::KEYWORD_CASE | lexer::Token::KEYWORD_DEFAULT,
+        ) => {
+            let (labeled, new_index) = parse_labeled_statement(tokens, idx, flattened, str_maps)?;
+            flattened.label_statements.push(labeled);
+            Ok((
+                Statement::Label(flattened.label_statements.len() - 1),
+                new_index,
+            ))
         }
+        Some(lexer::Token::PUNCT_OPEN_CURLY) => {
+            let (compound, new_index) = parse_compound_statement(tokens, idx, flattened, str_maps)?;
+            flattened.compound_statements.push(compound);
+            Ok((
+                Statement::Compound(flattened.compound_statements.len() - 1),
+                new_index,
+            ))
+        }
+        Some(lexer::Token::KEYWORD_IF | lexer::Token::KEYWORD_SWITCH) => {
+            let (selection, new_index) =
+                parse_selection_statement(tokens, idx, flattened, str_maps)?;
+            flattened.selection_statements.push(selection);
+            Ok((
+                Statement::Selection(flattened.selection_statements.len() - 1),
+                new_index,
+            ))
+        }
+        Some(
+            lexer::Token::KEYWORD_WHILE | lexer::Token::KEYWORD_DO | lexer::Token::KEYWORD_FOR,
+        ) => {
+            let (iteration, new_index) =
+                parse_iteration_statement(tokens, idx, flattened, str_maps)?;
+            flattened.iteration_statements.push(iteration);
+            Ok((
+                Statement::Iteration(flattened.iteration_statements.len() - 1),
+                new_index,
+            ))
+        }
+        Some(
+            lexer::Token::KEYWORD_GOTO
+            | lexer::Token::KEYWORD_CONTINUE
+            | lexer::Token::KEYWORD_BREAK
+            | lexer::Token::KEYWORD_RETURN,
+        ) => {
+            let (jump, new_index) = parse_jump_statement(tokens, idx, flattened, str_maps)?;
+            flattened.jump_statements.push(jump);
+            Ok((
+                Statement::Jump(flattened.jump_statements.len() - 1),
+                new_index,
+            ))
+        }
+        _ => todo!("parse expression-statement"),
     }
-    todo!()
 }
 pub fn parse_labeled_statement(
     tokens: &[lexer::Token],
@@ -152,6 +172,7 @@ pub fn parse_labeled_statement(
     let mut label_idx = start_index;
     match tokens[label_idx] {
         lexer::Token::IDENT(key) => {
+            label_idx += 1;
             while matches!(
                 tokens.get(label_idx),
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -186,12 +207,15 @@ pub fn parse_labeled_statement(
             ))
         }
         lexer::Token::KEYWORD_CASE => {
-            while matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-            ) && label_idx < tokens.len()
-            {
+            loop {
                 label_idx += 1;
+                if matches!(
+                    tokens.get(label_idx),
+                    Some(lexer::Token::PUNCT_COLON) | None
+                ) && label_idx < tokens.len()
+                {
+                    break;
+                }
             }
             if !matches!(tokens.get(label_idx), Some(lexer::Token::PUNCT_COLON)) {
                 let Some(bv) = lexer::Token::PUNCT_COLON.to_byte_vec(str_maps) else {
@@ -214,8 +238,17 @@ pub fn parse_labeled_statement(
                 flattened,
                 str_maps,
             )?;
-            let (statement, new_index) =
-                parse_statement(tokens, label_idx + 1, flattened, str_maps)?;
+            loop {
+                label_idx += 1;
+                if !matches!(
+                    tokens.get(label_idx),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) && label_idx < tokens.len()
+                {
+                    break;
+                }
+            }
+            let (statement, new_index) = parse_statement(tokens, label_idx, flattened, str_maps)?;
             flattened.expressions.push(expression);
             flattened.statements.push(statement);
             Ok((
@@ -227,6 +260,7 @@ pub fn parse_labeled_statement(
             ))
         }
         lexer::Token::KEYWORD_DEFAULT => {
+            label_idx += 1;
             while matches!(
                 tokens.get(label_idx),
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
@@ -264,6 +298,18 @@ pub fn parse_compound_statement(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Compound, usize), String> {
     let mut idx = start_index;
+    if !matches!(
+        tokens.get(start_index),
+        Some(lexer::Token::PUNCT_OPEN_CURLY)
+    ) {
+        return Err(error::RccErrorInfo::new(
+            error::RccError::Custom("Expected {".to_string()),
+            start_index..start_index + 1,
+            tokens,
+            str_maps,
+        )
+        .to_string());
+    }
     loop {
         idx += 1; // first is guaranteed to be open curly
         if !matches!(
@@ -371,7 +417,10 @@ pub fn parse_jump_statement(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_compound_statement, parse_statement, BlockItem, Compound};
+    use super::{
+        parse_compound_statement, parse_labeled_statement, parse_statement, BlockItem, Compound,
+        Label, Statement,
+    };
     use crate::{lexer, parser};
     #[test]
     fn parse_compound_statement_test() -> Result<(), String> {
@@ -382,6 +431,39 @@ mod tests {
             let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
             let (stmt, _) = parse_compound_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             let Compound { block_item_list } = stmt;
+            assert!(matches!(
+                block_item_list.get(0),
+                Some(BlockItem::Declaration(_))
+            ));
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_labeled_statement_test() -> Result<(), String> {
+        {
+            let src = r#"case 1 + 1 : { int hi = 5; }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (label, _) = parse_labeled_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(label, Label::Case { .. }));
+            let Label::Case {
+                const_expr,
+                statement,
+            } = label
+            else {
+                unreachable!()
+            };
+            assert!(flattened.expressions.len() > const_expr);
+            assert!(flattened.statements.len() > statement);
+            assert!(matches!(
+                flattened.statements[statement],
+                Statement::Compound(_)
+            ));
+            let Statement::Compound(key) = flattened.statements[statement] else {
+                unreachable!()
+            };
+            let Compound { block_item_list } = &flattened.compound_statements[key];
             assert!(matches!(
                 block_item_list.get(0),
                 Some(BlockItem::Declaration(_))
