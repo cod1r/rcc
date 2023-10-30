@@ -160,7 +160,8 @@ pub fn parse_statement(
                 new_index,
             ))
         }
-        _ => todo!("parse expression-statement"),
+        None => unreachable!(),
+        _ => todo!("parse expression-statement: {:?}", tokens[idx]),
     }
 }
 pub fn parse_labeled_statement(
@@ -232,6 +233,8 @@ pub fn parse_labeled_statement(
                 )
                 .to_string());
             }
+            // TODO: this is a constant expression so I might need to eval it
+            // to make sure the constant expression restraints are applied
             let (_, expression) = parser::expressions::parse_expressions(
                 &tokens[start_index + 1..label_idx],
                 0,
@@ -396,7 +399,164 @@ pub fn parse_selection_statement(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Selection, usize), String> {
-    todo!()
+    let mut selection_idx = start_index;
+    match tokens.get(selection_idx) {
+        Some(lexer::Token::KEYWORD_IF) => {
+            loop {
+                selection_idx += 1;
+                if matches!(
+                    tokens.get(selection_idx),
+                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::PUNCT_OPEN_PAR)
+            ) {
+                return Err("EXPECTED (".to_string());
+            }
+            selection_idx += 1;
+            let start = selection_idx;
+            let mut parenth_bal = 1;
+            while parenth_bal > 0 {
+                match tokens.get(selection_idx) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        parenth_bal += 1;
+                    }
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                        parenth_bal -= 1;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return Err("UNBALANCED".to_string());
+                    }
+                }
+                selection_idx += 1;
+            }
+            if !matches!(
+                tokens.get(selection_idx - 1),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                return Err("UNBALANCED".to_string());
+            }
+            let (_, expression) = parser::expressions::parse_expressions(
+                &tokens[start..selection_idx - 1],
+                0,
+                flattened,
+                str_maps,
+            )?;
+            flattened.expressions.push(expression);
+            while matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                selection_idx += 1;
+            }
+            let (stmt, new_index) = parse_statement(tokens, selection_idx, flattened, str_maps)?;
+            flattened.statements.push(stmt);
+            let if_statement_index = flattened.statements.len() - 1;
+            selection_idx = new_index;
+            while matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                selection_idx += 1;
+            }
+            if matches!(tokens.get(selection_idx), Some(lexer::Token::KEYWORD_ELSE)) {
+                selection_idx += 1;
+                let (stmt2, new_index) =
+                    parse_statement(tokens, selection_idx, flattened, str_maps)?;
+                flattened.statements.push(stmt2);
+                let else_statement_index = flattened.statements.len() - 1;
+                selection_idx = new_index;
+                Ok((
+                    Selection::IfElse {
+                        expression_index: flattened.expressions.len() - 1,
+                        if_statement_index,
+                        else_statement_index,
+                    },
+                    selection_idx,
+                ))
+            } else {
+                Ok((
+                    Selection::If {
+                        expression_index: flattened.expressions.len() - 1,
+                        statement_index: if_statement_index,
+                    },
+                    selection_idx,
+                ))
+            }
+        }
+        Some(lexer::Token::KEYWORD_SWITCH) => {
+            loop {
+                selection_idx += 1;
+                if matches!(
+                    tokens.get(selection_idx),
+                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::PUNCT_OPEN_PAR)
+            ) {
+                return Err("EXPECTED (".to_string());
+            }
+            selection_idx += 1;
+            let start = selection_idx;
+            let mut parenth_bal = 1;
+            while parenth_bal > 0 {
+                match tokens.get(selection_idx) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        parenth_bal += 1;
+                    }
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                        parenth_bal -= 1;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return Err("UNBALANCED".to_string());
+                    }
+                }
+                selection_idx += 1;
+            }
+            if !matches!(
+                tokens.get(selection_idx - 1),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                return Err("UNBALANCED".to_string());
+            }
+            let (_, expression) = parser::expressions::parse_expressions(
+                &tokens[start..selection_idx - 1],
+                0,
+                flattened,
+                str_maps,
+            )?;
+            flattened.expressions.push(expression);
+            while matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                selection_idx += 1;
+            }
+            let (stmt, new_index) = parse_statement(tokens, selection_idx, flattened, str_maps)?;
+            flattened.statements.push(stmt);
+            selection_idx = new_index;
+            Ok((
+                Selection::Switch {
+                    expression_index: flattened.expressions.len() - 1,
+                    statement_index: flattened.statements.len() - 1,
+                },
+                selection_idx,
+            ))
+        }
+        _ => {
+            return Err("EXPECTED IF OR SWITCH".to_string());
+        }
+    }
 }
 pub fn parse_iteration_statement(
     tokens: &[lexer::Token],
@@ -418,8 +578,8 @@ pub fn parse_jump_statement(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_compound_statement, parse_labeled_statement, parse_statement, BlockItem, Compound,
-        Label, Statement,
+        parse_compound_statement, parse_labeled_statement, parse_selection_statement,
+        parse_statement, BlockItem, Compound, Label, Selection, Statement,
     };
     use crate::{lexer, parser};
     #[test]
@@ -467,6 +627,74 @@ mod tests {
             assert!(matches!(
                 block_item_list.get(0),
                 Some(BlockItem::Declaration(_))
+            ));
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_selection_statement_test() -> Result<(), String> {
+        {
+            let src = r#"if (1 + 1) { int hi = 5; }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (selection, _) =
+                parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(selection, Selection::If { .. }));
+            let Selection::If {
+                expression_index,
+                statement_index,
+            } = selection
+            else {
+                unreachable!()
+            };
+            assert!(flattened.expressions.len() > expression_index);
+            assert!(flattened.statements.len() > statement_index);
+            assert!(matches!(
+                flattened.statements[statement_index],
+                Statement::Compound(_)
+            ));
+            let Statement::Compound(key) = flattened.statements[statement_index] else {
+                unreachable!()
+            };
+            let Compound { block_item_list } = &flattened.compound_statements[key];
+            assert!(matches!(
+                block_item_list.get(0),
+                Some(BlockItem::Declaration(_))
+            ));
+        }
+        {
+            let src = r#"switch (1) {
+                case 1 + 1: {
+                    int hi = 5;
+                }
+            }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (selection, _) =
+                parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(selection, Selection::Switch { .. }));
+            let Selection::Switch {
+                expression_index,
+                statement_index,
+            } = selection
+            else {
+                unreachable!()
+            };
+            assert!(flattened.expressions.len() > expression_index);
+            assert!(flattened.statements.len() > statement_index);
+            assert!(matches!(
+                flattened.statements[statement_index],
+                Statement::Compound(_)
+            ));
+            let Statement::Compound(key) = flattened.statements[statement_index] else {
+                unreachable!()
+            };
+            let Compound { block_item_list } = &flattened.compound_statements[key];
+            assert!(matches!(
+                block_item_list.get(0),
+                Some(BlockItem::Statement(_))
             ));
         }
         Ok(())
