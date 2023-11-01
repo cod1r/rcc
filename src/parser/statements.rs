@@ -61,11 +61,13 @@ pub enum Iteration {
         first_expr_index: Option<parser::expressions::ExpressionIndex>,
         second_expr_index: Option<parser::expressions::ExpressionIndex>,
         third_expr_index: Option<parser::expressions::ExpressionIndex>,
+        statement_index: StatementIndex,
     },
     ForDeclaration {
         declaration_index: parser::declarations::DeclarationIndex,
         expression1: Option<parser::expressions::ExpressionIndex>,
         expression2: Option<parser::expressions::ExpressionIndex>,
+        statement_index: StatementIndex,
     },
 }
 #[derive(Copy, Clone)]
@@ -564,7 +566,429 @@ pub fn parse_iteration_statement(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Iteration, usize), String> {
-    todo!()
+    let mut iteration_idx = start_index;
+    match tokens.get(iteration_idx) {
+        Some(lexer::Token::KEYWORD_WHILE) => {
+            loop {
+                iteration_idx += 1;
+                if matches!(
+                    tokens.get(iteration_idx),
+                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::PUNCT_OPEN_PAR)
+            ) {
+                return Err("EXPECTED (".to_string());
+            }
+            iteration_idx += 1;
+            let start = iteration_idx;
+            let mut parenth_bal = 1;
+            while parenth_bal > 0 {
+                match tokens.get(iteration_idx) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        parenth_bal += 1;
+                    }
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                        parenth_bal -= 1;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return Err("UNBALANCED".to_string());
+                    }
+                }
+                iteration_idx += 1;
+            }
+            if !matches!(
+                tokens.get(iteration_idx - 1),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                return Err("UNBALANCED".to_string());
+            }
+            let (_, expression) = parser::expressions::parse_expressions(
+                &tokens[start..iteration_idx - 1],
+                0,
+                flattened,
+                str_maps,
+            )?;
+            flattened.expressions.push(expression);
+            while matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                iteration_idx += 1;
+            }
+            let (stmt, new_index) = parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+            flattened.statements.push(stmt);
+            iteration_idx = new_index;
+            Ok((
+                Iteration::While {
+                    expression_index: flattened.expressions.len() - 1,
+                    statement_index: flattened.statements.len() - 1,
+                },
+                iteration_idx,
+            ))
+        }
+        Some(lexer::Token::KEYWORD_DO) => {
+            iteration_idx += 1;
+            while matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                iteration_idx += 1;
+            }
+            let (stmt, new_index) = parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+            flattened.statements.push(stmt);
+            iteration_idx = new_index;
+            while matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                iteration_idx += 1;
+            }
+            if !matches!(tokens.get(iteration_idx), Some(lexer::Token::KEYWORD_WHILE)) {
+                return Err("EXPECTED WHILE".to_string());
+            }
+            loop {
+                iteration_idx += 1;
+                if matches!(
+                    tokens.get(iteration_idx),
+                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::PUNCT_OPEN_PAR)
+            ) {
+                return Err("EXPECTED (".to_string());
+            }
+            iteration_idx += 1;
+            let start = iteration_idx;
+            let mut parenth_bal = 1;
+            while parenth_bal > 0 {
+                match tokens.get(iteration_idx) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        parenth_bal += 1;
+                    }
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                        parenth_bal -= 1;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return Err("UNBALANCED".to_string());
+                    }
+                }
+                iteration_idx += 1;
+            }
+            if !matches!(
+                tokens.get(iteration_idx - 1),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                return Err("UNBALANCED".to_string());
+            }
+            let (_, expression) = parser::expressions::parse_expressions(
+                &tokens[start..iteration_idx - 1],
+                0,
+                flattened,
+                str_maps,
+            )?;
+            flattened.expressions.push(expression);
+            while matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                iteration_idx += 1;
+            }
+            if !matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::PUNCT_SEMI_COLON)
+            ) {
+                return Err("EXPECTED ;".to_string());
+            }
+            iteration_idx += 1;
+            Ok((
+                Iteration::DoWhile {
+                    while_expression: flattened.expressions.len() - 1,
+                    statement_index: flattened.statements.len() - 1,
+                },
+                iteration_idx,
+            ))
+        }
+        Some(lexer::Token::KEYWORD_FOR) => {
+            loop {
+                iteration_idx += 1;
+                if matches!(
+                    tokens.get(iteration_idx),
+                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::PUNCT_OPEN_PAR)
+            ) {
+                return Err("EXPECTED (".to_string());
+            }
+            iteration_idx += 1;
+            let start = iteration_idx;
+            let mut until_first_semi_colon = start + 1;
+            let mut parenth_bal = 1;
+            while parenth_bal > 0 {
+                match tokens.get(iteration_idx) {
+                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                        parenth_bal += 1;
+                    }
+                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                        parenth_bal -= 1;
+                    }
+                    Some(_) => {}
+                    None => {
+                        return Err("UNBALANCED".to_string());
+                    }
+                }
+                iteration_idx += 1;
+            }
+            if !matches!(
+                tokens.get(iteration_idx - 1),
+                Some(lexer::Token::PUNCT_CLOSE_PAR)
+            ) {
+                return Err("UNBALANCED".to_string());
+            }
+            while matches!(
+                tokens.get(until_first_semi_colon),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                until_first_semi_colon += 1;
+            }
+            let Some(t) = tokens.get(until_first_semi_colon) else {
+                return Err("end no good".to_string());
+            };
+            if parser::declarations::is_declaration_token(*t) {
+                let (declaration, new_index) = parser::declarations::parse_declarations(
+                    &tokens[start..until_first_semi_colon],
+                    0,
+                    flattened,
+                    str_maps,
+                )?;
+                until_first_semi_colon = new_index;
+                flattened.declarations.push(declaration);
+                let mut ifd = Iteration::ForDeclaration {
+                    declaration_index: flattened.declarations.len() - 1,
+                    expression1: None,
+                    expression2: None,
+                    statement_index: 0,
+                };
+                while matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    until_first_semi_colon += 1;
+                }
+                if !matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                ) {
+                    let start = until_first_semi_colon;
+                    while !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                    ) {
+                        until_first_semi_colon += 1;
+                    }
+                    if !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                    ) {
+                        return Err("missing ;".to_string());
+                    }
+                    let (_, expression) = parser::expressions::parse_expressions(
+                        &tokens[start..until_first_semi_colon],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expression);
+                    let Iteration::ForDeclaration { expression1, .. } = &mut ifd else {
+                        unreachable!()
+                    };
+                    *expression1 = Some(flattened.expressions.len() - 1);
+                }
+                let Iteration::ForDeclaration {
+                    expression2,
+                    statement_index,
+                    ..
+                } = &mut ifd
+                else {
+                    unreachable!()
+                };
+                if iteration_idx - 1 - (until_first_semi_colon + 1) > 0 {
+                    let (_, expression) = parser::expressions::parse_expressions(
+                        &tokens[until_first_semi_colon + 1..iteration_idx - 1],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expression);
+                    *expression2 = Some(flattened.expressions.len() - 1);
+                }
+                while matches!(
+                    tokens.get(iteration_idx),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    iteration_idx += 1;
+                }
+                let (stmt, new_index) =
+                    parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+                iteration_idx = new_index;
+                flattened.statements.push(stmt);
+                *statement_index = flattened.statements.len() - 1;
+                Ok((ifd, iteration_idx))
+            } else {
+                let mut fe = Iteration::ForThreeExpr {
+                    first_expr_index: None,
+                    second_expr_index: None,
+                    third_expr_index: None,
+                    statement_index: 0,
+                };
+                if !matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                ) {
+                    let start = until_first_semi_colon;
+                    while !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                    ) {
+                        until_first_semi_colon += 1;
+                    }
+                    if !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                    ) {
+                        return Err("missing ;".to_string());
+                    }
+                    let (_, expression) = parser::expressions::parse_expressions(
+                        &tokens[start..until_first_semi_colon],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expression);
+                    let Iteration::ForThreeExpr {
+                        first_expr_index, ..
+                    } = &mut fe
+                    else {
+                        unreachable!()
+                    };
+                    *first_expr_index = Some(flattened.expressions.len() - 1);
+                }
+                if !matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                ) {
+                    return Err("missing ;".to_string());
+                }
+                until_first_semi_colon += 1;
+                if !matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                ) {
+                    let start = until_first_semi_colon;
+                    while !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                    ) {
+                        until_first_semi_colon += 1;
+                    }
+                    if !matches!(
+                        tokens.get(until_first_semi_colon),
+                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                    ) {
+                        return Err("missing ;".to_string());
+                    }
+                    let (_, expression) = parser::expressions::parse_expressions(
+                        &tokens[start..until_first_semi_colon],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expression);
+                    let Iteration::ForThreeExpr {
+                        second_expr_index, ..
+                    } = &mut fe
+                    else {
+                        unreachable!()
+                    };
+                    *second_expr_index = Some(flattened.expressions.len() - 1);
+                }
+                if !matches!(
+                    tokens.get(until_first_semi_colon),
+                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                ) {
+                    return Err("missing ;".to_string());
+                }
+                until_first_semi_colon += 1;
+                let mut until_close_par = until_first_semi_colon;
+                if !matches!(
+                    tokens.get(until_close_par),
+                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                ) {
+                    let start = until_close_par;
+                    while !matches!(
+                        tokens.get(until_close_par),
+                        Some(lexer::Token::PUNCT_CLOSE_PAR) | None
+                    ) {
+                        until_close_par += 1;
+                    }
+                    if !matches!(
+                        tokens.get(until_close_par),
+                        Some(lexer::Token::PUNCT_CLOSE_PAR)
+                    ) {
+                        return Err("missing ;".to_string());
+                    }
+                    let (_, expression) = parser::expressions::parse_expressions(
+                        &tokens[start..until_close_par],
+                        0,
+                        flattened,
+                        str_maps,
+                    )?;
+                    flattened.expressions.push(expression);
+                    let Iteration::ForThreeExpr {
+                        third_expr_index, ..
+                    } = &mut fe
+                    else {
+                        unreachable!()
+                    };
+                    *third_expr_index = Some(flattened.expressions.len() - 1);
+                }
+                let Iteration::ForThreeExpr {
+                    statement_index, ..
+                } = &mut fe
+                else {
+                    unreachable!()
+                };
+                while matches!(
+                    tokens.get(iteration_idx),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) {
+                    iteration_idx += 1;
+                }
+                let (stmt, new_index) =
+                    parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+                iteration_idx = new_index;
+                flattened.statements.push(stmt);
+                *statement_index = flattened.statements.len() - 1;
+                Ok((fe, iteration_idx))
+            }
+        }
+        _ => unreachable!(),
+    }
 }
 pub fn parse_jump_statement(
     tokens: &[lexer::Token],
@@ -578,8 +1002,9 @@ pub fn parse_jump_statement(
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_compound_statement, parse_labeled_statement, parse_selection_statement,
-        parse_statement, BlockItem, Compound, Label, Selection, Statement,
+        parse_compound_statement, parse_iteration_statement, parse_labeled_statement,
+        parse_selection_statement, parse_statement, BlockItem, Compound, Iteration, Label,
+        Selection, Statement,
     };
     use crate::{lexer, parser};
     #[test]
@@ -696,6 +1121,43 @@ mod tests {
                 block_item_list.get(0),
                 Some(BlockItem::Statement(_))
             ));
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_iteration_statement_test() -> Result<(), String> {
+        {
+            let src = r#"while (1) {
+                int hi = 5;
+            }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (iteration, _) =
+                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(iteration, Iteration::While { .. }));
+        }
+        {
+            let src = r#"do {
+                int hi = 5;
+            } while (1);"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (iteration, _) =
+                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(iteration, Iteration::DoWhile { .. }));
+        }
+        {
+            let src = r#"for (1;1;1) {
+                int hi = 5;
+            }"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (iteration, _) =
+                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(iteration, Iteration::ForThreeExpr { .. }));
         }
         Ok(())
     }

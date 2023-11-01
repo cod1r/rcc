@@ -2490,13 +2490,13 @@ pub fn parse_expressions(
                     }
                 }
             }
-            lexer::Token::WHITESPACE => {
+            lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {
                 index += 1;
             }
             _ => {
                 return Err(error::RccErrorInfo::new(
                     error::RccError::UnknownToken,
-                    index..index + 1,
+                    0..tokens.len(),
                     tokens,
                     str_maps,
                 )
