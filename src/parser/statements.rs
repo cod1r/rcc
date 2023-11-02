@@ -996,15 +996,113 @@ pub fn parse_jump_statement(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(Jump, usize), String> {
-    todo!()
+    let mut jump_idx = start_index;
+    match tokens.get(jump_idx) {
+        Some(lexer::Token::KEYWORD_GOTO) => {
+            loop {
+                jump_idx += 1;
+                if matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT(_)) | None) {
+                    break;
+                }
+            }
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT(_))) {
+                return Err("EXPECTED IDENTIFIER".to_string());
+            }
+            let Some(lexer::Token::IDENT(key)) = tokens.get(jump_idx) else {
+                unreachable!()
+            };
+            jump_idx += 1;
+            while matches!(
+                tokens.get(jump_idx),
+                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            ) {
+                jump_idx += 1;
+            }
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                return Err("EXPECTED ;".to_string());
+            }
+            jump_idx += 1;
+            Ok((Jump::Goto(*key), jump_idx))
+        }
+        Some(lexer::Token::KEYWORD_CONTINUE) => {
+            loop {
+                jump_idx += 1;
+                if matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                return Err("EXPECTED ;".to_string());
+            }
+            jump_idx += 1;
+            Ok((Jump::Continue, jump_idx))
+        }
+        Some(lexer::Token::KEYWORD_BREAK) => {
+            loop {
+                jump_idx += 1;
+                if matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                ) {
+                    break;
+                }
+            }
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                return Err("EXPECTED ;".to_string());
+            }
+            jump_idx += 1;
+            Ok((Jump::Break, jump_idx))
+        }
+        Some(lexer::Token::KEYWORD_RETURN) => {
+            loop {
+                jump_idx += 1;
+                if !matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                ) && matches!(tokens.get(jump_idx), Some(_) | None)
+                {
+                    break;
+                }
+            }
+            let mut r = Jump::Return(None);
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                let start = jump_idx;
+                while !matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::PUNCT_SEMI_COLON) | None,
+                ) {
+                    jump_idx += 1;
+                }
+                if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                    return Err("EXPECTED ;".to_string());
+                }
+                let (_, expr) = parser::expressions::parse_expressions(
+                    &tokens[start..jump_idx],
+                    0,
+                    flattened,
+                    str_maps,
+                )?;
+                flattened.expressions.push(expr);
+                r = Jump::Return(Some(flattened.expressions.len() - 1));
+            }
+            jump_idx += 1;
+            Ok((r, jump_idx))
+        }
+        _ => {
+            return Err("EXPECTED GOTO, CONTINUE, BREAK, RETURN".to_string());
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_compound_statement, parse_iteration_statement, parse_labeled_statement,
-        parse_selection_statement, parse_statement, BlockItem, Compound, Iteration, Label,
-        Selection, Statement,
+        parse_compound_statement, parse_iteration_statement, parse_jump_statement,
+        parse_labeled_statement, parse_selection_statement, parse_statement, BlockItem, Compound,
+        Iteration, Jump, Label, Selection, Statement,
     };
     use crate::{lexer, parser};
     #[test]
@@ -1149,6 +1247,15 @@ mod tests {
             assert!(matches!(iteration, Iteration::DoWhile { .. }));
         }
         {
+            let src = r#"do while(1) {} while (0);"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (iteration, _) =
+                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(iteration, Iteration::DoWhile { .. }));
+        }
+        {
             let src = r#"for (1;1;1) {
                 int hi = 5;
             }"#;
@@ -1158,6 +1265,42 @@ mod tests {
             let (iteration, _) =
                 parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::ForThreeExpr { .. }));
+        }
+        Ok(())
+    }
+    #[test]
+    fn parse_jump_statement_test() -> Result<(), String> {
+        {
+            let src = r#"goto chicken;"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(jump, Jump::Goto(_)));
+        }
+        {
+            let src = r#"continue;"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(jump, Jump::Continue));
+        }
+        {
+            let src = r#"break;"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(jump, Jump::Break));
+        }
+        {
+            let src = r#"return 1;"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(jump, Jump::Return(_)));
         }
         Ok(())
     }
