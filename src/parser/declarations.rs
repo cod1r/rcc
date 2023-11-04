@@ -26,8 +26,8 @@ pub enum ParameterDeclaration {
 }
 #[derive(Clone)]
 pub struct ParameterTypeList {
-    parameter_declarations: Vec<ParameterDeclaration>,
-    ellipsis: bool,
+    pub parameter_declarations: Vec<ParameterDeclaration>,
+    pub ellipsis: bool,
 }
 #[derive(Clone)]
 pub struct DirectAbstractDeclarator {
@@ -74,18 +74,18 @@ impl Pointer {
 }
 #[derive(Clone)]
 pub struct DirectDeclarator {
-    identifier: Option<usize>,
-    declarator: Option<Box<Declarator>>,
-    type_qualifier_list: Vec<TypeQualifier>,
-    is_static: bool,
-    mult: bool,
-    parameter_type_list: Option<ParameterTypeList>,
-    assign_expr: Option<parser::expressions::ExpressionIndex>,
+    pub identifier: Option<usize>,
+    pub declarator: Option<Box<Declarator>>,
+    pub type_qualifier_list: Vec<TypeQualifier>,
+    pub is_static: bool,
+    pub mult: bool,
+    pub parameter_type_list: Option<ParameterTypeList>,
+    pub assign_expr: Option<parser::expressions::ExpressionIndex>,
 }
 #[derive(Clone)]
 pub struct Declarator {
-    pointer: Vec<Pointer>,
-    direct_declarator: Option<DirectDeclarator>,
+    pub pointer: Vec<Pointer>,
+    pub direct_declarator: Option<DirectDeclarator>,
 }
 #[derive(Clone)]
 pub struct StructDeclarator {
@@ -282,7 +282,7 @@ pub fn parse_declarations(
     if !matches!(
         tokens.get(declaration_index),
         Some(lexer::Token::PUNCT_SEMI_COLON)
-    ) && !tokens.get(declaration_index).is_none()
+    ) && tokens.get(declaration_index).is_some()
     {
         loop {
             let (new_index, declarator) =
@@ -304,7 +304,6 @@ pub fn parse_declarations(
                 declaration
                     .init_declarator_list
                     .push(InitDeclarator::Declarator(declarator));
-                declaration_index += 1;
             } else {
                 let start = declaration_index + 1;
                 loop {
@@ -778,6 +777,7 @@ fn parse_direct_declarator(
                 index += 1;
             }
             let ptl = parse_parameter_type_list(&tokens[starting..index], flattened, str_maps)?;
+            index += 1;
             direct_declarator.parameter_type_list = Some(ptl);
         }
         _ => {}
@@ -785,7 +785,7 @@ fn parse_direct_declarator(
     Ok((index, direct_declarator))
 }
 
-fn parse_declarator(
+pub fn parse_declarator(
     tokens: &[lexer::Token],
     start_index: usize,
     flattened: &mut parser::Flattened,

@@ -2,6 +2,7 @@ use crate::lexer;
 pub mod declarations;
 pub mod expressions;
 pub mod statements;
+pub mod external_definitions;
 
 type ParserTypeIndex = usize;
 
