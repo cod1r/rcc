@@ -1,5 +1,22 @@
 use crate::lexer;
 use crate::parser;
+pub type TranslationUnit = Vec<ExternalDeclaration>;
+pub fn parse_translation_units(
+    tokens: &[lexer::Token],
+    start_index: usize,
+    flattened: &mut parser::Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(TranslationUnit, usize), String> {
+    let mut translation_unit_idx = start_index;
+    let mut translation_units = Vec::new();
+    while !matches!(tokens.get(translation_unit_idx), None) {
+        let (external_declaration, new_index) =
+            parse_external_declarations(tokens, translation_unit_idx, flattened, str_maps)?;
+        translation_units.push(external_declaration);
+        translation_unit_idx = new_index;
+    }
+    Ok((translation_units, translation_unit_idx))
+}
 pub enum ExternalDeclaration {
     FunctionDef {
         declaration_specifier: parser::declarations::DeclarationSpecifier,
@@ -15,34 +32,34 @@ pub fn parse_external_declarations(
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(ExternalDeclaration, usize), String> {
-    let mut external_definition_idx = start_index;
+    let mut external_declaration_idx = start_index;
     let (declaration_specifier, new_index) = parser::declarations::parse_declaration_specifiers(
         tokens,
-        external_definition_idx,
+        external_declaration_idx,
         flattened,
         str_maps,
     )?;
-    external_definition_idx = new_index;
+    external_declaration_idx = new_index;
     while matches!(
-        tokens.get(external_definition_idx),
+        tokens.get(external_declaration_idx),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
     ) {
-        external_definition_idx += 1;
+        external_declaration_idx += 1;
     }
     let (new_index, declarator) = parser::declarations::parse_declarator(
         tokens,
-        external_definition_idx,
+        external_declaration_idx,
         flattened,
         str_maps,
     )?;
-    external_definition_idx = new_index;
+    external_declaration_idx = new_index;
     while matches!(
-        tokens.get(external_definition_idx),
+        tokens.get(external_declaration_idx),
         Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
     ) {
-        external_definition_idx += 1;
+        external_declaration_idx += 1;
     }
-    let Some(t) = tokens.get(external_definition_idx) else {
+    let Some(t) = tokens.get(external_declaration_idx) else {
         return Err("Unexpected end of tokens".to_string());
     };
     if parser::declarations::is_declaration_token(*t)
@@ -50,35 +67,35 @@ pub fn parse_external_declarations(
     {
         let mut declaration_list = Vec::new();
         while !matches!(
-            tokens.get(external_definition_idx),
+            tokens.get(external_declaration_idx),
             Some(lexer::Token::PUNCT_OPEN_CURLY) | None
         ) {
             let (declaration, new_index) = parser::declarations::parse_declarations(
                 tokens,
-                external_definition_idx,
+                external_declaration_idx,
                 flattened,
                 str_maps,
             )?;
             declaration_list.push(declaration);
-            external_definition_idx = new_index;
+            external_declaration_idx = new_index;
             while matches!(
-                tokens.get(external_definition_idx),
+                tokens.get(external_declaration_idx),
                 Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
             ) {
-                external_definition_idx += 1;
+                external_declaration_idx += 1;
             }
         }
         if matches!(
-            tokens.get(external_definition_idx),
+            tokens.get(external_declaration_idx),
             Some(lexer::Token::PUNCT_OPEN_CURLY)
         ) {
             let (compound, new_index) = parser::statements::parse_compound_statement(
                 tokens,
-                external_definition_idx,
+                external_declaration_idx,
                 flattened,
                 str_maps,
             )?;
-            external_definition_idx = new_index;
+            external_declaration_idx = new_index;
             Ok((
                 ExternalDeclaration::FunctionDef {
                     declaration_specifier,
@@ -90,7 +107,7 @@ pub fn parse_external_declarations(
                     },
                     compound_statement: compound,
                 },
-                external_definition_idx,
+                external_declaration_idx,
             ))
         } else {
             return Err("Expected {".to_string());
@@ -98,10 +115,10 @@ pub fn parse_external_declarations(
     } else {
         let (declaration, new_index) =
             parser::declarations::parse_declarations(tokens, start_index, flattened, str_maps)?;
-        external_definition_idx = new_index;
+        external_declaration_idx = new_index;
         Ok((
             ExternalDeclaration::Declaration(declaration),
-            external_definition_idx,
+            external_declaration_idx,
         ))
     }
 }
@@ -156,6 +173,18 @@ mod tests {
                 Some(parser::declarations::ParameterDeclaration::WithDeclarator { .. })
             ));
             assert!(declaration_list.is_none());
+        }
+        {
+            let src = r#"void f(int hi, int hi2);"#;
+            let mut flattened = parser::Flattened::new();
+            let mut str_maps = lexer::ByteVecMaps::new();
+            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let (external_declaration, _) =
+                parse_external_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                external_declaration,
+                ExternalDeclaration::Declaration(_)
+            ));
         }
         Ok(())
     }

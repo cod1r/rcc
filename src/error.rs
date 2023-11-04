@@ -48,9 +48,7 @@ impl RccErrorInfo {
         };
         for t in &tokens[index_range.clone()] {
             if let Some(byte_vec) = t.to_byte_vec(&str_maps) {
-                for b in &byte_vec {
-                    stringified += &char::from(*b).to_string();
-                }
+                stringified += String::from_utf8(byte_vec).unwrap().as_str();
             }
         }
         let mut newlines_encountered = newlines_before;
