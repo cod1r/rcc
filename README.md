@@ -6,11 +6,10 @@ status: VAPORWARE
 - Preprocessor works to a certain extent.
     - Things like actually good diagnostic messages are non-existent.
     - `#error`, `#pragma`, `#line`, etc. aren't implemented yet.
-- Currently working on parsing C declarations.
+- Can parse like 90 percent of C17 syntax. (I think)
+- Currently working on Semantic Analysis (language constraints etc), AST.
 
 ## TODO:
-- Finish parsing statements
-- Finish parsing declarations
 - Apply semantic analysis (constraints etc)
 - Write library headers (stdio, math, etc)
 
