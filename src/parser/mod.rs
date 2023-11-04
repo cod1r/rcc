@@ -51,10 +51,10 @@ pub enum ParserTypes {}
 pub fn parser(
     tokens: &[lexer::Token],
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<ParserTypes, String> {
+) -> Result<external_definitions::TranslationUnit, String> {
     // TODO: we need to finish parsing statements or syntax that encapsulates a lot of things
     let mut flattened = Flattened::new();
-    let mut parser_index = 0;
-    while parser_index < tokens.len() {}
-    todo!()
+    let (translation_units, _) =
+        external_definitions::parse_translation_units(tokens, 0, &mut flattened, str_maps)?;
+    Ok(translation_units)
 }

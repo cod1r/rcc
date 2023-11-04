@@ -150,7 +150,7 @@ fn main() -> Result<(), String> {
                 let tokens = new_tokens;
                 let tokens = lexer::lexer(tokens.as_slice(), false, &mut str_maps)?;
                 cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
-                todo!("parser::parser(&tokens, &mut str_maps)");
+                parser::parser(&tokens, &mut str_maps)?;
             }
             Err(_) => println!("error"),
         }

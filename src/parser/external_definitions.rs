@@ -9,11 +9,17 @@ pub fn parse_translation_units(
 ) -> Result<(TranslationUnit, usize), String> {
     let mut translation_unit_idx = start_index;
     let mut translation_units = Vec::new();
-    while !matches!(tokens.get(translation_unit_idx), None) {
+    while translation_unit_idx < tokens.len() {
         let (external_declaration, new_index) =
             parse_external_declarations(tokens, translation_unit_idx, flattened, str_maps)?;
         translation_units.push(external_declaration);
         translation_unit_idx = new_index;
+        while matches!(
+            tokens.get(translation_unit_idx),
+            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        ) {
+            translation_unit_idx += 1;
+        }
     }
     Ok((translation_units, translation_unit_idx))
 }
