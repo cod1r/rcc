@@ -1827,13 +1827,8 @@ pub fn lexer(
                 tokens.push(t);
             } else {
                 return Err(format!(
-                    "{}",
-                    error::RccErrorInfo::new(
-                        error::RccError::UnknownToken,
-                        index..index + 1,
-                        &tokens,
-                        str_maps
-                    )
+                    "Unknown Token: {}",
+                    char::from(program_str_bytes[index])
                 ));
             }
         } else {

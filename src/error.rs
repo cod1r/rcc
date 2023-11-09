@@ -35,6 +35,9 @@ impl RccErrorInfo {
         let mut stringified = String::new();
         // TODO: probably make another abstraction called `Source` which is
         // some struct that contains what line number etc.
+        if index_range.start >= tokens.len() {
+            panic!("{:?}", error);
+        }
         let newlines_before = tokens[..index_range.start]
             .iter()
             .filter(|t| matches!(t, lexer::Token::NEWLINE))

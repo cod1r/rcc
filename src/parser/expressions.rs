@@ -2496,7 +2496,7 @@ pub fn parse_expressions(
             _ => {
                 return Err(error::RccErrorInfo::new(
                     error::RccError::UnknownToken,
-                    0..tokens.len(),
+                    index..index+1,
                     tokens,
                     str_maps,
                 )

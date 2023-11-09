@@ -92,9 +92,15 @@ fn parse_args(args: Vec<String>) -> Result<ArgumentInfo, String> {
 }
 
 // TODO: add flag to enable trigraphs
-fn main() -> Result<(), String> {
+fn main() {
     let args = env::args();
-    let arg_info = parse_args(args.collect::<Vec<String>>())?;
+    let arg_info = match parse_args(args.collect::<Vec<String>>()) {
+        Ok(a) => a,
+        Err(err) => {
+            eprintln!("{err}");
+            return;
+        }
+    };
     let mut defines: HashMap<usize, cpp::Define> = HashMap::new();
     let mut str_maps = lexer::ByteVecMaps::new();
     let stdc_version = cpp::Define {
@@ -133,13 +139,19 @@ fn main() -> Result<(), String> {
                     unreachable!()
                 };
                 let path = pathbuf.as_path().to_string_lossy().to_string();
-                let tokens = cpp::cpp(
+                let tokens = match cpp::cpp(
                     contents,
                     path.as_str(),
                     &vec_of_str,
                     &mut defines,
                     &mut str_maps,
-                )?;
+                ) {
+                    Ok(tks) => tks,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return;
+                    }
+                };
                 let mut new_tokens = Vec::new();
                 for t in tokens {
                     let Some(byte_vec) = t.to_byte_vec(&str_maps) else {
@@ -148,14 +160,19 @@ fn main() -> Result<(), String> {
                     new_tokens.extend_from_slice(byte_vec.as_slice());
                 }
                 let tokens = new_tokens;
-                let tokens = lexer::lexer(tokens.as_slice(), false, &mut str_maps)?;
+                let tokens = match lexer::lexer(tokens.as_slice(), false, &mut str_maps) {
+                    Ok(tks) => tks,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return;
+                    }
+                };
                 cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
-                parser::parser(&tokens, &mut str_maps)?;
+                //parser::parser(&tokens, &mut str_maps)?;
             }
             Err(_) => println!("error"),
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
