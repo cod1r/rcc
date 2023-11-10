@@ -973,8 +973,9 @@ fn parse_macro_and_replace(
     replacement_list: &mut Vec<lexer::Token>,
     str_maps: &mut lexer::ByteVecMaps,
     already_replaced_macros: &mut Vec<(usize, usize)>,
+    commas_that_dont_separate_args: &mut Vec<usize>,
 ) -> Result<(), String> {
-    let Some(first_macro_section) = macro_stack.pop() else {
+    let Some(mut first_macro_section) = macro_stack.pop() else {
         unreachable!()
     };
     let Some(defines_data) = defines.get(&first_macro_section.macro_key) else {
@@ -985,142 +986,173 @@ fn parse_macro_and_replace(
     let mut actual_replacement_list = defines_data.replacement_list.clone();
     let mut hash_hash_from_args = Vec::new();
     if let Some(parameters) = &defines_data.parameters {
-        let Some(arguments) = first_macro_section.arguments else {
-            unreachable!(
-                "{}",
+        if let Some(m) = parse_function_macro(
+            replacement_list,
+            first_macro_section.start,
+            defines,
+            first_macro_section.macro_key,
+            commas_that_dont_separate_args,
+        ) {
+            first_macro_section.start = m.start;
+            first_macro_section.end = m.end;
+            println!(
+                "macro: {}",
                 String::from_utf8(str_maps.key_to_byte_vec[first_macro_section.macro_key].clone())
                     .unwrap()
-            )
-        };
-        let mut token_index = 0;
-        while token_index < actual_replacement_list.len() {
-            let token = actual_replacement_list[token_index];
-            match token {
-                lexer::Token::IDENT(id_key) => {
-                    if parameters.contains(&id_key)
-                        || str_maps.key_to_byte_vec[id_key] == b"__VA_ARGS__"
-                    {
-                        // can never go out of bounds
-                        let mut p_index = 0;
-                        let seen_arg_index = loop {
-                            if p_index == parameters.len() || parameters[p_index] == id_key {
-                                break p_index;
-                            }
-                            p_index += 1;
-                        };
-                        let argument = arguments[seen_arg_index].clone();
-                        let first_condition = token_index > 0
-                            && matches!(
-                                actual_replacement_list.get(token_index - 1),
-                                Some(lexer::Token::PUNCT_HASH)
-                            );
-                        let second_condition = token_index > 1
-                            && matches!(
-                                actual_replacement_list.get(token_index - 2),
-                                Some(lexer::Token::PUNCT_HASH)
-                            )
-                            && matches!(
-                                actual_replacement_list.get(token_index - 1),
-                                Some(lexer::Token::WHITESPACE)
-                            );
-                        if first_condition || second_condition {
-                            // stringification of argument token sequence
-                            let mut sequence = Vec::new();
-                            let start_remove_index = if first_condition {
-                                token_index - 1
-                            } else {
-                                token_index - 2
+            );
+            println!("start: {}, end: {}", m.start, m.end);
+            println!(
+                "rl inside: {}",
+                replacement_list
+                    .iter()
+                    .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
+                    .collect::<String>()
+            );
+            let Some(arguments) = m.arguments else {
+                unreachable!(
+                    "{}",
+                    String::from_utf8(
+                        str_maps.key_to_byte_vec[first_macro_section.macro_key].clone()
+                    )
+                    .unwrap()
+                )
+            };
+            let mut token_index = 0;
+            while token_index < actual_replacement_list.len() {
+                let token = actual_replacement_list[token_index];
+                match token {
+                    lexer::Token::IDENT(id_key) => {
+                        if parameters.contains(&id_key)
+                            || str_maps.key_to_byte_vec[id_key] == b"__VA_ARGS__"
+                        {
+                            // can never go out of bounds
+                            let mut p_index = 0;
+                            let seen_arg_index = loop {
+                                if p_index == parameters.len() || parameters[p_index] == id_key {
+                                    break p_index;
+                                }
+                                p_index += 1;
                             };
-                            for _ in start_remove_index..token_index + 1 {
-                                actual_replacement_list.remove(start_remove_index);
-                            }
-                            for t in argument {
-                                match t {
-                                    lexer::Token::NEWLINE => {
-                                        sequence.push(b' ');
-                                    }
-                                    _ => {
-                                        if let Some(mut bv) = t.to_byte_vec(str_maps) {
-                                            if bv.contains(&b'\\') || bv.contains(&b'"') {
-                                                for bv_index in 0..bv.len() {
-                                                    if bv[bv_index] == b'\\' || bv[bv_index] == b'"'
-                                                    {
-                                                        bv.insert(bv_index, b'\\');
+                            let argument = arguments[seen_arg_index].clone();
+                            let first_condition = token_index > 0
+                                && matches!(
+                                    actual_replacement_list.get(token_index - 1),
+                                    Some(lexer::Token::PUNCT_HASH)
+                                );
+                            let second_condition = token_index > 1
+                                && matches!(
+                                    actual_replacement_list.get(token_index - 2),
+                                    Some(lexer::Token::PUNCT_HASH)
+                                )
+                                && matches!(
+                                    actual_replacement_list.get(token_index - 1),
+                                    Some(lexer::Token::WHITESPACE)
+                                );
+                            if first_condition || second_condition {
+                                // stringification of argument token sequence
+                                let mut sequence = Vec::new();
+                                let start_remove_index = if first_condition {
+                                    token_index - 1
+                                } else {
+                                    token_index - 2
+                                };
+                                for _ in start_remove_index..token_index + 1 {
+                                    actual_replacement_list.remove(start_remove_index);
+                                }
+                                for t in argument {
+                                    match t {
+                                        lexer::Token::NEWLINE => {
+                                            sequence.push(b' ');
+                                        }
+                                        _ => {
+                                            if let Some(mut bv) = t.to_byte_vec(str_maps) {
+                                                if bv.contains(&b'\\') || bv.contains(&b'"') {
+                                                    for bv_index in 0..bv.len() {
+                                                        if bv[bv_index] == b'\\'
+                                                            || bv[bv_index] == b'"'
+                                                        {
+                                                            bv.insert(bv_index, b'\\');
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            sequence.extend_from_slice(&bv);
-                                        } else {
-                                            return Err(format!(
+                                                sequence.extend_from_slice(&bv);
+                                            } else {
+                                                return Err(format!(
                                                     "tried to stringify token that cannot be stringified"
                                             ));
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            actual_replacement_list.insert(
-                                start_remove_index,
-                                lexer::Token::StringLiteral(lexer::StringLiteral {
-                                    prefix_key: None,
-                                    sequence_key: str_maps.add_byte_vec(&sequence),
-                                }),
-                            );
-                        } else {
-                            actual_replacement_list.remove(token_index);
-                            let mut insert_index = token_index;
-                            let count_of_non_whitespace = argument
-                                .iter()
-                                .filter(|t| {
-                                    !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-                                })
-                                .count();
-                            if count_of_non_whitespace > 0 {
-                                for t in argument {
-                                    if matches!(t, lexer::Token::PUNCT_HASH_HASH) {
-                                        hash_hash_from_args.push(insert_index);
-                                    }
-                                    actual_replacement_list.insert(insert_index, t);
-                                    insert_index += 1;
-                                }
+                                actual_replacement_list.insert(
+                                    start_remove_index,
+                                    lexer::Token::StringLiteral(lexer::StringLiteral {
+                                        prefix_key: None,
+                                        sequence_key: str_maps.add_byte_vec(&sequence),
+                                    }),
+                                );
                             } else {
-                                // Only add placemarker if parameter is preceded or followed by ##
-                                if (token_index > 1
-                                    && matches!(
-                                        actual_replacement_list.get(token_index - 2),
-                                        Some(lexer::Token::PUNCT_HASH_HASH)
-                                    )
-                                    && matches!(
-                                        actual_replacement_list.get(token_index - 1),
-                                        Some(lexer::Token::WHITESPACE)
-                                    ))
-                                    || (token_index > 0
+                                actual_replacement_list.remove(token_index);
+                                let mut insert_index = token_index;
+                                let count_of_non_whitespace = argument
+                                    .iter()
+                                    .filter(|t| {
+                                        !matches!(
+                                            t,
+                                            lexer::Token::WHITESPACE | lexer::Token::NEWLINE
+                                        )
+                                    })
+                                    .count();
+                                if count_of_non_whitespace > 0 {
+                                    for t in argument {
+                                        if matches!(t, lexer::Token::PUNCT_HASH_HASH) {
+                                            hash_hash_from_args.push(insert_index);
+                                        }
+                                        actual_replacement_list.insert(insert_index, t);
+                                        insert_index += 1;
+                                    }
+                                } else {
+                                    // Only add placemarker if parameter is preceded or followed by ##
+                                    if (token_index > 1
+                                        && matches!(
+                                            actual_replacement_list.get(token_index - 2),
+                                            Some(lexer::Token::PUNCT_HASH_HASH)
+                                        )
                                         && matches!(
                                             actual_replacement_list.get(token_index - 1),
+                                            Some(lexer::Token::WHITESPACE)
+                                        ))
+                                        || (token_index > 0
+                                            && matches!(
+                                                actual_replacement_list.get(token_index - 1),
+                                                Some(lexer::Token::PUNCT_HASH_HASH)
+                                            ))
+                                        || matches!(
+                                            actual_replacement_list.get(token_index + 1),
+                                            Some(lexer::Token::PUNCT_HASH_HASH)
+                                        )
+                                        || (matches!(
+                                            actual_replacement_list.get(token_index + 1),
+                                            Some(lexer::Token::WHITESPACE)
+                                        ) && matches!(
+                                            actual_replacement_list.get(token_index + 2),
                                             Some(lexer::Token::PUNCT_HASH_HASH)
                                         ))
-                                    || matches!(
-                                        actual_replacement_list.get(token_index + 1),
-                                        Some(lexer::Token::PUNCT_HASH_HASH)
-                                    )
-                                    || (matches!(
-                                        actual_replacement_list.get(token_index + 1),
-                                        Some(lexer::Token::WHITESPACE)
-                                    ) && matches!(
-                                        actual_replacement_list.get(token_index + 2),
-                                        Some(lexer::Token::PUNCT_HASH_HASH)
-                                    ))
-                                {
-                                    actual_replacement_list
-                                        .insert(insert_index, lexer::Token::PLACEMARKER);
+                                    {
+                                        actual_replacement_list
+                                            .insert(insert_index, lexer::Token::PLACEMARKER);
+                                    }
                                 }
                             }
+                            continue;
                         }
-                        continue;
                     }
+                    _ => {}
                 }
-                _ => {}
+                token_index += 1;
             }
-            token_index += 1;
+        } else {
+            return Ok(());
         }
     }
     hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list, &hash_hash_from_args);
@@ -1143,53 +1175,70 @@ fn parse_macro_and_replace(
     for _ in first_macro_section.start..first_macro_section.end + 1 {
         replacement_list.remove(first_macro_section.start);
     }
+    println!(
+        "rl before: {}",
+        replacement_list
+            .iter()
+            .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
+            .collect::<String>()
+    );
     let mut insert_index = first_macro_section.start;
+    let mut arl_idx = 0;
+    commas_that_dont_separate_args.clear();
+    while arl_idx < actual_replacement_list.len() {
+        match actual_replacement_list[arl_idx] {
+            lexer::Token::IDENT(key) => {
+                if let Some(m) = parse_function_macro(
+                    &actual_replacement_list,
+                    arl_idx,
+                    defines,
+                    key,
+                    commas_that_dont_separate_args,
+                ) {
+                    arl_idx = m.end + 1;
+                    continue;
+                }
+            }
+            lexer::Token::PUNCT_COMMA => {
+                commas_that_dont_separate_args.push(arl_idx + insert_index);
+            }
+            _ => {}
+        }
+        arl_idx += 1;
+    }
     for t in &actual_replacement_list {
         replacement_list.insert(insert_index, *t);
         insert_index += 1;
     }
+    println!("commas: {:?}", commas_that_dont_separate_args);
+    println!(
+        "rl: {}",
+        replacement_list
+            .iter()
+            .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
+            .collect::<String>()
+    );
+    already_replaced_macros.push((first_macro_section.macro_key, first_macro_section.depth + 1));
     // rescanning for further replacement
     let mut moar_macros_index = first_macro_section.start;
     'outer: while moar_macros_index < replacement_list.len() {
         if let Some(lexer::Token::IDENT(key)) = replacement_list.get(moar_macros_index) {
-            for already_replaced_macros_index in 0..already_replaced_macros.len() {
-                let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
-                if *key == macro_key && first_macro_section.depth > depth {
-                    moar_macros_index += 1;
-                    continue 'outer;
-                }
-            }
             if defines.contains_key(key) {
-                let Some(macro_define) = defines.get(&key) else {
-                    unreachable!()
-                };
-                if macro_define.parameters.is_some() {
-                    let macro_obj =
-                        parse_function_macro(replacement_list, moar_macros_index, defines, *key);
-                    if let Some(mut m) = macro_obj {
-                        let end = m.end + 1;
-                        m.depth = first_macro_section.depth + 1;
-                        macro_stack.push(m);
-                        moar_macros_index = end;
-                    } else {
+                for already_replaced_macros_index in 0..already_replaced_macros.len() {
+                    let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
+                    if *key == macro_key && first_macro_section.depth > depth {
                         moar_macros_index += 1;
                         continue 'outer;
                     }
-                } else {
-                    macro_stack.push(Macro {
-                        macro_key: *key,
-                        start: moar_macros_index,
-                        end: moar_macros_index,
-                        depth: first_macro_section.depth + 1,
-                        arguments: None,
-                    });
-                    moar_macros_index += 1;
                 }
-                already_replaced_macros.push((*key, first_macro_section.depth + 1));
-            } else {
-                moar_macros_index += 1;
+                macro_stack.push(Macro {
+                    macro_key: *key,
+                    start: moar_macros_index,
+                    end: moar_macros_index,
+                    depth: first_macro_section.depth + 1,
+                    arguments: None,
+                });
             }
-            continue 'outer;
         }
         moar_macros_index += 1;
     }
@@ -1202,6 +1251,7 @@ fn parse_function_macro(
     // have to pass macro_key in because some macro could expand and have a macro name at the end,
     // inside of final_tokens
     macro_key: usize,
+    commas_that_dont_separate_args: &Vec<usize>,
 ) -> Option<Macro> {
     let mut fn_macro_index = start_index;
     while !matches!(
@@ -1214,6 +1264,9 @@ fn parse_function_macro(
         tokens.get(fn_macro_index),
         Some(lexer::Token::PUNCT_OPEN_PAR)
     ) {
+        return None;
+    }
+    if defines.get(&macro_key).is_none() {
         return None;
     }
     let Some(def_data) = defines.get(&macro_key) else {
@@ -1229,7 +1282,9 @@ fn parse_function_macro(
     while !parenth_stack.is_empty() && tokens.get(fn_macro_index).is_some() {
         match tokens[fn_macro_index] {
             lexer::Token::PUNCT_COMMA => {
-                if comma_indices.len() < parameters.len() {
+                if comma_indices.len() < parameters.len()
+                    && !commas_that_dont_separate_args.contains(&fn_macro_index)
+                {
                     comma_indices.push(fn_macro_index);
                 }
             }
@@ -1281,54 +1336,67 @@ fn parse_function_macro(
 //argument’s preprocessing tokens are completely macro replaced as if they formed the rest of the
 //preprocessing file; no other preprocessing tokens are available
 //-- in isolation basically
-fn expand_arguments(argument: &mut Vec<lexer::Token>) {
-    /*
+fn expand_arguments(
+    argument: &mut Vec<lexer::Token>,
+    defines: &HashMap<usize, Define>,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<(), String> {
     let mut moar_macros_index = 0;
     let mut already_replaced_macros = Vec::<(usize, usize)>::new();
-    'outer: while moar_macros_index < argument.len() {
+    let mut macro_stack = Vec::<Macro>::new();
+    let mut commas_that_appear_outside_of_function_macros = Vec::<usize>::new();
+    while moar_macros_index < argument.len() {
         if let Some(lexer::Token::IDENT(key)) = argument.get(moar_macros_index) {
-            for already_replaced_macros_index in 0..already_replaced_macros.len() {
-                let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
-                if *key == macro_key && first_macro_section.depth > depth {
-                    moar_macros_index += 1;
-                    continue 'outer;
-                }
-            }
             if defines.contains_key(key) {
                 let Some(macro_define) = defines.get(&key) else {
                     unreachable!()
                 };
                 if macro_define.parameters.is_some() {
-                    let macro_obj =
-                        parse_function_macro(replacement_list, moar_macros_index, defines, *key);
+                    let macro_obj = parse_function_macro(
+                        argument,
+                        moar_macros_index,
+                        defines,
+                        *key,
+                        &commas_that_appear_outside_of_function_macros,
+                    );
                     if let Some(mut m) = macro_obj {
                         let end = m.end + 1;
-                        m.depth = first_macro_section.depth + 1;
+                        m.depth = 1;
                         macro_stack.push(m);
                         moar_macros_index = end;
                     } else {
                         moar_macros_index += 1;
-                        continue 'outer;
+                        continue;
                     }
                 } else {
                     macro_stack.push(Macro {
                         macro_key: *key,
                         start: moar_macros_index,
                         end: moar_macros_index,
-                        depth: first_macro_section.depth + 1,
+                        depth: 1,
                         arguments: None,
                     });
                     moar_macros_index += 1;
                 }
-                already_replaced_macros.push((*key, first_macro_section.depth + 1));
+                already_replaced_macros.push((*key, 1));
             } else {
                 moar_macros_index += 1;
             }
-            continue 'outer;
+            continue;
         }
         moar_macros_index += 1;
     }
-    */
+    while !macro_stack.is_empty() {
+        parse_macro_and_replace(
+            defines,
+            &mut macro_stack,
+            argument,
+            str_maps,
+            &mut already_replaced_macros,
+            &mut commas_that_appear_outside_of_function_macros,
+        )?;
+    }
+    Ok(())
 }
 fn expand_macro(
     tokens: &[lexer::Token],
@@ -1342,6 +1410,7 @@ fn expand_macro(
     let mut macro_index = index;
     // vector of (macro_key, depth)
     let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
+    let mut commas_that_appear_outside_of_function_macros = Vec::<usize>::new();
     'recheck: loop {
         let lexer::Token::IDENT(macro_id_key) = current_token else {
             unreachable!("{:?}", current_token)
@@ -1350,7 +1419,13 @@ fn expand_macro(
             unreachable!()
         };
         let mut first_macro = if def_data.parameters.is_some() || def_data.var_arg {
-            let parsed = parse_function_macro(tokens, macro_index, defines, macro_id_key);
+            let parsed = parse_function_macro(
+                tokens,
+                macro_index,
+                defines,
+                macro_id_key,
+                &commas_that_appear_outside_of_function_macros,
+            );
             if let Some(m) = parsed {
                 m
             } else {
@@ -1386,6 +1461,7 @@ fn expand_macro(
                 &mut original_macro,
                 str_maps,
                 &mut already_replaced_macros,
+                &mut commas_that_appear_outside_of_function_macros,
             )?;
         }
         // have to check the last non whitespace token to see if it is a fn like macro just in case
@@ -1837,7 +1913,13 @@ char p[] = join(x, y);"##;
             &mut str_maps,
             &mut final_tokens,
         )?;
-        println!("{}", final_tokens.iter().map(|t| String::from_utf8(t.to_byte_vec(&str_maps).unwrap()).unwrap()).collect::<String>());
+        println!(
+            "{}",
+            final_tokens
+                .iter()
+                .map(|t| String::from_utf8(t.to_byte_vec(&str_maps).unwrap()).unwrap())
+                .collect::<String>()
+        );
         assert_eq!(
             vec![lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: None,
@@ -2087,6 +2169,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                     suffix: None
                 },
                 lexer::Token::PUNCT_COMMA,
+                lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None
@@ -2101,6 +2184,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                     suffix: None
                 },
                 lexer::Token::PUNCT_COMMA,
+                lexer::Token::WHITESPACE,
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None
