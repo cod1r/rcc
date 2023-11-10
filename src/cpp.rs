@@ -995,19 +995,6 @@ fn parse_macro_and_replace(
         ) {
             first_macro_section.start = m.start;
             first_macro_section.end = m.end;
-            println!(
-                "macro: {}",
-                String::from_utf8(str_maps.key_to_byte_vec[first_macro_section.macro_key].clone())
-                    .unwrap()
-            );
-            println!("start: {}, end: {}", m.start, m.end);
-            println!(
-                "rl inside: {}",
-                replacement_list
-                    .iter()
-                    .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
-                    .collect::<String>()
-            );
             let Some(arguments) = m.arguments else {
                 unreachable!(
                     "{}",
@@ -1033,7 +1020,6 @@ fn parse_macro_and_replace(
                                 }
                                 p_index += 1;
                             };
-                            println!("arguments: {:?}", arguments);
                             let argument = arguments[seen_arg_index].clone();
                             let first_condition = token_index > 0
                                 && matches!(
@@ -1176,13 +1162,6 @@ fn parse_macro_and_replace(
     for _ in first_macro_section.start..first_macro_section.end + 1 {
         replacement_list.remove(first_macro_section.start);
     }
-    println!(
-        "rl before: {}",
-        replacement_list
-            .iter()
-            .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
-            .collect::<String>()
-    );
     let mut insert_index = first_macro_section.start;
     let mut arl_idx = 0;
     commas_that_dont_separate_args.clear();
@@ -1233,14 +1212,6 @@ fn parse_macro_and_replace(
         replacement_list.insert(insert_index, *t);
         insert_index += 1;
     }
-    println!("commas: {:?}", commas_that_dont_separate_args);
-    println!(
-        "rl: {}",
-        replacement_list
-            .iter()
-            .map(|t| String::from_utf8(t.to_byte_vec(str_maps).unwrap()).unwrap())
-            .collect::<String>()
-    );
     already_replaced_macros.push((first_macro_section.macro_key, first_macro_section.depth + 1));
     // rescanning for further replacement
     let mut moar_macros_index = first_macro_section.start;
@@ -1277,9 +1248,12 @@ fn parse_function_macro(
     commas_that_dont_separate_args: &Vec<usize>,
 ) -> Option<Macro> {
     let mut fn_macro_index = start_index;
+    if matches!(tokens.get(fn_macro_index), Some(lexer::Token::IDENT(_))) {
+        fn_macro_index += 1;
+    }
     while matches!(
         tokens.get(fn_macro_index),
-        Some(lexer::Token::IDENT(_) | lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
     ) {
         fn_macro_index += 1;
     }
@@ -1442,12 +1416,6 @@ fn expand_macro(
             unreachable!()
         };
         let mut first_macro = if def_data.parameters.is_some() || def_data.var_arg {
-            println!(
-                "what {:?} {}",
-                String::from_utf8(tokens[macro_index].to_byte_vec(str_maps).unwrap()).unwrap(),
-                macro_index,
-            );
-            println!("{:?}", &tokens[index..macro_index + 1]);
             let parsed = parse_function_macro(
                 tokens,
                 macro_index,
@@ -1458,13 +1426,8 @@ fn expand_macro(
             if let Some(m) = parsed {
                 m
             } else {
-                Macro {
-                    macro_key: macro_id_key,
-                    start: macro_index,
-                    end: macro_index,
-                    depth: 1,
-                    arguments: None,
-                }
+                accumulated_replacements.push(current_token);
+                break 'recheck;
             }
         } else {
             Macro {
@@ -1501,7 +1464,8 @@ fn expand_macro(
         while matches!(
             original_macro.get(back_idx),
             Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
-        ) {
+        ) && back_idx > 0
+        {
             back_idx -= 1;
         }
         if let Some(lexer::Token::IDENT(key)) = original_macro.get(back_idx) {
@@ -1606,7 +1570,7 @@ fn preprocessing_directives(
                 }
             }
             lexer::Token::IDENT(key) => {
-                if defines.contains_key(&key) {
+                if defines.contains_key(key) {
                     index = expand_macro(tokens, index, defines, str_maps, &mut final_tokens)?;
                     continue;
                 }
@@ -1937,13 +1901,6 @@ char p[] = join(x, y);"##;
             &mut str_maps,
             &mut final_tokens,
         )?;
-        println!(
-            "{}",
-            final_tokens
-                .iter()
-                .map(|t| String::from_utf8(t.to_byte_vec(&str_maps).unwrap()).unwrap())
-                .collect::<String>()
-        );
         assert_eq!(
             vec![lexer::Token::StringLiteral(lexer::StringLiteral {
                 prefix_key: None,
@@ -2738,6 +2695,31 @@ PP(/,*)PP2(*,/)"##
                 "failed 10"
             );
         }
+        Ok(())
+    }
+    #[test]
+    fn cpp_test_start_of_rescanning() -> Result<(), String> {
+        let src = r##"#define COMMA() ,
+#define PP ()
+COMMA PP"##;
+        let mut defines = HashMap::new();
+        let mut str_maps = lexer::ByteVecMaps::new();
+        let tokens = cpp(
+            src.as_bytes().to_vec(),
+            "",
+            &[""],
+            &mut defines,
+            &mut str_maps,
+        )?;
+        assert_eq!(
+            vec![
+                lexer::Token::IDENT(str_maps.add_byte_vec("COMMA".as_bytes())),
+                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR,
+            ],
+            tokens,
+        );
         Ok(())
     }
     #[test]
