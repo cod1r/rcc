@@ -999,32 +999,6 @@ fn parse_macro_and_replace(
                     if parameters.contains(&id_key)
                         || str_maps.key_to_byte_vec[id_key] == b"__VA_ARGS__"
                     {
-                    //use std::io::Write;
-                    //let mut stdout = std::io::stdout().lock();
-                    ////stdout.write_all(format!(
-                    ////    "arl: {}\n",
-                    ////    &actual_replacement_list
-                    ////        .iter()
-                    ////        .map(|t| String::from_utf8(
-                    ////            t.to_byte_vec(str_maps).unwrap()
-                    ////        )
-                    ////        .unwrap())
-                    ////        .collect::<String>()
-                    ////).as_bytes());
-                    //stdout.write_all(
-                    //    format!(
-                    //        "parameter: {}, arl len: {}\n",
-                    //        String::from_utf8(str_maps.key_to_byte_vec[id_key].clone()).unwrap(),
-                    //        actual_replacement_list.len()
-                    //    )
-                    //    .as_bytes(),
-                    //);
-                    //match stdout.flush() {
-                    //    Ok(_) => {}
-                    //    Err(err) => {
-                    //        panic!("{err}");
-                    //    }
-                    //}
                         // can never go out of bounds
                         let mut p_index = 0;
                         let seen_arg_index = loop {
@@ -1173,7 +1147,7 @@ fn parse_macro_and_replace(
         replacement_list.insert(insert_index, *t);
         insert_index += 1;
     }
-    already_replaced_macros.push((curr_macro.macro_key, curr_macro.depth + 1));
+    already_replaced_macros.push((curr_macro.macro_key, curr_macro.depth));
     // rescanning for further replacement
     let mut moar_macros_index = curr_macro.start;
     'outer: while moar_macros_index < replacement_list.len() {
@@ -1181,7 +1155,11 @@ fn parse_macro_and_replace(
             if defines.contains_key(key) {
                 for already_replaced_macros_index in 0..already_replaced_macros.len() {
                     let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
-                    if *key == macro_key && curr_macro.depth > depth {
+                    if *key == macro_key {
+                        println!(
+                            "skipped: {}",
+                            String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap()
+                        );
                         moar_macros_index += 1;
                         continue 'outer;
                     }
@@ -1189,13 +1167,17 @@ fn parse_macro_and_replace(
                 let Some(define_data) = defines.get(key) else {
                     unreachable!()
                 };
-                if define_data.parameters.is_some() {
+                if let Some(parameters) = &define_data.parameters {
                     if let Some(mut next_macro) =
                         parse_function_macro(replacement_list, moar_macros_index, defines, *key)
                     {
                         let Some(args) = &mut next_macro.arguments else {
                             unreachable!()
                         };
+                        if args.len() < parameters.len() {
+                            moar_macros_index += 1;
+                            continue 'outer;
+                        }
                         for arg in args {
                             expand_arguments(arg, defines, str_maps)?;
                         }
@@ -1320,53 +1302,70 @@ fn expand_arguments(
     defines: &HashMap<usize, Define>,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(), String> {
-    let mut moar_macros_index = 0;
     let mut already_replaced_macros = Vec::<(usize, usize)>::new();
-    let mut macro_stack = Vec::<Macro>::new();
-    while moar_macros_index < argument.len() {
-        if let Some(lexer::Token::IDENT(key)) = argument.get(moar_macros_index) {
-            if defines.contains_key(key) {
-                let Some(macro_define) = defines.get(&key) else {
-                    unreachable!()
-                };
-                if macro_define.parameters.is_some() {
-                    let macro_obj =
-                        parse_function_macro(argument, moar_macros_index, defines, *key);
-                    if let Some(mut m) = macro_obj {
-                        let end = m.end + 1;
-                        m.depth = 1;
-                        macro_stack.push(m);
-                        moar_macros_index = end;
-                    } else {
-                        moar_macros_index += 1;
-                        continue;
+    loop {
+        let mut moar_macros_index = 0;
+        let mut macro_stack = Vec::<Macro>::new();
+        'outer: while moar_macros_index < argument.len() {
+            if let Some(lexer::Token::IDENT(key)) = argument.get(moar_macros_index) {
+                if defines.contains_key(key) {
+                    for already_replaced_macros_index in 0..already_replaced_macros.len() {
+                        let (macro_key, depth) =
+                            already_replaced_macros[already_replaced_macros_index];
+                        if *key == macro_key {
+                            println!(
+                                "skipped: {}",
+                                String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap()
+                            );
+                            moar_macros_index += 1;
+                            continue 'outer;
+                        }
                     }
+                    let Some(macro_define) = defines.get(&key) else {
+                        unreachable!()
+                    };
+                    if macro_define.parameters.is_some() {
+                        let macro_obj =
+                            parse_function_macro(argument, moar_macros_index, defines, *key);
+                        if let Some(mut m) = macro_obj {
+                            let end = m.end + 1;
+                            m.depth = 1;
+                            macro_stack.push(m);
+                            moar_macros_index = end;
+                        } else {
+                            moar_macros_index += 1;
+                            continue;
+                        }
+                    } else {
+                        macro_stack.push(Macro {
+                            macro_key: *key,
+                            start: moar_macros_index,
+                            end: moar_macros_index,
+                            depth: 1,
+                            arguments: None,
+                        });
+                        moar_macros_index += 1;
+                    }
+                    already_replaced_macros.push((*key, 1));
                 } else {
-                    macro_stack.push(Macro {
-                        macro_key: *key,
-                        start: moar_macros_index,
-                        end: moar_macros_index,
-                        depth: 1,
-                        arguments: None,
-                    });
                     moar_macros_index += 1;
                 }
-                already_replaced_macros.push((*key, 1));
-            } else {
-                moar_macros_index += 1;
+                continue;
             }
-            continue;
+            moar_macros_index += 1;
         }
-        moar_macros_index += 1;
-    }
-    while !macro_stack.is_empty() {
-        parse_macro_and_replace(
-            defines,
-            &mut macro_stack,
-            argument,
-            str_maps,
-            &mut already_replaced_macros,
-        )?;
+        if macro_stack.is_empty() {
+            break;
+        }
+        while !macro_stack.is_empty() {
+            parse_macro_and_replace(
+                defines,
+                &mut macro_stack,
+                argument,
+                str_maps,
+                &mut already_replaced_macros,
+            )?;
+        }
     }
     Ok(())
 }
@@ -1453,6 +1452,7 @@ fn expand_macro(
                 current_token = original_macro[back_idx];
                 accumulated_replacements.extend_from_slice(&original_macro[..back_idx]);
                 macro_index = macro_end + 1;
+                already_replaced_macros.clear();
                 already_replaced_macros.push((*key, 1));
                 continue 'recheck;
             }
