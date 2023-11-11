@@ -1157,11 +1157,7 @@ fn parse_macro_and_replace(
             if defines.contains_key(key) {
                 for already_replaced_macros_index in 0..already_replaced_macros.len() {
                     let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
-                    if *key == macro_key {
-                        println!(
-                            "skipped: {}",
-                            String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap()
-                        );
+                    if *key == macro_key && depth < curr_macro.depth {
                         moar_macros_index += 1;
                         continue 'outer;
                     }
@@ -1305,6 +1301,7 @@ fn expand_arguments(
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<(), String> {
     let mut already_replaced_macros = Vec::<(usize, usize)>::new();
+    let mut current_depth = 1;
     loop {
         let mut moar_macros_index = 0;
         let mut macro_stack = Vec::<Macro>::new();
@@ -1314,11 +1311,7 @@ fn expand_arguments(
                     for already_replaced_macros_index in 0..already_replaced_macros.len() {
                         let (macro_key, depth) =
                             already_replaced_macros[already_replaced_macros_index];
-                        if *key == macro_key {
-                            println!(
-                                "skipped: {}",
-                                String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap()
-                            );
+                        if *key == macro_key && depth < current_depth {
                             moar_macros_index += 1;
                             continue 'outer;
                         }
@@ -1331,7 +1324,7 @@ fn expand_arguments(
                             parse_function_macro(argument, moar_macros_index, defines, *key);
                         if let Some(mut m) = macro_obj {
                             let end = m.end + 1;
-                            m.depth = 1;
+                            m.depth = current_depth;
                             macro_stack.push(m);
                             moar_macros_index = end;
                         } else {
@@ -1343,7 +1336,7 @@ fn expand_arguments(
                             macro_key: *key,
                             start: moar_macros_index,
                             end: moar_macros_index,
-                            depth: 1,
+                            depth: current_depth,
                             arguments: None,
                         });
                         moar_macros_index += 1;
@@ -1368,6 +1361,7 @@ fn expand_arguments(
                 &mut already_replaced_macros,
             )?;
         }
+        current_depth += 1;
     }
     Ok(())
 }
