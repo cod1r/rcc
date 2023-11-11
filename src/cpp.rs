@@ -1081,6 +1081,7 @@ fn parse_macro_and_replace(
                                     actual_replacement_list.insert(insert_index, t);
                                     insert_index += 1;
                                 }
+                                token_index = insert_index;
                             } else {
                                 // Only add placemarker if parameter is preceded or followed by ##
                                 if (token_index > 1
@@ -1111,6 +1112,7 @@ fn parse_macro_and_replace(
                                 {
                                     actual_replacement_list
                                         .insert(insert_index, lexer::Token::PLACEMARKER);
+                                    token_index += 1;
                                 }
                             }
                         }
