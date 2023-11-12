@@ -2710,7 +2710,6 @@ GET_SECOND(COMMA PP,T)"##;
         assert_eq!(
             vec![
                 lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::IDENT(str_maps.add_byte_vec("T".as_bytes())),
                 lexer::Token::PUNCT_CLOSE_PAR,
             ],
             tokens,
