@@ -903,11 +903,16 @@ fn undef_directive(
     }
     Err(format!("undef directive not formed correctly"))
 }
-fn hash_hash_deletion_and_concat_tokens(replacement_list: &mut Vec<lexer::Token>) {
+fn hash_hash_deletion_and_concat_tokens(
+    replacement_list: &mut Vec<lexer::Token>,
+    hash_hash_from_args: &[usize],
+) {
     let mut hash_hash_process_index = 0;
     while hash_hash_process_index < replacement_list.len() {
         let token = replacement_list[hash_hash_process_index];
-        if matches!(token, lexer::Token::PUNCT_HASH_HASH) {
+        if matches!(token, lexer::Token::PUNCT_HASH_HASH)
+            && !hash_hash_from_args.contains(&hash_hash_process_index)
+        {
             let mut left_index = hash_hash_process_index - 1;
             // left_index should never be less than zero because in the define_directive
             // function, we check if ## is at the beginning or end and we trim whitespace.
@@ -978,6 +983,7 @@ fn parse_macro_and_replace(
     // actual_replacement_list is the current replacement_list for the current macro replacement
     // the replacement_list in the fn args is the overall replacement_list
     let mut actual_replacement_list = defines_data.replacement_list.clone();
+    let mut hash_hash_from_args = Vec::new();
     if let Some(parameters) = &defines_data.parameters {
         let Some(arguments) = curr_macro.arguments else {
             unreachable!(
@@ -1069,6 +1075,9 @@ fn parse_macro_and_replace(
                                 .count();
                             if count_of_non_whitespace > 0 {
                                 for t in argument {
+                                    if matches!(t, lexer::Token::PUNCT_HASH_HASH) {
+                                        hash_hash_from_args.push(insert_index);
+                                    }
                                     actual_replacement_list.insert(insert_index, t);
                                     insert_index += 1;
                                 }
@@ -1115,7 +1124,7 @@ fn parse_macro_and_replace(
             token_index += 1;
         }
     }
-    hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list);
+    hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list, &hash_hash_from_args);
     let mut placemarker_removal_index = 0;
     while placemarker_removal_index < actual_replacement_list.len() {
         if let lexer::Token::PLACEMARKER = actual_replacement_list[placemarker_removal_index] {
