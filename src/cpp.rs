@@ -1007,7 +1007,11 @@ fn parse_macro_and_replace(
                             }
                             p_index += 1;
                         };
-                        let argument = arguments[seen_arg_index].clone();
+                        let argument = if seen_arg_index >= arguments.len() {
+                            Vec::<lexer::Token>::new()
+                        } else {
+                            arguments[seen_arg_index].clone()
+                        };
                         let first_condition = token_index > 0
                             && matches!(
                                 actual_replacement_list.get(token_index - 1),
@@ -1172,7 +1176,9 @@ fn parse_macro_and_replace(
                         let Some(args) = &mut next_macro.arguments else {
                             unreachable!()
                         };
-                        if args.len() < parameters.len() {
+                        if args.len() < parameters.len()
+                            || (args.len() > parameters.len() && !define_data.var_arg)
+                        {
                             moar_macros_index += 1;
                             continue 'outer;
                         }
@@ -2708,10 +2714,7 @@ GET_SECOND(COMMA PP,T)"##;
             &mut str_maps,
         )?;
         assert_eq!(
-            vec![
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::PUNCT_CLOSE_PAR,
-            ],
+            vec![lexer::Token::PUNCT_OPEN_PAR, lexer::Token::PUNCT_CLOSE_PAR,],
             tokens,
         );
         Ok(())

@@ -168,7 +168,14 @@ fn main() {
                     }
                 };
                 cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
-                //parser::parser(&tokens, &mut str_maps)?;
+                //match parser::parser(&tokens, &mut str_maps) {
+                //    Ok(tu) => {
+                //    }
+                //    Err(err) => {
+                //        eprintln!("{err}");
+                //        return;
+                //    }
+                //}
             }
             Err(_) => println!("error"),
         }

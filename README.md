@@ -5,6 +5,7 @@ status: VAPORWARE
 ## Progress Report:
 - Preprocessor works to a certain extent.
     - Things like actually good diagnostic messages are non-existent.
+    - The preprocessing process isn't very specific in the C spec so behavior will differ if compared to gcc.
     - `#error`, `#pragma`, `#line`, etc. aren't implemented yet.
 - Can parse like 90 percent of C17 syntax. (I think)
 - Currently working on Semantic Analysis (language constraints etc), AST.
