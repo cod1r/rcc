@@ -2840,4 +2840,13 @@ f(f))"##;
         );
         Ok(())
     }
+    #[test]
+    fn cpp_testing_recursive_expansion() -> Result<(), String> {
+        let src = r##"#define PP_NAIVE_RECURSIVE(x) ((x), PP_NAIVE_RECURSIVE(x))
+PP_NAIVE_RECURSIVE(5) /* ((5), PP_NAIVE_RECURSIVE(5)) */
+#define PP_EXPAND(...) __VA_ARGS__
+PP_EXPAND(PP_NAIVE_RECURSIVE(5)) /* ((5), PP_NAIVE_RECURSIVE(5)) */"##;
+        todo!("need to do this test");
+        Ok(())
+    }
 }
