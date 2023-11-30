@@ -2,6 +2,7 @@ mod cpp;
 mod error;
 mod lexer;
 mod parser;
+mod semantic_analysis;
 use std::collections::HashMap;
 use std::env;
 

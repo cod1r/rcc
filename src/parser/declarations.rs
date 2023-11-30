@@ -1,6 +1,7 @@
 use crate::error;
 use crate::lexer;
 use crate::parser;
+use std::fmt::Display;
 
 pub type TypeNameIndex = usize;
 pub type DeclarationIndex = usize;
@@ -12,6 +13,18 @@ pub enum StorageClassSpecifier {
     ThreadLocal,
     Auto,
     Register,
+}
+impl Display for StorageClassSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.write_str(match self {
+            StorageClassSpecifier::TypeDef => "TypeDef",
+            StorageClassSpecifier::Extern => "Extern",
+            StorageClassSpecifier::Static => "Static",
+            StorageClassSpecifier::ThreadLocal => "ThreadLocal",
+            StorageClassSpecifier::Auto => "Auto",
+            StorageClassSpecifier::Register => "Register",
+        })
+    }
 }
 #[derive(Clone)]
 pub enum ParameterDeclaration {
@@ -146,6 +159,27 @@ pub enum TypeSpecifier {
     Enum(EnumSpecifier),
     IdentTypeDef(usize),
 }
+impl Display for TypeSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.write_str(match self {
+            TypeSpecifier::Void => "Void",
+            TypeSpecifier::Char => "Char",
+            TypeSpecifier::Short => "Short",
+            TypeSpecifier::Int => "Int",
+            TypeSpecifier::Long => "Long",
+            TypeSpecifier::Float => "Float",
+            TypeSpecifier::Double => "Double",
+            TypeSpecifier::Signed => "Signed",
+            TypeSpecifier::Unsigned => "Unsigned",
+            TypeSpecifier::_Bool => "_Bool",
+            TypeSpecifier::_Complex => "_Complex",
+            TypeSpecifier::_Atomic(typename) => "_Atomic",
+            TypeSpecifier::StructUnion(sus) => "StructUnion",
+            TypeSpecifier::Enum(es) => "Enum",
+            TypeSpecifier::IdentTypeDef(_) => "IdentTypeDef",
+        })
+    }
+}
 #[derive(Copy, Clone)]
 pub enum TypeQualifier {
     Const,
@@ -153,10 +187,28 @@ pub enum TypeQualifier {
     Volatile,
     _Atomic,
 }
+impl Display for TypeQualifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.write_str(match self {
+            TypeQualifier::Const => "Const",
+            TypeQualifier::Restrict => "Restrict",
+            TypeQualifier::Volatile => "Volatile",
+            TypeQualifier::_Atomic => "_Atomic",
+        })
+    }
+}
 #[derive(Copy, Clone)]
 pub enum FunctionSpecifier {
     Inline,
     _Noreturn,
+}
+impl Display for FunctionSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.write_str(match self {
+            FunctionSpecifier::Inline => "Inline",
+            FunctionSpecifier::_Noreturn => "_Noreturn",
+        })
+    }
 }
 #[derive(Clone)]
 pub enum AlignmentSpecifier {
