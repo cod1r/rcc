@@ -1,9 +1,9 @@
 use crate::lexer;
+pub mod abstract_syntax_tree;
 pub mod declarations;
 pub mod expressions;
 pub mod external_definitions;
 pub mod statements;
-pub mod abstract_syntax_tree;
 
 type ParserTypeIndex = usize;
 
