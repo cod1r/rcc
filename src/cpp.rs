@@ -1952,15 +1952,21 @@ int main() {
                 &mut str_maps,
             )?;
             let assert_tokens = [
-                lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
-                lexer::Token::WHITESPACE,
-                lexer::Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::WHITESPACE,
-                lexer::Token::PUNCT_OPEN_CURLY,
-                lexer::Token::NEWLINE,
-                lexer::Token::PUNCT_CLOSE_CURLY,
+                lexer::Token::IDENT {
+                    pos_in_src: 0,
+                    str_map_key: str_maps.add_byte_vec("int".as_bytes()),
+                },
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
+                lexer::Token::IDENT {
+                    pos_in_src: 1,
+                    str_map_key: str_maps.add_byte_vec("main".as_bytes()),
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 2 },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                lexer::Token::WHITESPACE { pos_in_src: 4 },
+                lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                lexer::Token::NEWLINE { pos_in_src: 6 },
+                lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -1982,15 +1988,21 @@ int main() {
                 &mut str_maps,
             )?;
             let assert_tokens = [
-                lexer::Token::IDENT(str_maps.add_byte_vec("int".as_bytes())),
-                lexer::Token::WHITESPACE,
-                lexer::Token::IDENT(str_maps.add_byte_vec("main".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::WHITESPACE,
-                lexer::Token::PUNCT_OPEN_CURLY,
-                lexer::Token::NEWLINE,
-                lexer::Token::PUNCT_CLOSE_CURLY,
+                lexer::Token::IDENT {
+                    pos_in_src: 0,
+                    str_map_key: str_maps.add_byte_vec("int".as_bytes()),
+                },
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
+                lexer::Token::IDENT {
+                    pos_in_src: 1,
+                    str_map_key: str_maps.add_byte_vec("main".as_bytes()),
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 2 },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                lexer::Token::WHITESPACE { pos_in_src: 4 },
+                lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                lexer::Token::NEWLINE { pos_in_src: 6 },
+                lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -2015,21 +2027,28 @@ hi;
             &mut str_maps,
         )?;
         let assert_tokens = vec![
-            lexer::Token::IDENT(2),
-            lexer::Token::WHITESPACE,
-            lexer::Token::IDENT(3),
-            lexer::Token::PUNCT_OPEN_PAR,
-            lexer::Token::PUNCT_CLOSE_PAR,
-            lexer::Token::WHITESPACE,
-            lexer::Token::PUNCT_OPEN_CURLY,
-            lexer::Token::NEWLINE,
+            lexer::Token::IDENT {
+                str_map_key: 2,
+                pos_in_src: 0,
+            },
+            lexer::Token::WHITESPACE { pos_in_src: 1 },
+            lexer::Token::IDENT {
+                str_map_key: 3,
+                pos_in_src: 2,
+            },
+            lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
+            lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 4 },
+            lexer::Token::WHITESPACE { pos_in_src: 5 },
+            lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 6 },
+            lexer::Token::NEWLINE { pos_in_src: 7 },
             lexer::Token::CONSTANT_DEC_INT {
                 value_key: 6,
                 suffix: None,
+                pos_in_src: 8,
             },
-            lexer::Token::PUNCT_SEMI_COLON,
-            lexer::Token::NEWLINE,
-            lexer::Token::PUNCT_CLOSE_CURLY,
+            lexer::Token::PUNCT_SEMI_COLON { pos_in_src: 9 },
+            lexer::Token::NEWLINE { pos_in_src: 10 },
+            lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 11 },
         ];
         assert_eq!(assert_tokens, tokens);
         Ok(())
@@ -2052,10 +2071,13 @@ HI(5 5);"##
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral(lexer::StringLiteral {
-                prefix_key: None,
-                sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
-            }),],
+            vec![lexer::Token::StringLiteral {
+                str_lit: lexer::StringLiteral {
+                    prefix_key: None,
+                    sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
+                },
+                pos_in_src: 0
+            }],
             final_tokens
         );
         Ok(())
@@ -2078,7 +2100,12 @@ char p[] = join(x, y);"##;
         let mut new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         while new_index < tokens.len() {
             if let Some(
-                [lexer::Token::IDENT(first), lexer::Token::PUNCT_OPEN_PAR, lexer::Token::IDENT(second)],
+                [lexer::Token::IDENT {
+                    str_map_key: first, ..
+                }, lexer::Token::PUNCT_OPEN_PAR { .. }, lexer::Token::IDENT {
+                    str_map_key: second,
+                    ..
+                }],
             ) = tokens.get(new_index..new_index + 3)
             {
                 if *first == str_maps.add_byte_vec("join".as_bytes())
@@ -2097,10 +2124,13 @@ char p[] = join(x, y);"##;
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral(lexer::StringLiteral {
-                prefix_key: None,
-                sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
-            }),],
+            vec![lexer::Token::StringLiteral {
+                str_lit: lexer::StringLiteral {
+                    prefix_key: None,
+                    sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
+                },
+                pos_in_src: 0
+            }],
             final_tokens
         );
         Ok(())
@@ -2117,12 +2147,15 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
         let tokens = cpp(src, "", &["./test_c_files"], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
-                lexer::Token::StringLiteral(lexer::StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec(" hello world".as_bytes())
-                }),
-                lexer::Token::WHITESPACE,
-                lexer::Token::NEWLINE
+                lexer::Token::StringLiteral {
+                    str_lit: lexer::StringLiteral {
+                        prefix_key: None,
+                        sequence_key: str_maps.add_byte_vec(" hello world".as_bytes())
+                    },
+                    pos_in_src: 0
+                },
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
+                lexer::Token::NEWLINE { pos_in_src: 2 }
             ],
             tokens
         );
@@ -2154,11 +2187,11 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: None,
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::PUNCT_HASH,
-                    lexer::Token::WHITESPACE,
-                    lexer::Token::PUNCT_HASH_HASH,
-                    lexer::Token::WHITESPACE,
-                    lexer::Token::PUNCT_HASH,
+                    lexer::Token::PUNCT_HASH { pos_in_src: 0 },
+                    lexer::Token::WHITESPACE { pos_in_src: 1 },
+                    lexer::Token::PUNCT_HASH_HASH { pos_in_src: 2 },
+                    lexer::Token::WHITESPACE { pos_in_src: 3 },
+                    lexer::Token::PUNCT_HASH { pos_in_src: 4 },
                 ]
             },
             *defines
@@ -2170,9 +2203,12 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::PUNCT_HASH,
-                    lexer::Token::WHITESPACE,
-                    lexer::Token::IDENT(str_maps.add_byte_vec("a".as_bytes())),
+                    lexer::Token::PUNCT_HASH { pos_in_src: 0 },
+                    lexer::Token::WHITESPACE { pos_in_src: 1 },
+                    lexer::Token::IDENT {
+                        str_map_key: str_maps.add_byte_vec("a".as_bytes()),
+                        pos_in_src: 2
+                    },
                 ]
             },
             *defines
@@ -2184,10 +2220,16 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::IDENT(str_maps.add_byte_vec("mkstr".as_bytes())),
-                    lexer::Token::PUNCT_OPEN_PAR,
-                    lexer::Token::IDENT(str_maps.add_byte_vec("a".as_bytes())),
-                    lexer::Token::PUNCT_CLOSE_PAR,
+                    lexer::Token::IDENT {
+                        pos_in_src: 0,
+                        str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
+                    },
+                    lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    lexer::Token::IDENT {
+                        pos_in_src: 2,
+                        str_map_key: str_maps.add_byte_vec("a".as_bytes())
+                    },
+                    lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
                 ]
             },
             *defines
@@ -2202,14 +2244,26 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 ]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::IDENT(str_maps.add_byte_vec("in_between".as_bytes())),
-                    lexer::Token::PUNCT_OPEN_PAR,
-                    lexer::Token::IDENT(str_maps.add_byte_vec("c".as_bytes())),
-                    lexer::Token::WHITESPACE,
-                    lexer::Token::IDENT(str_maps.add_byte_vec("hash_hash".as_bytes())),
-                    lexer::Token::WHITESPACE,
-                    lexer::Token::IDENT(str_maps.add_byte_vec("d".as_bytes())),
-                    lexer::Token::PUNCT_CLOSE_PAR,
+                    lexer::Token::IDENT {
+                        pos_in_src: 0,
+                        str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
+                    },
+                    lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    lexer::Token::IDENT {
+                        pos_in_src: 1,
+                        str_map_key: str_maps.add_byte_vec("c".as_bytes())
+                    },
+                    lexer::Token::WHITESPACE { pos_in_src: 2 },
+                    lexer::Token::IDENT {
+                        pos_in_src: 3,
+                        str_map_key: str_maps.add_byte_vec("hash_hash".as_bytes())
+                    },
+                    lexer::Token::WHITESPACE { pos_in_src: 4 },
+                    lexer::Token::IDENT {
+                        pos_in_src: 5,
+                        str_map_key: str_maps.add_byte_vec("d".as_bytes())
+                    },
+                    lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 6 },
                 ]
             },
             *defines
@@ -2240,7 +2294,8 @@ A"##
         assert_eq!(
             vec![lexer::Token::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
-                suffix: None
+                suffix: None,
+                pos_in_src: 0
             }],
             final_tokens
         );
@@ -2308,13 +2363,13 @@ HI((,),(,))"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 0 },
+                lexer::Token::PUNCT_COMMA { pos_in_src: 1 },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 2 },
+                lexer::Token::PUNCT_COMMA { pos_in_src: 3 },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 4 },
+                lexer::Token::PUNCT_COMMA { pos_in_src: 5 },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 6 },
             ],
             final_tokens
         );
@@ -2339,37 +2394,50 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT(str_maps.add_byte_vec("HEHE".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::IDENT(str_maps.add_byte_vec("HEHE".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::IDENT {
+                    pos_in_src: 0,
+                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                lexer::Token::IDENT {
+                    pos_in_src: 2,
+                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 4
                 },
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_COMMA { pos_in_src: 5 },
+                lexer::Token::WHITESPACE { pos_in_src: 6 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 7
                 },
-                lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::WHITESPACE,
-                lexer::Token::IDENT(str_maps.add_byte_vec("HEHE".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 8 },
+                lexer::Token::PUNCT_COMMA { pos_in_src: 9 },
+                lexer::Token::WHITESPACE { pos_in_src: 10 },
+                lexer::Token::IDENT {
+                    pos_in_src: 11,
+                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 12 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 13
                 },
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_COMMA { pos_in_src: 14 },
+                lexer::Token::WHITESPACE { pos_in_src: 15 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 16
                 },
-                lexer::Token::PUNCT_CLOSE_PAR,
-                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 17 },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 18 },
             ],
             final_tokens
         );
@@ -2396,22 +2464,26 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 0
                 },
-                lexer::Token::WHITESPACE,
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 2
                 },
-                lexer::Token::WHITESPACE,
+                lexer::Token::WHITESPACE { pos_in_src: 3 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 4
                 },
-                lexer::Token::WHITESPACE,
+                lexer::Token::WHITESPACE { pos_in_src: 5 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 6
                 },
             ],
             final_tokens
@@ -2439,13 +2511,14 @@ HAHA(C,4)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_COMMA,
-                lexer::Token::WHITESPACE,
-                lexer::Token::PUNCT_PLUS,
-                lexer::Token::WHITESPACE,
+                lexer::Token::PUNCT_COMMA { pos_in_src: 0 },
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
+                lexer::Token::PUNCT_PLUS { pos_in_src: 2 },
+                lexer::Token::WHITESPACE { pos_in_src: 3 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 4
                 },
             ],
             final_tokens
@@ -2475,16 +2548,21 @@ f(2)(9)"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 0
                 },
-                lexer::Token::PUNCT_MULT,
-                lexer::Token::IDENT(str_maps.add_byte_vec("f".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
+                lexer::Token::PUNCT_MULT { pos_in_src: 1 },
+                lexer::Token::IDENT {
+                    pos_in_src: 2,
+                    str_map_key: str_maps.add_byte_vec("f".as_bytes())
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("9".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 4
                 },
-                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -2511,18 +2589,27 @@ INVOKE(FOO,BAR)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT(str_maps.add_byte_vec("printf".as_bytes())),
-                lexer::Token::PUNCT_OPEN_PAR,
-                lexer::Token::StringLiteral(lexer::StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec("FOO".as_bytes())
-                }),
-                lexer::Token::WHITESPACE,
-                lexer::Token::StringLiteral(lexer::StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec(" BAR".as_bytes())
-                }),
-                lexer::Token::PUNCT_CLOSE_PAR,
+                lexer::Token::IDENT {
+                    pos_in_src: 0,
+                    str_map_key: str_maps.add_byte_vec("printf".as_bytes())
+                },
+                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                lexer::Token::StringLiteral {
+                    str_lit: lexer::StringLiteral {
+                        prefix_key: None,
+                        sequence_key: str_maps.add_byte_vec("FOO".as_bytes())
+                    },
+                    pos_in_src: 2
+                },
+                lexer::Token::WHITESPACE { pos_in_src: 3 },
+                lexer::Token::StringLiteral {
+                    str_lit: lexer::StringLiteral {
+                        prefix_key: None,
+                        sequence_key: str_maps.add_byte_vec(" BAR".as_bytes())
+                    },
+                    pos_in_src: 4
+                },
+                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -2549,22 +2636,26 @@ CHICKEN(1 2,3 4)"##
             vec![
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 0
                 },
-                lexer::Token::WHITESPACE,
+                lexer::Token::WHITESPACE { pos_in_src: 1 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 2
                 },
-                lexer::Token::PUNCT_COMMA,
+                lexer::Token::PUNCT_COMMA { pos_in_src: 3 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 4
                 },
-                lexer::Token::WHITESPACE,
+                lexer::Token::WHITESPACE { pos_in_src: 5 },
                 lexer::Token::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None
+                    suffix: None,
+                    pos_in_src: 6
                 },
             ],
             final_tokens
@@ -2600,11 +2691,11 @@ PP(/,*)PP2(*,/)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_DIV,
-                lexer::Token::PUNCT_MULT,
-                lexer::Token::PUNCT_MULT,
-                lexer::Token::WHITESPACE,
-                lexer::Token::PUNCT_DIV
+                lexer::Token::PUNCT_DIV { pos_in_src: 0 },
+                lexer::Token::PUNCT_MULT { pos_in_src: 1 },
+                lexer::Token::PUNCT_MULT { pos_in_src: 2 },
+                lexer::Token::WHITESPACE { pos_in_src: 3 },
+                lexer::Token::PUNCT_DIV { pos_in_src: 4 },
             ],
             final_tokens
         );
@@ -2681,7 +2772,7 @@ PP(/,*)PP2(*,/)"##
             assert_eq!(
                 tokens
                     .iter()
-                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE{..} | lexer::Token::NEWLINE{..}))
                     .count(),
                 0,
                 "failed for 2 inner test"
@@ -2702,9 +2793,10 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None
+                        suffix: None,
+                        pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE,
+                    lexer::Token::NEWLINE{pos_in_src: 1},
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 3 inner test"
@@ -2723,7 +2815,7 @@ PP(/,*)PP2(*,/)"##
             assert_eq!(
                 tokens
                     .iter()
-                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE | lexer::Token::NEWLINE))
+                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE{..} | lexer::Token::NEWLINE{..}))
                     .count(),
                 0,
                 "failed for 4 inner test"
@@ -2744,9 +2836,10 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None
+                        suffix: None,
+                        pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE,
+                    lexer::Token::NEWLINE{pos_in_src: 1},
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 5 inner test"
@@ -2768,9 +2861,10 @@ PP(/,*)PP2(*,/)"##
                 vec![
                     lexer::Token::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix: None
+                        suffix: None,
+                        pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE,
+                    lexer::Token::NEWLINE{pos_in_src: 1},
                 ],
                 tokens[0..2].to_vec(),
                 "failed 6"
