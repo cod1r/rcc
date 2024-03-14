@@ -526,22 +526,7 @@ pub fn parse_expressions(
             //Comma expressions
             lexer::Token::PUNCT_COMMA { pos_in_src } => {
                 if curr_expr.is_none() {
-                    let Some(token_byte_vec) = lexer::Token::PUNCT_COMMA {
-                        pos_in_src: *pos_in_src,
-                    }
-                    .to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 let Some(curr_expr_inside) = curr_expr else {
                     unreachable!()
@@ -574,22 +559,7 @@ pub fn parse_expressions(
             | lexer::Token::PUNCT_XOR_BIT_ASSIGN { .. }
             | lexer::Token::PUNCT_OR_BIT_ASSIGN { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 match curr_expr {
                     Some(Expr::Unary(_) | Expr::Primary(_)) => {
@@ -612,24 +582,7 @@ pub fn parse_expressions(
                         curr_expr = Some(Expr::Assignment(assignment));
                     }
                     _ => {
-                        let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                            unreachable!()
-                        };
-                        let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                            unreachable!()
-                        };
-                        // assignment operators require that unary expressions come before it
-                        // and that assignment expressions follow
-                        return Err(format!(
-                            "{}",
-                            error::RccErrorInfo::new(
-                                error::RccError::UnexpectedToken(s),
-                                index..index + 1,
-                                tokens,
-                                str_maps,
-                            )
-                            .to_string()
-                        ));
+                        todo!("ERROR HERE")
                     }
                 }
                 loop {
@@ -642,26 +595,7 @@ pub fn parse_expressions(
                     }
                 }
                 if !matches!(tokens.get(index), Some(primary_tokens!()) | None) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
             }
             // Postfix but with unary edge cases
@@ -874,15 +808,7 @@ pub fn parse_expressions(
                                 }
                             }
                             if !matches!(tokens.get(index), Some(lexer::Token::IDENT { .. })) {
-                                return Err(error::RccErrorInfo::new(
-                                    error::RccError::Custom(
-                                        "IDENTIFIER expected after '.' or '->'".to_string(),
-                                    ),
-                                    index..index + 1,
-                                    tokens,
-                                    str_maps,
-                                )
-                                .to_string());
+                                todo!("ERROR HERE")
                             }
                             let Some(lexer::Token::IDENT { str_map_key, .. }) = tokens.get(index)
                             else {
@@ -930,44 +856,14 @@ pub fn parse_expressions(
                         _ => unreachable!(),
                     }
                 } else {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 // Dont need to check for identifier after because the identifier is already
                 // parsed before due to postfix struct requiring that identifiers be consumed
             }
             lexer::Token::PUNCT_CLOSE_SQR { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 while let Some(mut e) = stack.pop() {
                     let Some(unwrapped) = curr_expr else {
@@ -1052,16 +948,7 @@ pub fn parse_expressions(
                     unreachable!()
                 };
                 if pi.is_err() {
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 let Ok(PiOk) = pi else { unreachable!() };
                 let primary = Expr::Primary(Some(PiOk));
@@ -1074,12 +961,7 @@ pub fn parse_expressions(
                         ($($e:ident)*) => {
                             match &mut curr_expr {
                                 Some(Expr::PostFix(_)) => {
-                                    return Err(format!("{}", error::RccErrorInfo::new(
-                                                error::RccError::Custom("primary after postfix is not allowed".to_string()),
-                                                index..index + 1,
-                                                tokens,
-                                                str_maps,
-                                    ).to_string()));
+                                    todo!("ERROR HERE")
                                 },
                                 Some(Expr::Unary(u)) => {
                                     assert!(u.first.is_none());
@@ -1101,16 +983,8 @@ pub fn parse_expressions(
                                     }
                                 }
                                 _ => {
-                                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                                        unreachable!()
-                                    };
-                                    let Ok(s) = String::from_utf8(token_to_byte_vec) else { unreachable!() };
-                                    return Err(format!("{}", error::RccErrorInfo::new(
-                                            error::RccError::UnexpectedToken(s),
-                                            index..index + 1,
-                                            tokens,
-                                            str_maps,
-                                ).to_string()))},
+                                    todo!("ERROR HERE")
+                                },
                             }
                         };
                     }
@@ -1273,28 +1147,7 @@ pub fn parse_expressions(
                                 | lexer::Token::PUNCT_DECREMENT { .. }
                         )
                     ) {
-                        if tokens.get(index).is_none() {
-                            // TODO: need better diagnostic msg here
-                            return Err("unexpected end of characters".to_string());
-                        }
-                        let Some(token_to_byte_vec) =
-                            tokens[inside_parenth_index].to_byte_vec(str_maps)
-                        else {
-                            unreachable!()
-                        };
-                        let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                            unreachable!()
-                        };
-                        return Err(format!(
-                            "{}",
-                            error::RccErrorInfo::new(
-                                error::RccError::UnexpectedToken(s),
-                                inside_parenth_index..inside_parenth_index + 1,
-                                tokens,
-                                str_maps,
-                            )
-                            .to_string()
-                        ));
+                        todo!("ERROR HERE")
                     }
                 } else {
                     index = end_parenth + 1;
@@ -1378,22 +1231,7 @@ pub fn parse_expressions(
                     continue;
                 }
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 // thought process here is that we want to pop until we hit the opening parenthesis
                 // that created the primary expression.
@@ -1480,26 +1318,7 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR { .. })
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::UnexpectedToken(s),
-                            index..index + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
             }
             //Unary expressions
@@ -1517,16 +1336,7 @@ pub fn parse_expressions(
                                 // if a '~' or '!' follow a primary expression, that is not allowed.
                                 match tokens[index] {
                                     lexer::Token::PUNCT_TILDE{..} | lexer::Token::PUNCT_NOT_BOOL{..} => {
-                                        let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                                            unreachable!()
-                                        };
-                                        let Ok(s) = String::from_utf8(token_to_byte_vec) else { unreachable!() };
-                                        return Err(error::RccErrorInfo::new(
-                                                error::RccError::UnexpectedToken(s),
-                                                    index..index + 1,
-                                                    tokens,
-                                                    str_maps,
-                                        ).to_string());
+                                        todo!("ERROR HERE")
                                     }
                                     _ => {}
                                 }
@@ -1575,16 +1385,7 @@ pub fn parse_expressions(
                                     // if a '~' or '!' follow a unary expression, that is not allowed.
                                     match tokens[index] {
                                         lexer::Token::PUNCT_TILDE{..} | lexer::Token::PUNCT_NOT_BOOL{..} => {
-                                            let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                                                unreachable!()
-                                            };
-                                            let Ok(s) = String::from_utf8(token_to_byte_vec) else { unreachable!() };
-                                            return Err(error::RccErrorInfo::new(
-                                                    error::RccError::UnexpectedToken(s),
-                                                    index..index + 1,
-                                                    tokens,
-                                                    str_maps,
-                                            ).to_string());
+                                            todo!("ERROR HERE")
                                         }
                                         _ => {}
                                     }
@@ -2127,23 +1928,7 @@ pub fn parse_expressions(
                     curr_expr = Some(expr);
                 }
                 if !matches!(curr_expr, Some(Expr::Conditional(_))) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 stack.push(curr_expr.unwrap());
                 curr_expr = None;
@@ -2322,16 +2107,7 @@ fn recursive_eval(
                             match to_be_parsed.parse::<i128>() {
                                 Ok(v) if v <= u64::MAX as i128 && v >= i64::MIN as i128 => Ok(v),
                                 _ => {
-                                    return Err(error::RccErrorInfo::new(
-                                        error::RccError::Custom(format!(
-                                            "{} cannot be represented as i64 or u64",
-                                            to_be_parsed
-                                        )),
-                                        0..0,
-                                        &[],
-                                        str_maps,
-                                    )
-                                    .to_string());
+                                    todo!("ERROR HERE")
                                 }
                             }
                         }
@@ -2354,15 +2130,7 @@ fn recursive_eval(
             }
         }
         Expr::PostFix(_) => {
-            return Err(error::RccErrorInfo::new(
-                error::RccError::Custom(format!(
-                    "postfix expressions aren't allowed in preprocessing directives"
-                )),
-                0..0,
-                &[],
-                str_maps,
-            )
-            .to_string());
+            todo!("ERROR HERE")
         }
         Expr::Unary(u) => {
             let Some(first) = u.first else { unreachable!() };
@@ -2388,15 +2156,7 @@ fn recursive_eval(
             }
         }
         Expr::Cast(_) => {
-            return Err(error::RccErrorInfo::new(
-                error::RccError::Custom(format!(
-                    "cast expressions aren't allowed in preprocessing directives"
-                )),
-                0..0,
-                &[],
-                str_maps,
-            )
-            .to_string());
+            todo!("ERROR HERE")
         }
         Expr::Multiplicative(m) => {
             let Some(first) = m.first else { unreachable!() };
@@ -2411,13 +2171,7 @@ fn recursive_eval(
                 MultiplicativeOps::Div | MultiplicativeOps::Mod => {
                     let right = recursive_eval(&expressions[second], str_maps, expressions)?;
                     if right == 0 {
-                        return Err(error::RccErrorInfo::new(
-                            error::RccError::Custom(String::from("cannot divide by zero")),
-                            0..0,
-                            &[],
-                            str_maps,
-                        )
-                        .to_string());
+                        todo!("ERROR HERE")
                     }
                     match m.op {
                         MultiplicativeOps::Div => {
