@@ -87,19 +87,19 @@ pub enum Statement {
 }
 pub fn is_statement_token(t: lexer::Token) -> bool {
     match t {
-        lexer::Token::IDENT(_) => true,
-        lexer::Token::KEYWORD_CASE => true,
-        lexer::Token::KEYWORD_DEFAULT => true,
-        lexer::Token::PUNCT_OPEN_CURLY => true,
-        lexer::Token::KEYWORD_IF => true,
-        lexer::Token::KEYWORD_SWITCH => true,
-        lexer::Token::KEYWORD_WHILE => true,
-        lexer::Token::KEYWORD_DO => true,
-        lexer::Token::KEYWORD_FOR => true,
-        lexer::Token::KEYWORD_GOTO => true,
-        lexer::Token::KEYWORD_CONTINUE => true,
-        lexer::Token::KEYWORD_BREAK => true,
-        lexer::Token::KEYWORD_RETURN => true,
+        lexer::Token::IDENT { .. } => true,
+        lexer::Token::KEYWORD_CASE { .. } => true,
+        lexer::Token::KEYWORD_DEFAULT { .. } => true,
+        lexer::Token::PUNCT_OPEN_CURLY { .. } => true,
+        lexer::Token::KEYWORD_IF { .. } => true,
+        lexer::Token::KEYWORD_SWITCH { .. } => true,
+        lexer::Token::KEYWORD_WHILE { .. } => true,
+        lexer::Token::KEYWORD_DO { .. } => true,
+        lexer::Token::KEYWORD_FOR { .. } => true,
+        lexer::Token::KEYWORD_GOTO { .. } => true,
+        lexer::Token::KEYWORD_CONTINUE { .. } => true,
+        lexer::Token::KEYWORD_BREAK { .. } => true,
+        lexer::Token::KEYWORD_RETURN { .. } => true,
         _ => false,
     }
 }
@@ -112,7 +112,9 @@ pub fn parse_statement(
     let mut idx = start_index;
     match tokens.get(idx) {
         Some(
-            lexer::Token::IDENT(_) | lexer::Token::KEYWORD_CASE | lexer::Token::KEYWORD_DEFAULT,
+            lexer::Token::IDENT { .. }
+            | lexer::Token::KEYWORD_CASE { .. }
+            | lexer::Token::KEYWORD_DEFAULT { .. },
         ) => {
             let (labeled, new_index) = parse_labeled_statement(tokens, idx, flattened, str_maps)?;
             flattened.label_statements.push(labeled);
@@ -121,7 +123,7 @@ pub fn parse_statement(
                 new_index,
             ))
         }
-        Some(lexer::Token::PUNCT_OPEN_CURLY) => {
+        Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) => {
             let (compound, new_index) = parse_compound_statement(tokens, idx, flattened, str_maps)?;
             flattened.compound_statements.push(compound);
             Ok((
@@ -129,7 +131,7 @@ pub fn parse_statement(
                 new_index,
             ))
         }
-        Some(lexer::Token::KEYWORD_IF | lexer::Token::KEYWORD_SWITCH) => {
+        Some(lexer::Token::KEYWORD_IF { .. } | lexer::Token::KEYWORD_SWITCH { .. }) => {
             let (selection, new_index) =
                 parse_selection_statement(tokens, idx, flattened, str_maps)?;
             flattened.selection_statements.push(selection);
@@ -139,7 +141,9 @@ pub fn parse_statement(
             ))
         }
         Some(
-            lexer::Token::KEYWORD_WHILE | lexer::Token::KEYWORD_DO | lexer::Token::KEYWORD_FOR,
+            lexer::Token::KEYWORD_WHILE { .. }
+            | lexer::Token::KEYWORD_DO { .. }
+            | lexer::Token::KEYWORD_FOR { .. },
         ) => {
             let (iteration, new_index) =
                 parse_iteration_statement(tokens, idx, flattened, str_maps)?;
@@ -150,10 +154,10 @@ pub fn parse_statement(
             ))
         }
         Some(
-            lexer::Token::KEYWORD_GOTO
-            | lexer::Token::KEYWORD_CONTINUE
-            | lexer::Token::KEYWORD_BREAK
-            | lexer::Token::KEYWORD_RETURN,
+            lexer::Token::KEYWORD_GOTO { .. }
+            | lexer::Token::KEYWORD_CONTINUE { .. }
+            | lexer::Token::KEYWORD_BREAK { .. }
+            | lexer::Token::KEYWORD_RETURN { .. },
         ) => {
             let (jump, new_index) = parse_jump_statement(tokens, idx, flattened, str_maps)?;
             flattened.jump_statements.push(jump);
@@ -174,66 +178,48 @@ pub fn parse_labeled_statement(
 ) -> Result<(Label, usize), String> {
     let mut label_idx = start_index;
     match tokens[label_idx] {
-        lexer::Token::IDENT(key) => {
+        lexer::Token::IDENT { str_map_key, .. } => {
             label_idx += 1;
             while matches!(
                 tokens.get(label_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) && label_idx < tokens.len()
             {
                 label_idx += 1;
             }
-            if !matches!(tokens.get(label_idx), Some(lexer::Token::PUNCT_COLON)) {
-                let Some(bv) = lexer::Token::PUNCT_COLON.to_byte_vec(str_maps) else {
-                    unreachable!()
-                };
-                let Ok(s) = String::from_utf8(bv) else {
-                    unreachable!()
-                };
-                return Err(error::RccErrorInfo::new(
-                    error::RccError::ExpectedToken(s),
-                    label_idx..label_idx + 1,
-                    tokens,
-                    str_maps,
-                )
-                .to_string());
+            if !matches!(
+                tokens.get(label_idx),
+                Some(lexer::Token::PUNCT_COLON { .. })
+            ) {
+                todo!("ERROR HERE")
             }
             let (statement, new_index) =
                 parse_statement(tokens, label_idx + 1, flattened, str_maps)?;
             flattened.statements.push(statement);
             Ok((
                 Label::Identifier {
-                    identifier: key,
+                    identifier: str_map_key,
                     statement: flattened.statements.len() - 1,
                 },
                 new_index,
             ))
         }
-        lexer::Token::KEYWORD_CASE => {
+        lexer::Token::KEYWORD_CASE { .. } => {
             loop {
                 label_idx += 1;
                 if matches!(
                     tokens.get(label_idx),
-                    Some(lexer::Token::PUNCT_COLON) | None
+                    Some(lexer::Token::PUNCT_COLON { .. }) | None
                 ) && label_idx < tokens.len()
                 {
                     break;
                 }
             }
-            if !matches!(tokens.get(label_idx), Some(lexer::Token::PUNCT_COLON)) {
-                let Some(bv) = lexer::Token::PUNCT_COLON.to_byte_vec(str_maps) else {
-                    unreachable!()
-                };
-                let Ok(s) = String::from_utf8(bv) else {
-                    unreachable!()
-                };
-                return Err(error::RccErrorInfo::new(
-                    error::RccError::ExpectedToken(s),
-                    label_idx..label_idx + 1,
-                    tokens,
-                    str_maps,
-                )
-                .to_string());
+            if !matches!(
+                tokens.get(label_idx),
+                Some(lexer::Token::PUNCT_COLON { .. })
+            ) {
+                todo!("ERROR HERE")
             }
             // TODO: this is a constant expression so I might need to eval it
             // to make sure the constant expression restraints are applied
@@ -247,7 +233,7 @@ pub fn parse_labeled_statement(
                 label_idx += 1;
                 if !matches!(
                     tokens.get(label_idx),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) && label_idx < tokens.len()
                 {
                     break;
@@ -264,29 +250,20 @@ pub fn parse_labeled_statement(
                 new_index,
             ))
         }
-        lexer::Token::KEYWORD_DEFAULT => {
+        lexer::Token::KEYWORD_DEFAULT { .. } => {
             label_idx += 1;
             while matches!(
                 tokens.get(label_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) && label_idx < tokens.len()
             {
                 label_idx += 1;
             }
-            if !matches!(tokens.get(label_idx), Some(lexer::Token::PUNCT_COLON)) {
-                let Some(bv) = lexer::Token::PUNCT_COLON.to_byte_vec(str_maps) else {
-                    unreachable!()
-                };
-                let Ok(s) = String::from_utf8(bv) else {
-                    unreachable!()
-                };
-                return Err(error::RccErrorInfo::new(
-                    error::RccError::ExpectedToken(s),
-                    label_idx..label_idx + 1,
-                    tokens,
-                    str_maps,
-                )
-                .to_string());
+            if !matches!(
+                tokens.get(label_idx),
+                Some(lexer::Token::PUNCT_COLON { .. })
+            ) {
+                todo!("ERROR HERE")
             }
             let (statement, new_index) =
                 parse_statement(tokens, label_idx + 1, flattened, str_maps)?;
@@ -305,21 +282,15 @@ pub fn parse_compound_statement(
     let mut idx = start_index;
     if !matches!(
         tokens.get(start_index),
-        Some(lexer::Token::PUNCT_OPEN_CURLY)
+        Some(lexer::Token::PUNCT_OPEN_CURLY { .. })
     ) {
-        return Err(error::RccErrorInfo::new(
-            error::RccError::Custom("Expected {".to_string()),
-            start_index..start_index + 1,
-            tokens,
-            str_maps,
-        )
-        .to_string());
+        todo!("ERROR HERE")
     }
     loop {
         idx += 1; // first is guaranteed to be open curly
         if !matches!(
             tokens.get(idx),
-            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE),
+            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }),
         ) {
             break;
         }
@@ -328,16 +299,10 @@ pub fn parse_compound_statement(
     let mut curly_balance_idx = idx;
     while curly_balancer > 0 {
         match tokens.get(curly_balance_idx) {
-            Some(lexer::Token::PUNCT_OPEN_CURLY) => curly_balancer += 1,
-            Some(lexer::Token::PUNCT_CLOSE_CURLY) => curly_balancer -= 1,
+            Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) => curly_balancer += 1,
+            Some(lexer::Token::PUNCT_CLOSE_CURLY { .. }) => curly_balancer -= 1,
             None => {
-                return Err(error::RccErrorInfo::new(
-                    error::RccError::Custom("Unexpected end of tokens".to_string()),
-                    idx..curly_balance_idx + 1,
-                    tokens,
-                    str_maps,
-                )
-                .to_string())
+                todo!("ERROR HERE")
             }
             _ => {}
         }
@@ -345,15 +310,9 @@ pub fn parse_compound_statement(
     }
     if !matches!(
         tokens.get(curly_balance_idx - 1),
-        Some(lexer::Token::PUNCT_CLOSE_CURLY)
+        Some(lexer::Token::PUNCT_CLOSE_CURLY { .. })
     ) {
-        return Err(error::RccErrorInfo::new(
-            error::RccError::ExpectedToken("{".to_string()),
-            idx..curly_balance_idx + 1,
-            tokens,
-            str_maps,
-        )
-        .to_string());
+        todo!("ERROR HERE")
     }
     let mut compound = Compound {
         block_item_list: Vec::new(),
@@ -388,7 +347,7 @@ pub fn parse_compound_statement(
         }
         while matches!(
             tokens.get(compound_idx),
-            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
         ) {
             compound_idx += 1;
         }
@@ -403,19 +362,19 @@ pub fn parse_selection_statement(
 ) -> Result<(Selection, usize), String> {
     let mut selection_idx = start_index;
     match tokens.get(selection_idx) {
-        Some(lexer::Token::KEYWORD_IF) => {
+        Some(lexer::Token::KEYWORD_IF { .. }) => {
             loop {
                 selection_idx += 1;
                 if matches!(
                     tokens.get(selection_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
                 ) {
                     break;
                 }
             }
             if !matches!(
                 tokens.get(selection_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR)
+                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
             ) {
                 return Err("EXPECTED (".to_string());
             }
@@ -424,10 +383,10 @@ pub fn parse_selection_statement(
             let mut parenth_bal = 1;
             while parenth_bal > 0 {
                 match tokens.get(selection_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
                         parenth_bal += 1;
                     }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
                         parenth_bal -= 1;
                     }
                     Some(_) => {}
@@ -439,7 +398,7 @@ pub fn parse_selection_statement(
             }
             if !matches!(
                 tokens.get(selection_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
             ) {
                 return Err("UNBALANCED".to_string());
             }
@@ -452,7 +411,7 @@ pub fn parse_selection_statement(
             flattened.expressions.push(expression);
             while matches!(
                 tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 selection_idx += 1;
             }
@@ -462,11 +421,14 @@ pub fn parse_selection_statement(
             selection_idx = new_index;
             while matches!(
                 tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 selection_idx += 1;
             }
-            if matches!(tokens.get(selection_idx), Some(lexer::Token::KEYWORD_ELSE)) {
+            if matches!(
+                tokens.get(selection_idx),
+                Some(lexer::Token::KEYWORD_ELSE { .. })
+            ) {
                 selection_idx += 1;
                 let (stmt2, new_index) =
                     parse_statement(tokens, selection_idx, flattened, str_maps)?;
@@ -491,19 +453,19 @@ pub fn parse_selection_statement(
                 ))
             }
         }
-        Some(lexer::Token::KEYWORD_SWITCH) => {
+        Some(lexer::Token::KEYWORD_SWITCH { .. }) => {
             loop {
                 selection_idx += 1;
                 if matches!(
                     tokens.get(selection_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
                 ) {
                     break;
                 }
             }
             if !matches!(
                 tokens.get(selection_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR)
+                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
             ) {
                 return Err("EXPECTED (".to_string());
             }
@@ -512,10 +474,10 @@ pub fn parse_selection_statement(
             let mut parenth_bal = 1;
             while parenth_bal > 0 {
                 match tokens.get(selection_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
                         parenth_bal += 1;
                     }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
                         parenth_bal -= 1;
                     }
                     Some(_) => {}
@@ -527,7 +489,7 @@ pub fn parse_selection_statement(
             }
             if !matches!(
                 tokens.get(selection_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
             ) {
                 return Err("UNBALANCED".to_string());
             }
@@ -540,7 +502,7 @@ pub fn parse_selection_statement(
             flattened.expressions.push(expression);
             while matches!(
                 tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 selection_idx += 1;
             }
@@ -568,19 +530,19 @@ pub fn parse_iteration_statement(
 ) -> Result<(Iteration, usize), String> {
     let mut iteration_idx = start_index;
     match tokens.get(iteration_idx) {
-        Some(lexer::Token::KEYWORD_WHILE) => {
+        Some(lexer::Token::KEYWORD_WHILE { .. }) => {
             loop {
                 iteration_idx += 1;
                 if matches!(
                     tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
                 ) {
                     break;
                 }
             }
             if !matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR)
+                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
             ) {
                 return Err("EXPECTED (".to_string());
             }
@@ -589,10 +551,10 @@ pub fn parse_iteration_statement(
             let mut parenth_bal = 1;
             while parenth_bal > 0 {
                 match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
                         parenth_bal += 1;
                     }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
                         parenth_bal -= 1;
                     }
                     Some(_) => {}
@@ -604,7 +566,7 @@ pub fn parse_iteration_statement(
             }
             if !matches!(
                 tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
             ) {
                 return Err("UNBALANCED".to_string());
             }
@@ -617,7 +579,7 @@ pub fn parse_iteration_statement(
             flattened.expressions.push(expression);
             while matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 iteration_idx += 1;
             }
@@ -632,11 +594,11 @@ pub fn parse_iteration_statement(
                 iteration_idx,
             ))
         }
-        Some(lexer::Token::KEYWORD_DO) => {
+        Some(lexer::Token::KEYWORD_DO { .. }) => {
             iteration_idx += 1;
             while matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 iteration_idx += 1;
             }
@@ -645,25 +607,28 @@ pub fn parse_iteration_statement(
             iteration_idx = new_index;
             while matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 iteration_idx += 1;
             }
-            if !matches!(tokens.get(iteration_idx), Some(lexer::Token::KEYWORD_WHILE)) {
+            if !matches!(
+                tokens.get(iteration_idx),
+                Some(lexer::Token::KEYWORD_WHILE { .. })
+            ) {
                 return Err("EXPECTED WHILE".to_string());
             }
             loop {
                 iteration_idx += 1;
                 if matches!(
                     tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
                 ) {
                     break;
                 }
             }
             if !matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR)
+                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
             ) {
                 return Err("EXPECTED (".to_string());
             }
@@ -672,10 +637,10 @@ pub fn parse_iteration_statement(
             let mut parenth_bal = 1;
             while parenth_bal > 0 {
                 match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
                         parenth_bal += 1;
                     }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
                         parenth_bal -= 1;
                     }
                     Some(_) => {}
@@ -687,7 +652,7 @@ pub fn parse_iteration_statement(
             }
             if !matches!(
                 tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
             ) {
                 return Err("UNBALANCED".to_string());
             }
@@ -700,13 +665,13 @@ pub fn parse_iteration_statement(
             flattened.expressions.push(expression);
             while matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 iteration_idx += 1;
             }
             if !matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON)
+                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
             ) {
                 return Err("EXPECTED ;".to_string());
             }
@@ -719,19 +684,19 @@ pub fn parse_iteration_statement(
                 iteration_idx,
             ))
         }
-        Some(lexer::Token::KEYWORD_FOR) => {
+        Some(lexer::Token::KEYWORD_FOR { .. }) => {
             loop {
                 iteration_idx += 1;
                 if matches!(
                     tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR) | None
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
                 ) {
                     break;
                 }
             }
             if !matches!(
                 tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR)
+                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
             ) {
                 return Err("EXPECTED (".to_string());
             }
@@ -741,10 +706,10 @@ pub fn parse_iteration_statement(
             let mut parenth_bal = 1;
             while parenth_bal > 0 {
                 match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR) => {
+                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
                         parenth_bal += 1;
                     }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR) => {
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
                         parenth_bal -= 1;
                     }
                     Some(_) => {}
@@ -756,13 +721,13 @@ pub fn parse_iteration_statement(
             }
             if !matches!(
                 tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR)
+                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
             ) {
                 return Err("UNBALANCED".to_string());
             }
             while matches!(
                 tokens.get(until_first_semi_colon),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 until_first_semi_colon += 1;
             }
@@ -786,24 +751,24 @@ pub fn parse_iteration_statement(
                 };
                 while matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) {
                     until_first_semi_colon += 1;
                 }
                 if !matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                 ) {
                     let start = until_first_semi_colon;
                     while !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
                     ) {
                         until_first_semi_colon += 1;
                     }
                     if !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                     ) {
                         return Err("missing ;".to_string());
                     }
@@ -839,7 +804,7 @@ pub fn parse_iteration_statement(
                 }
                 while matches!(
                     tokens.get(iteration_idx),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) {
                     iteration_idx += 1;
                 }
@@ -858,18 +823,18 @@ pub fn parse_iteration_statement(
                 };
                 if !matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                 ) {
                     let start = until_first_semi_colon;
                     while !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
                     ) {
                         until_first_semi_colon += 1;
                     }
                     if !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                     ) {
                         return Err("missing ;".to_string());
                     }
@@ -890,25 +855,25 @@ pub fn parse_iteration_statement(
                 }
                 if !matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                 ) {
                     return Err("missing ;".to_string());
                 }
                 until_first_semi_colon += 1;
                 if !matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                 ) {
                     let start = until_first_semi_colon;
                     while !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
                     ) {
                         until_first_semi_colon += 1;
                     }
                     if !matches!(
                         tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON)
+                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                     ) {
                         return Err("missing ;".to_string());
                     }
@@ -929,7 +894,7 @@ pub fn parse_iteration_statement(
                 }
                 if !matches!(
                     tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON)
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
                 ) {
                     return Err("missing ;".to_string());
                 }
@@ -937,18 +902,18 @@ pub fn parse_iteration_statement(
                 let mut until_close_par = until_first_semi_colon;
                 if !matches!(
                     tokens.get(until_close_par),
-                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
                 ) {
                     let start = until_close_par;
                     while !matches!(
                         tokens.get(until_close_par),
-                        Some(lexer::Token::PUNCT_CLOSE_PAR) | None
+                        Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) | None
                     ) {
                         until_close_par += 1;
                     }
                     if !matches!(
                         tokens.get(until_close_par),
-                        Some(lexer::Token::PUNCT_CLOSE_PAR)
+                        Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
                     ) {
                         return Err("missing ;".to_string());
                     }
@@ -975,7 +940,7 @@ pub fn parse_iteration_statement(
                 };
                 while matches!(
                     tokens.get(iteration_idx),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) {
                     iteration_idx += 1;
                 }
@@ -998,85 +963,103 @@ pub fn parse_jump_statement(
 ) -> Result<(Jump, usize), String> {
     let mut jump_idx = start_index;
     match tokens.get(jump_idx) {
-        Some(lexer::Token::KEYWORD_GOTO) => {
+        Some(lexer::Token::KEYWORD_GOTO { .. }) => {
             loop {
                 jump_idx += 1;
-                if matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT(_)) | None) {
+                if matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::IDENT { .. }) | None
+                ) {
                     break;
                 }
             }
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT(_))) {
+            if !matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT { .. })) {
                 return Err("EXPECTED IDENTIFIER".to_string());
             }
-            let Some(lexer::Token::IDENT(key)) = tokens.get(jump_idx) else {
+            let Some(lexer::Token::IDENT { str_map_key, .. }) = tokens.get(jump_idx) else {
                 unreachable!()
             };
             jump_idx += 1;
             while matches!(
                 tokens.get(jump_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 jump_idx += 1;
             }
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+            if !matches!(
+                tokens.get(jump_idx),
+                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+            ) {
                 return Err("EXPECTED ;".to_string());
             }
             jump_idx += 1;
-            Ok((Jump::Goto(*key), jump_idx))
+            Ok((Jump::Goto(*str_map_key), jump_idx))
         }
-        Some(lexer::Token::KEYWORD_CONTINUE) => {
+        Some(lexer::Token::KEYWORD_CONTINUE { .. }) => {
             loop {
                 jump_idx += 1;
                 if matches!(
                     tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
                 ) {
                     break;
                 }
             }
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+            if !matches!(
+                tokens.get(jump_idx),
+                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+            ) {
                 return Err("EXPECTED ;".to_string());
             }
             jump_idx += 1;
             Ok((Jump::Continue, jump_idx))
         }
-        Some(lexer::Token::KEYWORD_BREAK) => {
+        Some(lexer::Token::KEYWORD_BREAK { .. }) => {
             loop {
                 jump_idx += 1;
                 if matches!(
                     tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON) | None
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
                 ) {
                     break;
                 }
             }
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+            if !matches!(
+                tokens.get(jump_idx),
+                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+            ) {
                 return Err("EXPECTED ;".to_string());
             }
             jump_idx += 1;
             Ok((Jump::Break, jump_idx))
         }
-        Some(lexer::Token::KEYWORD_RETURN) => {
+        Some(lexer::Token::KEYWORD_RETURN { .. }) => {
             loop {
                 jump_idx += 1;
                 if !matches!(
                     tokens.get(jump_idx),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) && matches!(tokens.get(jump_idx), Some(_) | None)
                 {
                     break;
                 }
             }
             let mut r = Jump::Return(None);
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+            if !matches!(
+                tokens.get(jump_idx),
+                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+            ) {
                 let start = jump_idx;
                 while !matches!(
                     tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON) | None,
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None,
                 ) {
                     jump_idx += 1;
                 }
-                if !matches!(tokens.get(jump_idx), Some(lexer::Token::PUNCT_SEMI_COLON)) {
+                if !matches!(
+                    tokens.get(jump_idx),
+                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                ) {
                     return Err("EXPECTED ;".to_string());
                 }
                 let (_, expr) = parser::expressions::parse_expressions(

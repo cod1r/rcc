@@ -16,7 +16,7 @@ pub fn parse_translation_units(
         translation_unit_idx = new_index;
         while matches!(
             tokens.get(translation_unit_idx),
-            Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
         ) {
             translation_unit_idx += 1;
         }
@@ -48,7 +48,7 @@ pub fn parse_external_declarations(
     external_declaration_idx = new_index;
     while matches!(
         tokens.get(external_declaration_idx),
-        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
     ) {
         external_declaration_idx += 1;
     }
@@ -61,7 +61,7 @@ pub fn parse_external_declarations(
     external_declaration_idx = new_index;
     while matches!(
         tokens.get(external_declaration_idx),
-        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
     ) {
         external_declaration_idx += 1;
     }
@@ -69,12 +69,12 @@ pub fn parse_external_declarations(
         return Err("Unexpected end of tokens".to_string());
     };
     if parser::declarations::is_declaration_token(*t)
-        || matches!(*t, lexer::Token::PUNCT_OPEN_CURLY)
+        || matches!(*t, lexer::Token::PUNCT_OPEN_CURLY { .. })
     {
         let mut declaration_list = Vec::new();
         while !matches!(
             tokens.get(external_declaration_idx),
-            Some(lexer::Token::PUNCT_OPEN_CURLY) | None
+            Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) | None
         ) {
             let (declaration, new_index) = parser::declarations::parse_declarations(
                 tokens,
@@ -86,14 +86,14 @@ pub fn parse_external_declarations(
             external_declaration_idx = new_index;
             while matches!(
                 tokens.get(external_declaration_idx),
-                Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
             ) {
                 external_declaration_idx += 1;
             }
         }
         if matches!(
             tokens.get(external_declaration_idx),
-            Some(lexer::Token::PUNCT_OPEN_CURLY)
+            Some(lexer::Token::PUNCT_OPEN_CURLY { .. })
         ) {
             let (compound, new_index) = parser::statements::parse_compound_statement(
                 tokens,

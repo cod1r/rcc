@@ -40,11 +40,11 @@ impl RccErrorInfo {
         }
         let newlines_before = tokens[..index_range.start]
             .iter()
-            .filter(|t| matches!(t, lexer::Token::NEWLINE))
+            .filter(|t| matches!(t, lexer::Token::NEWLINE { .. }))
             .count();
         let initial_offset_for_start_of_column_offset = {
             let mut idx = index_range.start;
-            while idx > 0 && !matches!(tokens[idx], lexer::Token::NEWLINE) {
+            while idx > 0 && !matches!(tokens[idx], lexer::Token::NEWLINE { .. }) {
                 idx -= 1;
             }
             idx
@@ -59,7 +59,7 @@ impl RccErrorInfo {
         let mut line_lengths = Vec::new();
         let mut character_count = if matches!(
             tokens.get(initial_offset_for_start_of_column_offset),
-            Some(lexer::Token::NEWLINE)
+            Some(lexer::Token::NEWLINE { .. })
         ) {
             initial_offset_for_start_of_column_offset
         } else {

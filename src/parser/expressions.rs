@@ -11,7 +11,7 @@ impl PrimaryInner {
     pub fn new_p_token(t: lexer::Token) -> Result<Self, String> {
         if matches!(
             t,
-            lexer::Token::IDENT(_)
+            lexer::Token::IDENT { .. }
                 | lexer::Token::StringLiteral { .. }
                 | lexer::Token::CONSTANT_DEC_INT { .. }
                 | lexer::Token::CONSTANT_HEXA_INT { .. }
@@ -19,7 +19,7 @@ impl PrimaryInner {
                 | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
                 | lexer::Token::CONSTANT_CHAR { .. }
                 | lexer::Token::CONSTANT_OCTAL_INT { .. }
-                | lexer::Token::CONSTANT_ENUM(_)
+                | lexer::Token::CONSTANT_ENUM { .. }
         ) {
             return Ok(Self::Token(t));
         }
@@ -291,10 +291,10 @@ macro_rules! case_where_it_could_be_unary_or_additive {
         if $parserTypeVar.second.is_none() {
             $rightExprVar = Some(Expr::Unary(Unary {
                 op: match $token {
-                    lexer::Token::PUNCT_PLUS => UnaryOp::Add,
-                    lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
-                    lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
-                    lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
+                    lexer::Token::PUNCT_PLUS { .. } => UnaryOp::Add,
+                    lexer::Token::PUNCT_MINUS { .. } => UnaryOp::Sub,
+                    lexer::Token::PUNCT_NOT_BOOL { .. } => UnaryOp::LogicalNOT,
+                    lexer::Token::PUNCT_TILDE { .. } => UnaryOp::BitNOT,
                     _ => unreachable!(),
                 },
                 first: None,
@@ -302,8 +302,8 @@ macro_rules! case_where_it_could_be_unary_or_additive {
         } else {
             $rightExprVar = Some(Expr::Additive(Additive {
                 op: match $token {
-                    lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
-                    lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                    lexer::Token::PUNCT_PLUS { .. } => AdditiveOps::Add,
+                    lexer::Token::PUNCT_MINUS { .. } => AdditiveOps::Sub,
                     _ => unreachable!(),
                 },
                 first: None,
@@ -451,48 +451,48 @@ fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
 }
 macro_rules! expression_operators {
     () => {
-        lexer::Token::PUNCT_PLUS
-            | lexer::Token::PUNCT_MINUS
-            | lexer::Token::PUNCT_MULT
-            | lexer::Token::PUNCT_DIV
-            | lexer::Token::PUNCT_MODULO
-            | lexer::Token::PUNCT_BITSHIFT_LEFT
-            | lexer::Token::PUNCT_BITSHIFT_RIGHT
-            | lexer::Token::PUNCT_LESS_THAN
-            | lexer::Token::PUNCT_LESS_THAN_EQ
-            | lexer::Token::PUNCT_GREATER_THAN
-            | lexer::Token::PUNCT_GREATER_THAN_EQ
-            | lexer::Token::PUNCT_EQ_BOOL
-            | lexer::Token::PUNCT_NOT_EQ_BOOL
-            | lexer::Token::PUNCT_AND_BIT
-            | lexer::Token::PUNCT_XOR_BIT
-            | lexer::Token::PUNCT_OR_BIT
-            | lexer::Token::PUNCT_AND_BOOL
-            | lexer::Token::PUNCT_OR_BOOL
-            | lexer::Token::PUNCT_CLOSE_PAR
-            | lexer::Token::PUNCT_QUESTION_MARK
-            | lexer::Token::PUNCT_COLON
-            | lexer::Token::PUNCT_ASSIGNMENT
-            | lexer::Token::PUNCT_MULT_ASSIGN
-            | lexer::Token::PUNCT_DIV_ASSIGN
-            | lexer::Token::PUNCT_MODULO_ASSIGN
-            | lexer::Token::PUNCT_ADD_ASSIGN
-            | lexer::Token::PUNCT_SUB_ASSIGN
-            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
-            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
-            | lexer::Token::PUNCT_AND_BIT_ASSIGN
-            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
-            | lexer::Token::PUNCT_OR_BIT_ASSIGN
-            | lexer::Token::PUNCT_INCREMENT
-            | lexer::Token::PUNCT_DECREMENT
-            | lexer::Token::PUNCT_DOT
-            | lexer::Token::PUNCT_ARROW
+        lexer::Token::PUNCT_PLUS { .. }
+            | lexer::Token::PUNCT_MINUS { .. }
+            | lexer::Token::PUNCT_MULT { .. }
+            | lexer::Token::PUNCT_DIV { .. }
+            | lexer::Token::PUNCT_MODULO { .. }
+            | lexer::Token::PUNCT_BITSHIFT_LEFT { .. }
+            | lexer::Token::PUNCT_BITSHIFT_RIGHT { .. }
+            | lexer::Token::PUNCT_LESS_THAN { .. }
+            | lexer::Token::PUNCT_LESS_THAN_EQ { .. }
+            | lexer::Token::PUNCT_GREATER_THAN { .. }
+            | lexer::Token::PUNCT_GREATER_THAN_EQ { .. }
+            | lexer::Token::PUNCT_EQ_BOOL { .. }
+            | lexer::Token::PUNCT_NOT_EQ_BOOL { .. }
+            | lexer::Token::PUNCT_AND_BIT { .. }
+            | lexer::Token::PUNCT_XOR_BIT { .. }
+            | lexer::Token::PUNCT_OR_BIT { .. }
+            | lexer::Token::PUNCT_AND_BOOL { .. }
+            | lexer::Token::PUNCT_OR_BOOL { .. }
+            | lexer::Token::PUNCT_CLOSE_PAR { .. }
+            | lexer::Token::PUNCT_QUESTION_MARK { .. }
+            | lexer::Token::PUNCT_COLON { .. }
+            | lexer::Token::PUNCT_ASSIGNMENT { .. }
+            | lexer::Token::PUNCT_MULT_ASSIGN { .. }
+            | lexer::Token::PUNCT_DIV_ASSIGN { .. }
+            | lexer::Token::PUNCT_MODULO_ASSIGN { .. }
+            | lexer::Token::PUNCT_ADD_ASSIGN { .. }
+            | lexer::Token::PUNCT_SUB_ASSIGN { .. }
+            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_AND_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_XOR_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_OR_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_INCREMENT { .. }
+            | lexer::Token::PUNCT_DECREMENT { .. }
+            | lexer::Token::PUNCT_DOT { .. }
+            | lexer::Token::PUNCT_ARROW { .. }
     };
 }
 
 macro_rules! primary_tokens {
     () => {
-        lexer::Token::IDENT(_)
+        lexer::Token::IDENT { .. }
             | lexer::Token::StringLiteral { .. }
             | lexer::Token::CONSTANT_DEC_INT { .. }
             | lexer::Token::CONSTANT_HEXA_INT { .. }
@@ -500,7 +500,7 @@ macro_rules! primary_tokens {
             | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
             | lexer::Token::CONSTANT_CHAR { .. }
             | lexer::Token::CONSTANT_OCTAL_INT { .. }
-            | lexer::Token::CONSTANT_ENUM(_)
+            | lexer::Token::CONSTANT_ENUM { .. }
     };
 }
 pub fn parse_expressions(
@@ -524,10 +524,12 @@ pub fn parse_expressions(
     while index < tokens.len() {
         match &tokens[index] {
             //Comma expressions
-            lexer::Token::PUNCT_COMMA => {
+            lexer::Token::PUNCT_COMMA { pos_in_src } => {
                 if curr_expr.is_none() {
-                    let Some(token_byte_vec) = lexer::Token::PUNCT_COMMA.to_byte_vec(str_maps)
-                    else {
+                    let Some(token_byte_vec) = lexer::Token::PUNCT_COMMA {
+                        pos_in_src: *pos_in_src,
+                    }
+                    .to_byte_vec(str_maps) else {
                         unreachable!()
                     };
                     let Ok(s) = String::from_utf8(token_byte_vec) else {
@@ -560,17 +562,17 @@ pub fn parse_expressions(
                 index += 1;
             }
             //Assignment
-            lexer::Token::PUNCT_ASSIGNMENT
-            | lexer::Token::PUNCT_MULT_ASSIGN
-            | lexer::Token::PUNCT_DIV_ASSIGN
-            | lexer::Token::PUNCT_MODULO_ASSIGN
-            | lexer::Token::PUNCT_ADD_ASSIGN
-            | lexer::Token::PUNCT_SUB_ASSIGN
-            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
-            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
-            | lexer::Token::PUNCT_AND_BIT_ASSIGN
-            | lexer::Token::PUNCT_XOR_BIT_ASSIGN
-            | lexer::Token::PUNCT_OR_BIT_ASSIGN => {
+            lexer::Token::PUNCT_ASSIGNMENT { .. }
+            | lexer::Token::PUNCT_MULT_ASSIGN { .. }
+            | lexer::Token::PUNCT_DIV_ASSIGN { .. }
+            | lexer::Token::PUNCT_MODULO_ASSIGN { .. }
+            | lexer::Token::PUNCT_ADD_ASSIGN { .. }
+            | lexer::Token::PUNCT_SUB_ASSIGN { .. }
+            | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_AND_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_XOR_BIT_ASSIGN { .. }
+            | lexer::Token::PUNCT_OR_BIT_ASSIGN { .. } => {
                 if curr_expr.is_none() {
                     let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
                         unreachable!()
@@ -634,7 +636,7 @@ pub fn parse_expressions(
                     index += 1;
                     if !matches!(
                         tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         break;
                     }
@@ -663,7 +665,7 @@ pub fn parse_expressions(
                 }
             }
             // Postfix but with unary edge cases
-            lexer::Token::PUNCT_INCREMENT | lexer::Token::PUNCT_DECREMENT => {
+            lexer::Token::PUNCT_INCREMENT { .. } | lexer::Token::PUNCT_DECREMENT { .. } => {
                 match curr_expr {
                     Some(mut curr_expr_inside) => {
                         macro_rules! check_if_second_some_or_none {
@@ -678,10 +680,10 @@ pub fn parse_expressions(
                                                     flattened.expressions.push(Expr::PostFix(PostFix::WithIncrementDecrement {
                                                         first: inside_expr_key,
                                                         op: match tokens.get(index) {
-                                                            Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                            Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                                 PostFixIncrementDecrement::Increment
                                                             }
-                                                            Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                            Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                                 PostFixIncrementDecrement::Decrement
                                                             }
                                                             _ => unreachable!(),
@@ -696,10 +698,10 @@ pub fn parse_expressions(
                                                     curr_expr = Some(Expr::Unary (Unary{
                                                         first: None,
                                                         op: match tokens.get(index) {
-                                                            Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                            Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                                 UnaryOp::Increment
                                                             }
-                                                            Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                            Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                                 UnaryOp::Decrement
                                                             }
                                                             _ => unreachable!(),
@@ -728,12 +730,12 @@ pub fn parse_expressions(
                                             PostFix::WithIncrementDecrement {
                                                 first: cast_expr_key,
                                                 op: match tokens.get(index) {
-                                                    Some(lexer::Token::PUNCT_INCREMENT) => {
-                                                        PostFixIncrementDecrement::Increment
-                                                    }
-                                                    Some(lexer::Token::PUNCT_DECREMENT) => {
-                                                        PostFixIncrementDecrement::Decrement
-                                                    }
+                                                    Some(lexer::Token::PUNCT_INCREMENT {
+                                                        ..
+                                                    }) => PostFixIncrementDecrement::Increment,
+                                                    Some(lexer::Token::PUNCT_DECREMENT {
+                                                        ..
+                                                    }) => PostFixIncrementDecrement::Decrement,
                                                     _ => unreachable!(),
                                                 },
                                             },
@@ -747,10 +749,10 @@ pub fn parse_expressions(
                                         curr_expr = Some(Expr::Unary(Unary {
                                             first: None,
                                             op: match tokens.get(index) {
-                                                Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                     UnaryOp::Increment
                                                 }
-                                                Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                     UnaryOp::Decrement
                                                 }
                                                 _ => unreachable!(),
@@ -764,12 +766,12 @@ pub fn parse_expressions(
                                             PostFix::WithIncrementDecrement {
                                                 first: first_key,
                                                 op: match tokens.get(index) {
-                                                    Some(lexer::Token::PUNCT_INCREMENT) => {
-                                                        PostFixIncrementDecrement::Increment
-                                                    }
-                                                    Some(lexer::Token::PUNCT_DECREMENT) => {
-                                                        PostFixIncrementDecrement::Decrement
-                                                    }
+                                                    Some(lexer::Token::PUNCT_INCREMENT {
+                                                        ..
+                                                    }) => PostFixIncrementDecrement::Increment,
+                                                    Some(lexer::Token::PUNCT_DECREMENT {
+                                                        ..
+                                                    }) => PostFixIncrementDecrement::Decrement,
                                                     _ => unreachable!(),
                                                 },
                                             },
@@ -784,10 +786,10 @@ pub fn parse_expressions(
                                         curr_expr = Some(Expr::Unary(Unary {
                                             first: None,
                                             op: match tokens.get(index) {
-                                                Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                     UnaryOp::Increment
                                                 }
-                                                Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                     UnaryOp::Decrement
                                                 }
                                                 _ => unreachable!(),
@@ -801,10 +803,10 @@ pub fn parse_expressions(
                                         Some(Expr::PostFix(PostFix::WithIncrementDecrement {
                                             first: flattened.expressions.len() - 1,
                                             op: match tokens.get(index) {
-                                                Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                     PostFixIncrementDecrement::Increment
                                                 }
-                                                Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                     PostFixIncrementDecrement::Decrement
                                                 }
                                                 _ => unreachable!(),
@@ -817,10 +819,10 @@ pub fn parse_expressions(
                                         Some(Expr::PostFix(PostFix::WithIncrementDecrement {
                                             first: flattened.expressions.len() - 1,
                                             op: match tokens.get(index) {
-                                                Some(lexer::Token::PUNCT_INCREMENT) => {
+                                                Some(lexer::Token::PUNCT_INCREMENT { .. }) => {
                                                     PostFixIncrementDecrement::Increment
                                                 }
-                                                Some(lexer::Token::PUNCT_DECREMENT) => {
+                                                Some(lexer::Token::PUNCT_DECREMENT { .. }) => {
                                                     PostFixIncrementDecrement::Decrement
                                                 }
                                                 _ => unreachable!(),
@@ -835,8 +837,8 @@ pub fn parse_expressions(
                         curr_expr = Some(Expr::Unary(Unary {
                             first: None,
                             op: match tokens.get(index) {
-                                Some(lexer::Token::PUNCT_INCREMENT) => UnaryOp::Increment,
-                                Some(lexer::Token::PUNCT_DECREMENT) => UnaryOp::Decrement,
+                                Some(lexer::Token::PUNCT_INCREMENT { .. }) => UnaryOp::Increment,
+                                Some(lexer::Token::PUNCT_DECREMENT { .. }) => UnaryOp::Decrement,
                                 _ => unreachable!(),
                             },
                         }));
@@ -846,27 +848,32 @@ pub fn parse_expressions(
                     index += 1;
                     if !matches!(
                         tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         break;
                     }
                 }
             }
-            lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW | lexer::Token::PUNCT_OPEN_SQR => {
+            lexer::Token::PUNCT_DOT { .. }
+            | lexer::Token::PUNCT_ARROW { .. }
+            | lexer::Token::PUNCT_OPEN_SQR { .. } => {
                 if curr_expr.is_some() {
                     match tokens.get(index) {
-                        Some(lexer::Token::PUNCT_DOT | lexer::Token::PUNCT_ARROW) => {
+                        Some(lexer::Token::PUNCT_DOT { .. } | lexer::Token::PUNCT_ARROW { .. }) => {
                             let dot_or_arrow = tokens[index];
                             loop {
                                 index += 1;
                                 if !matches!(
                                     tokens.get(index),
-                                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                                    Some(
+                                        lexer::Token::WHITESPACE { .. }
+                                            | lexer::Token::NEWLINE { .. }
+                                    )
                                 ) {
                                     break;
                                 }
                             }
-                            if !matches!(tokens.get(index), Some(lexer::Token::IDENT(_))) {
+                            if !matches!(tokens.get(index), Some(lexer::Token::IDENT { .. })) {
                                 return Err(error::RccErrorInfo::new(
                                     error::RccError::Custom(
                                         "IDENTIFIER expected after '.' or '->'".to_string(),
@@ -877,25 +884,26 @@ pub fn parse_expressions(
                                 )
                                 .to_string());
                             }
-                            let Some(lexer::Token::IDENT(key)) = tokens.get(index) else {
+                            let Some(lexer::Token::IDENT { str_map_key, .. }) = tokens.get(index)
+                            else {
                                 unreachable!()
                             };
                             left_expression = curr_expr;
                             let postfix_type = match dot_or_arrow {
-                                lexer::Token::PUNCT_DOT => PostFix::WithMember {
+                                lexer::Token::PUNCT_DOT { .. } => PostFix::WithMember {
                                     first: None,
-                                    member_ident_key: *key,
+                                    member_ident_key: *str_map_key,
                                 },
-                                lexer::Token::PUNCT_ARROW => PostFix::WithPointerToMember {
+                                lexer::Token::PUNCT_ARROW { .. } => PostFix::WithPointerToMember {
                                     first: None,
-                                    member_ident_key: *key,
+                                    member_ident_key: *str_map_key,
                                 },
                                 _ => unreachable!(),
                             };
                             curr_expr = Some(Expr::PostFix(postfix_type));
                             index += 1;
                         }
-                        Some(lexer::Token::PUNCT_OPEN_SQR) => {
+                        Some(lexer::Token::PUNCT_OPEN_SQR { .. }) => {
                             let Some(mut curr_expr_inside) = curr_expr else {
                                 unreachable!()
                             };
@@ -942,7 +950,7 @@ pub fn parse_expressions(
                 // Dont need to check for identifier after because the identifier is already
                 // parsed before due to postfix struct requiring that identifiers be consumed
             }
-            lexer::Token::PUNCT_CLOSE_SQR => {
+            lexer::Token::PUNCT_CLOSE_SQR { .. } => {
                 if curr_expr.is_none() {
                     let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
                         unreachable!()
@@ -1031,7 +1039,7 @@ pub fn parse_expressions(
                     temp_index += 1;
                     if !matches!(
                         tokens.get(temp_index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         break;
                     }
@@ -1114,13 +1122,13 @@ pub fn parse_expressions(
                     index += 1;
                     if !matches!(
                         tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         break;
                     }
                 }
             }
-            lexer::Token::PUNCT_OPEN_PAR => {
+            lexer::Token::PUNCT_OPEN_PAR { .. } => {
                 if matches!(curr_expr, Some(Expr::Primary(_) | Expr::PostFix(_))) {
                     // moving past open par because it isn't primary but postfix
                     index += 1;
@@ -1209,27 +1217,10 @@ pub fn parse_expressions(
                 let mut parenth_counter = 1;
                 while parenth_counter > 0 {
                     match tokens.get(close_par_finder) {
-                        Some(lexer::Token::PUNCT_OPEN_PAR) => parenth_counter += 1,
-                        Some(lexer::Token::PUNCT_CLOSE_PAR) => parenth_counter -= 1,
+                        Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => parenth_counter += 1,
+                        Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => parenth_counter -= 1,
                         None => {
-                            let Some(token_to_byte_vec) =
-                                lexer::Token::PUNCT_CLOSE_PAR.to_byte_vec(str_maps)
-                            else {
-                                unreachable!()
-                            };
-                            let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                                unreachable!()
-                            };
-                            return Err(format!(
-                                "{}",
-                                error::RccErrorInfo::new(
-                                    error::RccError::ExpectedToken(s),
-                                    close_par_finder..close_par_finder + 1,
-                                    tokens,
-                                    str_maps,
-                                )
-                                .to_string()
-                            ));
+                            todo!("ERROR HERE")
                         }
                         _ => {}
                     }
@@ -1237,31 +1228,14 @@ pub fn parse_expressions(
                 }
                 if !matches!(
                     tokens.get(close_par_finder - 1),
-                    Some(lexer::Token::PUNCT_CLOSE_PAR)
+                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
                 ) {
-                    let Some(token_to_byte_vec) =
-                        lexer::Token::PUNCT_CLOSE_PAR.to_byte_vec(str_maps)
-                    else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::ExpectedToken(s),
-                            close_par_finder..close_par_finder + 1,
-                            tokens,
-                            str_maps,
-                        )
-                        .to_string()
-                    ));
+                    todo!("ERROR HERE")
                 }
                 let end_parenth = close_par_finder - 1;
                 while matches!(
                     tokens.get(close_par_finder),
-                    Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                 ) && close_par_finder < tokens.len()
                 {
                     close_par_finder += 1;
@@ -1280,23 +1254,23 @@ pub fn parse_expressions(
                     let mut inside_parenth_index = starting;
                     while matches!(
                         tokens.get(inside_parenth_index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         inside_parenth_index += 1;
                     }
                     if !matches!(
                         tokens.get(inside_parenth_index),
                         Some(
-                            lexer::Token::IDENT(_)
+                            lexer::Token::IDENT { .. }
                                 | lexer::Token::CONSTANT_DEC_INT { .. }
-                                | lexer::Token::CONSTANT_CHAR(_)
-                                | lexer::Token::PUNCT_OPEN_PAR
-                                | lexer::Token::PUNCT_PLUS
-                                | lexer::Token::PUNCT_MINUS
-                                | lexer::Token::PUNCT_NOT_BOOL
-                                | lexer::Token::PUNCT_TILDE
-                                | lexer::Token::PUNCT_INCREMENT
-                                | lexer::Token::PUNCT_DECREMENT
+                                | lexer::Token::CONSTANT_CHAR { .. }
+                                | lexer::Token::PUNCT_OPEN_PAR { .. }
+                                | lexer::Token::PUNCT_PLUS { .. }
+                                | lexer::Token::PUNCT_MINUS { .. }
+                                | lexer::Token::PUNCT_NOT_BOOL { .. }
+                                | lexer::Token::PUNCT_TILDE { .. }
+                                | lexer::Token::PUNCT_INCREMENT { .. }
+                                | lexer::Token::PUNCT_DECREMENT { .. }
                         )
                     ) {
                         if tokens.get(index).is_none() {
@@ -1326,7 +1300,7 @@ pub fn parse_expressions(
                     index = end_parenth + 1;
                     while matches!(
                         tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) && index < tokens.len()
                     {
                         index += 1;
@@ -1341,7 +1315,7 @@ pub fn parse_expressions(
                     flattened.type_names.push(type_name);
                     match tokens.get(index) {
                         // Postfix
-                        Some(lexer::Token::PUNCT_OPEN_CURLY) => {
+                        Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) => {
                             let (new_index_after_initializer, i) =
                                 parser::declarations::parse_initializer(
                                     tokens, index, flattened, str_maps,
@@ -1369,7 +1343,7 @@ pub fn parse_expressions(
                     }
                 }
             }
-            lexer::Token::PUNCT_CLOSE_PAR => {
+            lexer::Token::PUNCT_CLOSE_PAR { .. } => {
                 if let Some(true) = parsing_argument_expression_list_in_postfix.pop() {
                     let Some(curr_expr_inside) = curr_expr else {
                         unreachable!()
@@ -1497,14 +1471,14 @@ pub fn parse_expressions(
                     index += 1;
                     if !matches!(
                         tokens.get(index),
-                        Some(lexer::Token::WHITESPACE | lexer::Token::NEWLINE)
+                        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
                     ) {
                         break;
                     }
                 }
                 if matches!(
                     tokens.get(index),
-                    Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR)
+                    Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR { .. })
                 ) {
                     if tokens.get(index).is_none() {
                         // TODO: need better diagnostic msg here
@@ -1529,12 +1503,12 @@ pub fn parse_expressions(
                 }
             }
             //Unary expressions
-            lexer::Token::PUNCT_PLUS
-            | lexer::Token::PUNCT_MINUS
-            | lexer::Token::PUNCT_NOT_BOOL
-            | lexer::Token::PUNCT_TILDE
-            | lexer::Token::KEYWORD_SIZEOF
-            | lexer::Token::KEYWORD__ALIGNOF => {
+            lexer::Token::PUNCT_PLUS { .. }
+            | lexer::Token::PUNCT_MINUS { .. }
+            | lexer::Token::PUNCT_NOT_BOOL { .. }
+            | lexer::Token::PUNCT_TILDE { .. }
+            | lexer::Token::KEYWORD_SIZEOF { .. }
+            | lexer::Token::KEYWORD__ALIGNOF { .. } => {
                 left_expression = curr_expr;
                 macro_rules! left_expression_handle_in_unary_expression {
                     ($($e: ident) *) => {
@@ -1542,7 +1516,7 @@ pub fn parse_expressions(
                             Some(Expr::Primary(_) | Expr::PostFix(_)) => {
                                 // if a '~' or '!' follow a primary expression, that is not allowed.
                                 match tokens[index] {
-                                    lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                                    lexer::Token::PUNCT_TILDE{..} | lexer::Token::PUNCT_NOT_BOOL{..} => {
                                         let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
                                             unreachable!()
                                         };
@@ -1558,8 +1532,8 @@ pub fn parse_expressions(
                                 }
                                 curr_expr = Some(Expr::Additive(Additive {
                                     op: match tokens[index] {
-                                        lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
-                                        lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                                        lexer::Token::PUNCT_PLUS{..} => AdditiveOps::Add,
+                                        lexer::Token::PUNCT_MINUS{..} => AdditiveOps::Sub,
                                         _ => unreachable!("{:?}", tokens[index]),
                                     },
                                     first: None,
@@ -1569,12 +1543,12 @@ pub fn parse_expressions(
                             None => {
                                 curr_expr = Some(Expr::Unary(Unary {
                                     op: match tokens[index] {
-                                        lexer::Token::PUNCT_PLUS => UnaryOp::Add,
-                                        lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
-                                        lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
-                                        lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
-                                        lexer::Token::KEYWORD_SIZEOF => UnaryOp::Sizeof,
-                                        lexer::Token::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
+                                        lexer::Token::PUNCT_PLUS{..} => UnaryOp::Add,
+                                        lexer::Token::PUNCT_MINUS{..} => UnaryOp::Sub,
+                                        lexer::Token::PUNCT_NOT_BOOL{..} => UnaryOp::LogicalNOT,
+                                        lexer::Token::PUNCT_TILDE{..} => UnaryOp::BitNOT,
+                                        lexer::Token::KEYWORD_SIZEOF{..} => UnaryOp::Sizeof,
+                                        lexer::Token::KEYWORD__ALIGNOF{..} => UnaryOp::AlignOf,
                                         _ => unreachable!(),
                                     },
                                     first: None,
@@ -1587,12 +1561,12 @@ pub fn parse_expressions(
                                     left_expression = None;
                                     curr_expr = Some(Expr::Unary(Unary {
                                         op: match tokens[index] {
-                                            lexer::Token::PUNCT_PLUS => UnaryOp::Add,
-                                            lexer::Token::PUNCT_MINUS => UnaryOp::Sub,
-                                            lexer::Token::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
-                                            lexer::Token::PUNCT_TILDE => UnaryOp::BitNOT,
-                                            lexer::Token::KEYWORD_SIZEOF => UnaryOp::Sizeof,
-                                            lexer::Token::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
+                                            lexer::Token::PUNCT_PLUS{..} => UnaryOp::Add,
+                                            lexer::Token::PUNCT_MINUS{..} => UnaryOp::Sub,
+                                            lexer::Token::PUNCT_NOT_BOOL{..} => UnaryOp::LogicalNOT,
+                                            lexer::Token::PUNCT_TILDE{..} => UnaryOp::BitNOT,
+                                            lexer::Token::KEYWORD_SIZEOF{..} => UnaryOp::Sizeof,
+                                            lexer::Token::KEYWORD__ALIGNOF{..} => UnaryOp::AlignOf,
                                             _ => unreachable!(),
                                         },
                                         first: None,
@@ -1600,7 +1574,7 @@ pub fn parse_expressions(
                                 } else {
                                     // if a '~' or '!' follow a unary expression, that is not allowed.
                                     match tokens[index] {
-                                        lexer::Token::PUNCT_TILDE | lexer::Token::PUNCT_NOT_BOOL => {
+                                        lexer::Token::PUNCT_TILDE{..} | lexer::Token::PUNCT_NOT_BOOL{..} => {
                                             let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
                                                 unreachable!()
                                             };
@@ -1616,8 +1590,8 @@ pub fn parse_expressions(
                                     }
                                     curr_expr = Some(Expr::Additive(Additive {
                                         op: match tokens[index] {
-                                            lexer::Token::PUNCT_PLUS => AdditiveOps::Add,
-                                            lexer::Token::PUNCT_MINUS => AdditiveOps::Sub,
+                                            lexer::Token::PUNCT_PLUS{..} => AdditiveOps::Add,
+                                            lexer::Token::PUNCT_MINUS{..} => AdditiveOps::Sub,
                                             _ => unreachable!("{:?}", tokens[index]),
                                         },
                                         first: None,
@@ -1639,7 +1613,7 @@ pub fn parse_expressions(
                 left_expression_handle_in_unary_expression!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -1647,70 +1621,35 @@ pub fn parse_expressions(
                     if matches!(u.op, UnaryOp::AlignOf) {
                         if !matches!(
                             tokens.get(index),
-                            Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR)
+                            Some(primary_tokens!() | lexer::Token::PUNCT_OPEN_PAR { .. })
                         ) {
-                            if tokens.get(index).is_none() {
-                                // TODO: need better diagnostic msg here
-                                return Err("unexpected end of characters".to_string());
-                            }
-                            let Some(token_to_byte_vec) =
-                                lexer::Token::PUNCT_OPEN_PAR.to_byte_vec(str_maps)
-                            else {
-                                unreachable!()
-                            };
-                            let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                                unreachable!()
-                            };
-                            //TODO: this can panic if unary is the last token
-                            return Err(error::RccErrorInfo::new(
-                                error::RccError::ExpectedToken(s),
-                                index..index + 1,
-                                tokens,
-                                str_maps,
-                            )
-                            .to_string());
+                            todo!("ERROR HERE")
                         }
                     } else {
                         if !matches!(
                             tokens.get(index),
                             Some(
                                 primary_tokens!()
-                                    | lexer::Token::PUNCT_OPEN_PAR
-                                    | lexer::Token::PUNCT_PLUS
-                                    | lexer::Token::PUNCT_MINUS
-                                    | lexer::Token::PUNCT_NOT_BOOL
-                                    | lexer::Token::PUNCT_TILDE
-                                    | lexer::Token::PUNCT_MULT
-                                    | lexer::Token::PUNCT_AND_BIT
-                                    | lexer::Token::KEYWORD_SIZEOF
-                                    | lexer::Token::KEYWORD__ALIGNOF
+                                    | lexer::Token::PUNCT_OPEN_PAR { .. }
+                                    | lexer::Token::PUNCT_PLUS { .. }
+                                    | lexer::Token::PUNCT_MINUS { .. }
+                                    | lexer::Token::PUNCT_NOT_BOOL { .. }
+                                    | lexer::Token::PUNCT_TILDE { .. }
+                                    | lexer::Token::PUNCT_MULT { .. }
+                                    | lexer::Token::PUNCT_AND_BIT { .. }
+                                    | lexer::Token::KEYWORD_SIZEOF { .. }
+                                    | lexer::Token::KEYWORD__ALIGNOF { .. }
                             )
                         ) {
-                            if tokens.get(index).is_none() {
-                                // TODO: need better diagnostic msg here
-                                return Err("unexpected end of characters".to_string());
-                            }
-                            let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps)
-                            else {
-                                unreachable!()
-                            };
-                            let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                                unreachable!()
-                            };
-                            //TODO: this can panic if unary is the last token
-                            return Err(error::RccErrorInfo::new(
-                                error::RccError::UnexpectedToken(s),
-                                index..index + 1,
-                                tokens,
-                                str_maps,
-                            )
-                            .to_string());
+                            todo!("ERROR HERE")
                         }
                     }
                 }
             }
             //Multiplicative expressions with unary edge cases
-            lexer::Token::PUNCT_MULT | lexer::Token::PUNCT_DIV | lexer::Token::PUNCT_MODULO => {
+            lexer::Token::PUNCT_MULT { .. }
+            | lexer::Token::PUNCT_DIV { .. }
+            | lexer::Token::PUNCT_MODULO { .. } => {
                 match curr_expr {
                     Some(curr_expr_inside) => match curr_expr_inside {
                         Expr::Conditional(_) => unreachable!(),
@@ -1722,9 +1661,9 @@ pub fn parse_expressions(
                                             left_expression = curr_expr;
                                             curr_expr = Some(Expr::Multiplicative(Multiplicative {
                                                 op: match tokens[index] {
-                                                    lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
-                                                    lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
-                                                    lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
+                                                    lexer::Token::PUNCT_MULT{..} => MultiplicativeOps::Mult,
+                                                    lexer::Token::PUNCT_DIV{..} => MultiplicativeOps::Div,
+                                                    lexer::Token::PUNCT_MODULO{..} => MultiplicativeOps::Mod,
                                                     _ => unreachable!(),
                                                 },
                                                 first: None,
@@ -1736,18 +1675,9 @@ pub fn parse_expressions(
                                                 stack.push(curr_expr_inside);
                                                 curr_expr = Some(Expr::Unary(Unary {
                                                     op: match tokens[index] {
-                                                        lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                                        lexer::Token::PUNCT_MULT{..} => UnaryOp::Deref,
                                                         _ => {
-                                                            let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                                                                unreachable!()
-                                                            };
-                                                            let Ok(s) = String::from_utf8(token_to_byte_vec) else { unreachable!() };
-                                                            return Err(error::RccErrorInfo::new(
-                                                                    error::RccError::UnexpectedToken(s),
-                                                                    index..index + 1,
-                                                                    tokens,
-                                                                    str_maps,
-                                                            ).to_string())
+                                                            todo!("ERROR HERE")
                                                         }
                                                     },
                                                     first: None,
@@ -1756,9 +1686,9 @@ pub fn parse_expressions(
                                                 left_expression = curr_expr;
                                                 curr_expr = Some(Expr::Multiplicative(Multiplicative {
                                                     op: match tokens[index] {
-                                                        lexer::Token::PUNCT_MULT => MultiplicativeOps::Mult,
-                                                        lexer::Token::PUNCT_DIV => MultiplicativeOps::Div,
-                                                        lexer::Token::PUNCT_MODULO => MultiplicativeOps::Mod,
+                                                        lexer::Token::PUNCT_MULT{..} => MultiplicativeOps::Mult,
+                                                        lexer::Token::PUNCT_DIV{..} => MultiplicativeOps::Div,
+                                                        lexer::Token::PUNCT_MODULO{..} => MultiplicativeOps::Mod,
                                                         _ => unreachable!(),
                                                     },
                                                     first: None,
@@ -1770,18 +1700,9 @@ pub fn parse_expressions(
                                             stack.push(curr_expr_inside);
                                             curr_expr = Some(Expr::Unary(Unary {
                                                 op: match tokens[index] {
-                                                    lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                                    lexer::Token::PUNCT_MULT{..} => UnaryOp::Deref,
                                                     _ => {
-                                                        let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                                                            unreachable!()
-                                                        };
-                                                        let Ok(s) = String::from_utf8(token_to_byte_vec) else { unreachable!() };
-                                                        return Err(error::RccErrorInfo::new(
-                                                                error::RccError::UnexpectedToken(s),
-                                                                index..index + 1,
-                                                                tokens,
-                                                                    str_maps,
-                                                        ).to_string())
+                                                        todo!("ERROR HERE")
                                                     }
                                                 },
                                                 first: None,
@@ -1797,23 +1718,9 @@ pub fn parse_expressions(
                     None => {
                         curr_expr = Some(Expr::Unary(Unary {
                             op: match tokens[index] {
-                                lexer::Token::PUNCT_MULT => UnaryOp::Deref,
+                                lexer::Token::PUNCT_MULT { .. } => UnaryOp::Deref,
                                 _ => {
-                                    let Some(token_to_byte_vec) =
-                                        tokens[index].to_byte_vec(str_maps)
-                                    else {
-                                        unreachable!()
-                                    };
-                                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                                        unreachable!()
-                                    };
-                                    return Err(error::RccErrorInfo::new(
-                                        error::RccError::UnexpectedToken(s),
-                                        index..index + 1,
-                                        tokens,
-                                        str_maps,
-                                    )
-                                    .to_string());
+                                    todo!("ERROR HERE")
                                 }
                             },
                             first: None,
@@ -1822,7 +1729,7 @@ pub fn parse_expressions(
                 }
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -1830,58 +1737,31 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //Bitshift expressions
-            lexer::Token::PUNCT_BITSHIFT_RIGHT | lexer::Token::PUNCT_BITSHIFT_LEFT => {
+            lexer::Token::PUNCT_BITSHIFT_RIGHT { .. }
+            | lexer::Token::PUNCT_BITSHIFT_LEFT { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::BitShift(BitShift {
                     op: match tokens[index] {
-                        lexer::Token::PUNCT_BITSHIFT_LEFT => BitShiftOp::Left,
-                        lexer::Token::PUNCT_BITSHIFT_RIGHT => BitShiftOp::Right,
+                        lexer::Token::PUNCT_BITSHIFT_LEFT { .. } => BitShiftOp::Left,
+                        lexer::Token::PUNCT_BITSHIFT_RIGHT { .. } => BitShiftOp::Right,
                         _ => unreachable!(),
                     },
                     first: None,
@@ -1889,7 +1769,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -1897,59 +1777,31 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //Relational expressions
-            lexer::Token::PUNCT_LESS_THAN
-            | lexer::Token::PUNCT_LESS_THAN_EQ
-            | lexer::Token::PUNCT_GREATER_THAN
-            | lexer::Token::PUNCT_GREATER_THAN_EQ => {
+            lexer::Token::PUNCT_LESS_THAN { .. }
+            | lexer::Token::PUNCT_LESS_THAN_EQ { .. }
+            | lexer::Token::PUNCT_GREATER_THAN { .. }
+            | lexer::Token::PUNCT_GREATER_THAN_EQ { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::Relational(Relational {
                     op: match tokens[index] {
-                        lexer::Token::PUNCT_LESS_THAN => RelationalOp::LessThan,
-                        lexer::Token::PUNCT_LESS_THAN_EQ => RelationalOp::LessThanEq,
-                        lexer::Token::PUNCT_GREATER_THAN => RelationalOp::GreaterThan,
-                        lexer::Token::PUNCT_GREATER_THAN_EQ => RelationalOp::GreaterThanEq,
+                        lexer::Token::PUNCT_LESS_THAN { .. } => RelationalOp::LessThan,
+                        lexer::Token::PUNCT_LESS_THAN_EQ { .. } => RelationalOp::LessThanEq,
+                        lexer::Token::PUNCT_GREATER_THAN { .. } => RelationalOp::GreaterThan,
+                        lexer::Token::PUNCT_GREATER_THAN_EQ { .. } => RelationalOp::GreaterThanEq,
                         _ => unreachable!(),
                     },
                     first: None,
@@ -1957,7 +1809,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -1965,54 +1817,26 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //Equality expressions
-            lexer::Token::PUNCT_EQ_BOOL | lexer::Token::PUNCT_NOT_EQ_BOOL => {
+            lexer::Token::PUNCT_EQ_BOOL { .. } | lexer::Token::PUNCT_NOT_EQ_BOOL { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::Equality(Equality {
                     op: match tokens[index] {
-                        lexer::Token::PUNCT_EQ_BOOL => EqualityOp::Equal,
-                        lexer::Token::PUNCT_NOT_EQ_BOOL => EqualityOp::NotEqual,
+                        lexer::Token::PUNCT_EQ_BOOL { .. } => EqualityOp::Equal,
+                        lexer::Token::PUNCT_NOT_EQ_BOOL { .. } => EqualityOp::NotEqual,
                         _ => unreachable!(),
                     },
                     first: None,
@@ -2020,7 +1844,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2028,34 +1852,18 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //BitAND expressions with unary edge cases
-            lexer::Token::PUNCT_AND_BIT => {
+            lexer::Token::PUNCT_AND_BIT { .. } => {
                 match curr_expr {
                     Some(curr_expr_inside) => match curr_expr_inside {
                         Expr::Conditional(_) => unreachable!(),
@@ -2108,7 +1916,7 @@ pub fn parse_expressions(
                 }
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2116,48 +1924,24 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //BitXOR expressions
-            lexer::Token::PUNCT_XOR_BIT => {
+            lexer::Token::PUNCT_XOR_BIT { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::BitXOR(BitXOR {
@@ -2166,7 +1950,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2174,52 +1958,24 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //BitOR expressions
-            lexer::Token::PUNCT_OR_BIT => {
+            lexer::Token::PUNCT_OR_BIT { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::BitOR(BitOR {
@@ -2228,7 +1984,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2236,52 +1992,24 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //LogicalAND expressions
-            lexer::Token::PUNCT_AND_BOOL => {
+            lexer::Token::PUNCT_AND_BOOL { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::LogicalAND(LogicalAND {
@@ -2290,7 +2018,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2298,52 +2026,24 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //LogicalOR expressions
-            lexer::Token::PUNCT_OR_BOOL => {
+            lexer::Token::PUNCT_OR_BOOL { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
                 curr_expr = Some(Expr::LogicalOR(LogicalOR {
@@ -2352,7 +2052,7 @@ pub fn parse_expressions(
                 }));
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
@@ -2360,38 +2060,22 @@ pub fn parse_expressions(
                     tokens.get(index),
                     Some(
                         primary_tokens!()
-                            | lexer::Token::PUNCT_OPEN_PAR
-                            | lexer::Token::PUNCT_PLUS
-                            | lexer::Token::PUNCT_MINUS
-                            | lexer::Token::PUNCT_NOT_BOOL
-                            | lexer::Token::PUNCT_TILDE
-                            | lexer::Token::PUNCT_MULT
-                            | lexer::Token::PUNCT_AND_BIT
-                            | lexer::Token::KEYWORD_SIZEOF
-                            | lexer::Token::KEYWORD__ALIGNOF
+                            | lexer::Token::PUNCT_OPEN_PAR { .. }
+                            | lexer::Token::PUNCT_PLUS { .. }
+                            | lexer::Token::PUNCT_MINUS { .. }
+                            | lexer::Token::PUNCT_NOT_BOOL { .. }
+                            | lexer::Token::PUNCT_TILDE { .. }
+                            | lexer::Token::PUNCT_MULT { .. }
+                            | lexer::Token::PUNCT_AND_BIT { .. }
+                            | lexer::Token::KEYWORD_SIZEOF { .. }
+                            | lexer::Token::KEYWORD__ALIGNOF { .. }
                     )
                 ) {
-                    if tokens.get(index).is_none() {
-                        // TODO: need better diagnostic msg here
-                        return Err("unexpected end of characters".to_string());
-                    }
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
             }
             //Conditional expressions
-            lexer::Token::PUNCT_QUESTION_MARK => {
+            lexer::Token::PUNCT_QUESTION_MARK { .. } => {
                 if let Some(expr) = curr_expr {
                     flattened.expressions.push(expr);
                     let expr_cond = Expr::Conditional(Conditional {
@@ -2402,38 +2086,18 @@ pub fn parse_expressions(
                     stack.push(expr_cond);
                     curr_expr = None;
                 } else {
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::Custom(
-                            "missing first operator for conditional expr".to_string(),
-                        ),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
             }
-            lexer::Token::PUNCT_COLON => {
+            lexer::Token::PUNCT_COLON { .. } => {
                 if curr_expr.is_none() {
-                    let Some(token_to_byte_vec) = tokens[index].to_byte_vec(str_maps) else {
-                        unreachable!()
-                    };
-                    let Ok(s) = String::from_utf8(token_to_byte_vec) else {
-                        unreachable!()
-                    };
-                    return Err(error::RccErrorInfo::new(
-                        error::RccError::UnexpectedToken(s),
-                        index..index + 1,
-                        tokens,
-                        str_maps,
-                    )
-                    .to_string());
+                    todo!("ERROR HERE")
                 }
                 while let Some(mut expr) = stack.pop() {
                     let Some(unwrapped) = curr_expr else {
@@ -2485,22 +2149,16 @@ pub fn parse_expressions(
                 curr_expr = None;
                 loop {
                     index += 1;
-                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE)) {
+                    if !matches!(tokens.get(index), Some(lexer::Token::WHITESPACE { .. })) {
                         break;
                     }
                 }
             }
-            lexer::Token::WHITESPACE | lexer::Token::NEWLINE => {
+            lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. } => {
                 index += 1;
             }
             _ => {
-                return Err(error::RccErrorInfo::new(
-                    error::RccError::UnknownToken,
-                    index..index + 1,
-                    tokens,
-                    str_maps,
-                )
-                .to_string())
+                todo!("ERROR HERE")
             }
         }
         if left_expression.is_some() && curr_expr.is_some() {
@@ -2567,81 +2225,52 @@ pub fn eval_constant_expression_integer(
 ) -> Result<i128, String> {
     if tokens
         .iter()
-        .filter(|t| !matches!(t, lexer::Token::WHITESPACE))
+        .filter(|t| !matches!(t, lexer::Token::WHITESPACE { .. }))
         .count()
         == 0
     {
-        return Err(format!(
-            "{}",
-            error::RccErrorInfo::new(
-                error::RccError::Custom("empty expression given".to_string()),
-                0..0,
-                tokens,
-                str_maps,
-            )
-        ));
+        todo!("ERROR HERE")
     }
     if let Some(not_allowed_t) = tokens.iter().find(|t| {
         matches!(
             t,
-            lexer::Token::PUNCT_ASSIGNMENT
-                | lexer::Token::PUNCT_INCREMENT
-                | lexer::Token::PUNCT_DECREMENT
-                | lexer::Token::PUNCT_OPEN_CURLY
-                | lexer::Token::PUNCT_CLOSE_CURLY
-                | lexer::Token::PUNCT_OPEN_SQR
-                | lexer::Token::PUNCT_CLOSE_SQR
+            lexer::Token::PUNCT_ASSIGNMENT { .. }
+                | lexer::Token::PUNCT_INCREMENT { .. }
+                | lexer::Token::PUNCT_DECREMENT { .. }
+                | lexer::Token::PUNCT_OPEN_CURLY { .. }
+                | lexer::Token::PUNCT_CLOSE_CURLY { .. }
+                | lexer::Token::PUNCT_OPEN_SQR { .. }
+                | lexer::Token::PUNCT_CLOSE_SQR { .. }
                 | lexer::Token::CONSTANT_DEC_FLOAT { .. }
                 | lexer::Token::CONSTANT_HEXA_FLOAT { .. }
-                | lexer::Token::PUNCT_COMMA
+                | lexer::Token::PUNCT_COMMA { .. }
                 | lexer::Token::StringLiteral { .. }
-                | lexer::Token::PUNCT_ARROW
-                | lexer::Token::PUNCT_ADD_ASSIGN
-                | lexer::Token::PUNCT_DIV_ASSIGN
-                | lexer::Token::PUNCT_SUB_ASSIGN
-                | lexer::Token::PUNCT_MULT_ASSIGN
-                | lexer::Token::PUNCT_MODULO_ASSIGN
-                | lexer::Token::PUNCT_AND_BIT_ASSIGN
-                | lexer::Token::PUNCT_OR_BIT_ASSIGN
-                | lexer::Token::PUNCT_XOR_BIT_ASSIGN
-                | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN
-                | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN
+                | lexer::Token::PUNCT_ARROW { .. }
+                | lexer::Token::PUNCT_ADD_ASSIGN { .. }
+                | lexer::Token::PUNCT_DIV_ASSIGN { .. }
+                | lexer::Token::PUNCT_SUB_ASSIGN { .. }
+                | lexer::Token::PUNCT_MULT_ASSIGN { .. }
+                | lexer::Token::PUNCT_MODULO_ASSIGN { .. }
+                | lexer::Token::PUNCT_AND_BIT_ASSIGN { .. }
+                | lexer::Token::PUNCT_OR_BIT_ASSIGN { .. }
+                | lexer::Token::PUNCT_XOR_BIT_ASSIGN { .. }
+                | lexer::Token::PUNCT_L_SHIFT_BIT_ASSIGN { .. }
+                | lexer::Token::PUNCT_R_SHIFT_BIT_ASSIGN { .. }
         )
     }) {
-        return Err(format!(
-            "{}",
-            error::RccErrorInfo::new(
-                error::RccError::Custom(format!(
-                    "{:?}'s are not allowed in constant expressions",
-                    not_allowed_t
-                )),
-                0..0,
-                tokens,
-                str_maps,
-            )
-        ));
+        todo!("ERROR HERE")
     }
     let mut parenth_balance = Vec::<lexer::Token>::with_capacity(tokens.len());
     for par_bal_index in 0..tokens.len() {
         match tokens[par_bal_index] {
-            lexer::Token::PUNCT_OPEN_PAR => {
+            lexer::Token::PUNCT_OPEN_PAR { .. } => {
                 parenth_balance.push(tokens[par_bal_index]);
             }
-            lexer::Token::PUNCT_CLOSE_PAR => {
-                if let Some(lexer::Token::PUNCT_OPEN_PAR) = parenth_balance.last() {
+            lexer::Token::PUNCT_CLOSE_PAR { .. } => {
+                if let Some(lexer::Token::PUNCT_OPEN_PAR { .. }) = parenth_balance.last() {
                     parenth_balance.pop();
                 } else {
-                    return Err(format!(
-                        "{}",
-                        error::RccErrorInfo::new(
-                            error::RccError::Custom(String::from(
-                                "parentheses in expression not balanced",
-                            )),
-                            0..0,
-                            tokens,
-                            str_maps,
-                        )
-                    ));
+                    todo!("ERROR HERE")
                 }
             }
             _ => {}
@@ -2650,15 +2279,7 @@ pub fn eval_constant_expression_integer(
     // TODO: describe our algorithm in comments below
     // or we will forget how any of this shit works
     if !parenth_balance.is_empty() {
-        return Err(format!(
-            "{}",
-            error::RccErrorInfo::new(
-                error::RccError::Custom(String::from("parentheses in expression not balanced")),
-                0..0,
-                tokens,
-                str_maps,
-            )
-        ));
+        todo!("ERROR HERE")
     }
     let mut flattened = parser::Flattened::new();
     let (_, curr_expr) = parse_expressions(tokens, 0, &mut flattened, str_maps)?;
@@ -2678,10 +2299,14 @@ fn recursive_eval(
                 Some(PrimaryInner::Token(t)) => {
                     assert!(matches!(
                         t,
-                        lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR(_)
+                        lexer::Token::CONSTANT_DEC_INT { .. } | lexer::Token::CONSTANT_CHAR { .. }
                     ));
                     match t {
-                        lexer::Token::CONSTANT_DEC_INT { value_key, suffix } => {
+                        lexer::Token::CONSTANT_DEC_INT {
+                            value_key,
+                            suffix,
+                            pos_in_src: _,
+                        } => {
                             // "For the purposes of this token conversion and evaluation,
                             // all signed integer types and all unsigned integer types act as if they have the same representation
                             // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
@@ -2710,29 +2335,17 @@ fn recursive_eval(
                                 }
                             }
                         }
-                        lexer::Token::CONSTANT_CHAR(cc) => {
-                            let parsed_val = match cc.parse_to_value(str_maps) {
+                        lexer::Token::CONSTANT_CHAR { const_char, .. } => {
+                            let parsed_val = match const_char.parse_to_value(str_maps) {
                                 Ok(pv) => pv as i128,
                                 Err(s) => {
-                                    return Err(error::RccErrorInfo::new(
-                                        error::RccError::Custom(s),
-                                        0..0,
-                                        &[],
-                                        str_maps,
-                                    )
-                                    .to_string());
+                                    todo!("ERROR HERE")
                                 }
                             };
                             Ok(parsed_val)
                         }
-                        lexer::Token::IDENT(_) => {
-                            return Err(error::RccErrorInfo::new(
-                                error::RccError::Custom(format!("identifier is not a constant")),
-                                0..0,
-                                &[],
-                                str_maps,
-                            )
-                            .to_string());
+                        lexer::Token::IDENT { .. } => {
+                            todo!("ERROR HERE")
                         }
                         _ => unreachable!(),
                     }
@@ -3555,7 +3168,12 @@ mod tests {
             unreachable!()
         };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+        let lexer::Token::CONSTANT_DEC_INT {
+            value_key,
+            suffix,
+            pos_in_src,
+        } = t
+        else {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
@@ -3593,7 +3211,12 @@ mod tests {
             unreachable!()
         };
         assert!(matches!(t, lexer::Token::CONSTANT_DEC_INT { .. }));
-        let lexer::Token::CONSTANT_DEC_INT { value_key, suffix } = t else {
+        let lexer::Token::CONSTANT_DEC_INT {
+            value_key,
+            suffix,
+            pos_in_src,
+        } = t
+        else {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");

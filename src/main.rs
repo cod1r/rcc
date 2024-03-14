@@ -92,6 +92,10 @@ fn parse_args(args: Vec<String>) -> Result<ArgumentInfo, String> {
     Ok(arg_info)
 }
 
+struct Source<'a> {
+    contents: &'a str,
+}
+
 // TODO: add flag to enable trigraphs
 fn main() {
     let args = env::args();
@@ -113,6 +117,7 @@ fn main() {
                 integer_type: lexer::IntegerSuffix::Long,
                 key: str_maps.add_byte_vec("L".as_bytes()),
             }),
+            pos_in_src: 0,
         }],
     };
     defines.insert(
@@ -128,10 +133,13 @@ fn main() {
         let define = cpp::Define {
             parameters: None,
             var_arg: false,
-            replacement_list: vec![lexer::Token::StringLiteral(lexer::StringLiteral {
-                prefix_key: None,
-                sequence_key: str_maps.add_byte_vec(file.as_bytes()),
-            })],
+            replacement_list: vec![lexer::Token::StringLiteral {
+                str_lit: lexer::StringLiteral {
+                    prefix_key: None,
+                    sequence_key: str_maps.add_byte_vec(file.as_bytes()),
+                },
+                pos_in_src: 0,
+            }],
         };
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
         match std::fs::read(file) {
@@ -161,6 +169,7 @@ fn main() {
                     new_tokens.extend_from_slice(byte_vec.as_slice());
                 }
                 let tokens = new_tokens;
+                // re-lexing because keywords were just identifiers before
                 let tokens = match lexer::lexer(tokens.as_slice(), false, &mut str_maps) {
                     Ok(tks) => tks,
                     Err(err) => {
