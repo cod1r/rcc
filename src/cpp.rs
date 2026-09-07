@@ -660,7 +660,10 @@ fn if_directive(
                     eval_vec_index += 1;
                 }
                 let eval_vec = final_eval_tokens;
-                expressions::eval_constant_expression_integer(eval_vec.as_slice(), str_maps)? != 0
+                expressions::eval_constant_expression_integer_when_preprocess(
+                    eval_vec.as_slice(),
+                    str_maps,
+                )? != 0
             }
             b"ifdef" => {
                 if eval_vec.iter().any(|t| {
@@ -2715,7 +2718,10 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer_when_preprocess(
+            &final_tokens,
+            &mut str_maps,
+        )?;
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let defines = HashMap::new();
@@ -2729,7 +2735,10 @@ PP(/,*)PP2(*,/)"##
             &defines,
             &mut str_maps,
         )?;
-        let res = expressions::eval_constant_expression_integer(&final_tokens, &mut str_maps)?;
+        let res = expressions::eval_constant_expression_integer_when_preprocess(
+            &final_tokens,
+            &mut str_maps,
+        )?;
         assert_eq!(res != 0, false, "failed 2");
         Ok(())
     }
@@ -2772,7 +2781,10 @@ PP(/,*)PP2(*,/)"##
             assert_eq!(
                 tokens
                     .iter()
-                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE{..} | lexer::Token::NEWLINE{..}))
+                    .filter(|t| !matches!(
+                        t,
+                        lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }
+                    ))
                     .count(),
                 0,
                 "failed for 2 inner test"
@@ -2796,7 +2808,7 @@ PP(/,*)PP2(*,/)"##
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE{pos_in_src: 1},
+                    lexer::Token::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 3 inner test"
@@ -2815,7 +2827,10 @@ PP(/,*)PP2(*,/)"##
             assert_eq!(
                 tokens
                     .iter()
-                    .filter(|t| !matches!(t, lexer::Token::WHITESPACE{..} | lexer::Token::NEWLINE{..}))
+                    .filter(|t| !matches!(
+                        t,
+                        lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }
+                    ))
                     .count(),
                 0,
                 "failed for 4 inner test"
@@ -2839,7 +2854,7 @@ PP(/,*)PP2(*,/)"##
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE{pos_in_src: 1},
+                    lexer::Token::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 5 inner test"
@@ -2864,7 +2879,7 @@ PP(/,*)PP2(*,/)"##
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE{pos_in_src: 1},
+                    lexer::Token::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 6"

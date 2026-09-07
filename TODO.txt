@@ -1,0 +1,3 @@
+rewrite Token enum to be a struct with TokenType to reduce the amount of code for types, also add line property to Token struct so error msgs are more clean.
+
+make all tests pass

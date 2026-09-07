@@ -1069,7 +1069,7 @@ fn match_string_literal(
             prefix_key,
             sequence_key,
         },
-        pos_in_src: 0,
+        ..
     } = &mut token
     else {
         unreachable!()
@@ -2166,13 +2166,13 @@ fn chain_lex(
     if identifier.is_some() {
         return Ok(identifier);
     }
-    let integer_const = match_integer_constant(program_str_bytes, index, str_maps);
-    if integer_const.is_some() {
-        return Ok(integer_const);
-    }
     let float_const = match_floating_constant(program_str_bytes, index, str_maps);
     if float_const.is_some() {
         return Ok(float_const);
+    }
+    let integer_const = match_integer_constant(program_str_bytes, index, str_maps);
+    if integer_const.is_some() {
+        return Ok(integer_const);
     }
     Ok(None)
 }
@@ -2215,6 +2215,36 @@ mod tests {
         match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
     use crate::lexer;
+
+    #[test]
+    fn chain_lex_test_constant_float_variable() -> Result<(), String> {
+        let s = r#"const float f = 0.4"#.as_bytes();
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(s, false, &mut str_maps)?;
+        assert_eq!(
+            vec![
+                lexer::Token::KEYWORD_CONST { pos_in_src: 0 },
+                lexer::Token::WHITESPACE { pos_in_src: 6 },
+                lexer::Token::KEYWORD_FLOAT { pos_in_src: 6 },
+                lexer::Token::WHITESPACE { pos_in_src: 12 },
+                lexer::Token::IDENT {
+                    str_map_key: 0,
+                    pos_in_src: 13
+                },
+                lexer::Token::WHITESPACE { pos_in_src: 14 },
+                lexer::Token::PUNCT_ASSIGNMENT { pos_in_src: 15 },
+                lexer::Token::WHITESPACE { pos_in_src: 16 },
+                lexer::Token::CONSTANT_DEC_FLOAT {
+                    value_key: 1,
+                    exp_part_key: None,
+                    suffix: None,
+                    pos_in_src: 19
+                }
+            ],
+            tokens
+        );
+        Ok(())
+    }
 
     #[test]
     fn chain_lex_test_universal_char_name_identifiers() -> Result<(), String> {

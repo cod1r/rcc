@@ -1146,10 +1146,11 @@ fn parse_enumerator_specifier(
                         ending_index += 1;
                     }
                     // TODO: probably call parse_expressions here instead of evaluating
-                    let constant_val = parser::expressions::eval_constant_expression_integer(
-                        &tokens[assignment_token_index + 1..ending_index],
-                        str_maps,
-                    )?;
+                    let constant_val =
+                        parser::expressions::eval_constant_expression_integer_when_preprocess(
+                            &tokens[assignment_token_index + 1..ending_index],
+                            str_maps,
+                        )?;
                     enum_specifier
                         .enumerator_list
                         .push(Enumerator::EnumWithConstantExpr(str_map_key, constant_val));
