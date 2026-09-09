@@ -540,12 +540,17 @@ pub enum TokenType {
     },
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Location {
+    pub column: usize,
+    pub line: usize,
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Token {
     pub r#type: TokenType,
-    pub column: usize,
-    pub line: usize,
+    pub location: Option<Location>,
 }
 
 impl Token {
@@ -1862,31 +1867,31 @@ pub fn lexer(
         if program_str_bytes[index] == b'\n' {
             tokens.push(Token {
                 r#type: TokenType::NEWLINE,
-                column: index,
-                line,
+                location: Some(Location { column, line }),
             });
             index += 1;
             line += 1;
             column = 0;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
+            let old_index = index;
             let token_type = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
             if let Ok(Some(token_type)) = token_type {
                 tokens.push(Token {
                     r#type: token_type,
-                    column,
-                    line,
+                    location: Some(Location { column, line }),
                 });
+                column += index - old_index;
             } else {
                 return Err(unknown_token(char::from(program_str_bytes[index]), line));
             }
         } else {
+            column += 1;
             while matches!(program_str_bytes.get(index), Some(b' ' | b'\t')) {
                 index += 1;
             }
             tokens.push(Token {
                 r#type: TokenType::WHITESPACE,
-                column,
-                line,
+                location: Some(Location { column, line }),
             });
         }
     }

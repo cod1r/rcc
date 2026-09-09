@@ -13,6 +13,3 @@ to determine if things are balanced; obviously this does not work; eg: ))((
 
 the way I parsed expressions previously might have required knowing how long the expression length is...
 questionable thoughts on my past self
-
-change token location properties to be an optional tuple bc some tokens get inserted and
-arent from the source

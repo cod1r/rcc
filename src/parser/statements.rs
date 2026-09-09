@@ -1,8 +1,7 @@
 use crate::error;
 use crate::lexer;
 use crate::lexer::ByteVecMaps;
-use crate::lexer::Token;
-use crate::lexer::TokenType;
+use crate::lexer::*;
 use crate::parser;
 use crate::parser::consume_whitespace;
 use crate::parser::declarations::*;
@@ -177,7 +176,13 @@ pub fn expected_identifier(
 ) -> Result<(), String> {
     match tokens.get(*idx) {
         Some(t) if !matches!(t.r#type, TokenType::IDENT { .. }) => {
-            let Token { line, column, .. } = t;
+            let Token {
+                location: Some(Location { column, line }),
+                ..
+            } = t
+            else {
+                unreachable!()
+            };
             let msg = format!("Expected an identifier",);
             return Err(error(&msg, *line, *column));
         }
@@ -199,8 +204,7 @@ pub fn expected_token(
 ) -> Result<(), String> {
     let dummy_token = Token {
         r#type: token,
-        line: 0,
-        column: 0,
+        location: None,
     };
     let msg = format!(
         "Expected '{}'",
@@ -213,7 +217,13 @@ pub fn expected_token(
     );
     match tokens.get(*idx) {
         Some(t) if t.r#type != token => {
-            let Token { column, line, .. } = t;
+            let Token {
+                location: Some(Location { column, line }),
+                ..
+            } = t
+            else {
+                unreachable!()
+            };
             return Err(error(&msg, *line, *column));
         }
         None => return Err(msg),

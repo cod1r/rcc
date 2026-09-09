@@ -88,8 +88,7 @@ fn concat_adjacent_strings(
                         sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
                     },
                 },
-                column: 0,
-                line: 0,
+                location: None,
             });
             // If there is a StringLiteral at adjacent_string_lit_index, then we
             // set token_string_concated_index = adjacent_string_lit_index.
@@ -452,8 +451,7 @@ fn parse_defined_in_if_directive(
                         value_key: str_maps.add_byte_vec(&[b'1']),
                         suffix: None,
                     },
-                    column: 0,
-                    line: 0,
+                    location: None,
                 });
             } else {
                 final_eval_tokens.push(Token {
@@ -461,8 +459,7 @@ fn parse_defined_in_if_directive(
                         value_key: str_maps.add_byte_vec(&[b'0']),
                         suffix: None,
                     },
-                    column: 0,
-                    line: 0,
+                    location: None,
                 });
             }
             if matches!(
@@ -766,8 +763,7 @@ fn if_directive(
                                         value_key: str_maps.add_byte_vec(&[b'0']),
                                         suffix: None,
                                     },
-                                    column: 0,
-                                    line: 0,
+                                    location: None,
                                 });
                                 eval_vec_index += 1;
                             } else {
@@ -894,8 +890,7 @@ fn if_directive(
                     _ => {
                         tokens[index_overwrite] = Token {
                             r#type: TokenType::WHITESPACE,
-                            column: 0,
-                            line: 0,
+                            location: None,
                         };
                     }
                 }
@@ -911,8 +906,7 @@ fn if_directive(
             _ => {
                 tokens[index_overwrite] = Token {
                     r#type: TokenType::WHITESPACE,
-                    column: 0,
-                    line: 0,
+                    location: None,
                 };
             }
         }
@@ -956,17 +950,25 @@ fn define_directive(
         var_arg: false,
         replacement_list: Vec::new(),
     };
-    let Some(Token{r#type: TokenType::IDENT {
-        str_map_key: identifier_of_macro_key,
+    let Some(Token {
+        r#type:
+            TokenType::IDENT {
+                str_map_key: identifier_of_macro_key,
+                ..
+            },
         ..
-    }, ..}) = tokens.get(*index)
+    }) = tokens.get(*index)
     else {
         unreachable!()
     };
     //There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
     //-- means that a whitespace character means the start of the replacement list
     let mut define_needle_idx = *index + 1;
-    if let Some(Token{ r#type: TokenType::PUNCT_OPEN_PAR, ..}) = tokens.get(define_needle_idx) {
+    if let Some(Token {
+        r#type: TokenType::PUNCT_OPEN_PAR,
+        ..
+    }) = tokens.get(define_needle_idx)
+    {
         let start_open_par_idx = define_needle_idx;
         def_data.parameters = Some(Vec::new());
         let mut fn_like_macro_index = define_needle_idx + 1;
@@ -982,11 +984,10 @@ fn define_directive(
         }
         while matches!(
             tokens.get(fn_like_macro_index),
-            Some(
-                Token{r#type: TokenType::IDENT { .. }
-                    | TokenType::PUNCT_COMMA
-                    | TokenType::WHITESPACE, .. }
-            )
+            Some(Token {
+                r#type: TokenType::IDENT { .. } | TokenType::PUNCT_COMMA | TokenType::WHITESPACE,
+                ..
+            })
         ) {
             if let Some(Token {
                 r#type:
@@ -1257,8 +1258,7 @@ fn hash_hash_deletion_and_concat_tokens(
                         left_index,
                         Token {
                             r#type: TokenType::PLACEMARKER,
-                            column: 0,
-                            line: 0,
+                            location: None,
                         },
                     );
                 }
@@ -1386,9 +1386,7 @@ fn parse_macro_and_replace(
                                         sequence.push(b' ');
                                     }
                                     _ => {
-                                        if let Some(mut bv) = t
-                                        .to_byte_vec(str_maps)
-                                        {
+                                        if let Some(mut bv) = t.to_byte_vec(str_maps) {
                                             if bv.contains(&b'\\') || bv.contains(&b'"') {
                                                 for bv_index in 0..bv.len() {
                                                     if bv[bv_index] == b'\\' || bv[bv_index] == b'"'
@@ -1415,8 +1413,7 @@ fn parse_macro_and_replace(
                                             sequence_key: str_maps.add_byte_vec(&sequence),
                                         },
                                     },
-                                    column: 0,
-                                    line: 0,
+                                    location: None,
                                 },
                             );
                         } else {
@@ -1499,8 +1496,7 @@ fn parse_macro_and_replace(
                                         insert_index,
                                         Token {
                                             r#type: TokenType::PLACEMARKER,
-                                            column: 0,
-                                            line: 0,
+                                            location: None,
                                         },
                                     );
                                     token_index += 1;

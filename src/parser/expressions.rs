@@ -816,12 +816,12 @@ pub fn parse_expressions(
                             if !matches!(
                                 tokens.get(*index),
                                 Some(Token {
-                                    r#type: TokenType::IDENT { .. } |
-                                            TokenType::CONSTANT_DEC_FLOAT { .. } |
-                                            TokenType::CONSTANT_HEXA_FLOAT { .. } |
-                                            TokenType::CONSTANT_DEC_INT { .. } |
-                                            TokenType::CONSTANT_OCTAL_INT { .. } |
-                                            TokenType::CONSTANT_HEXA_INT { .. },
+                                    r#type: TokenType::IDENT { .. }
+                                        | TokenType::CONSTANT_DEC_FLOAT { .. }
+                                        | TokenType::CONSTANT_HEXA_FLOAT { .. }
+                                        | TokenType::CONSTANT_DEC_INT { .. }
+                                        | TokenType::CONSTANT_OCTAL_INT { .. }
+                                        | TokenType::CONSTANT_HEXA_INT { .. },
                                     ..
                                 })
                             ) {
@@ -1152,12 +1152,10 @@ pub fn parse_expressions(
                         }) => {
                             let i = parse_initializer(tokens, index, flattened, str_maps)?;
                             flattened.initializers.push(i);
-                            stack.push(Expr::PostFix(
-                                PostFix::WithTypeNameInitializerList {
-                                    type_name: flattened.type_names.len() - 1,
-                                    initializer_list: flattened.initializers.len() - 1,
-                                },
-                            ));
+                            stack.push(Expr::PostFix(PostFix::WithTypeNameInitializerList {
+                                type_name: flattened.type_names.len() - 1,
+                                initializer_list: flattened.initializers.len() - 1,
+                            }));
                             curr_expr = None;
                         }
                         // Cast

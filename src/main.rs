@@ -120,8 +120,7 @@ fn main() {
                     key: str_maps.add_byte_vec("L".as_bytes()),
                 }),
             },
-            column: 0,
-            line: 0,
+            location: None,
         }],
     };
     defines.insert(
@@ -142,8 +141,9 @@ fn main() {
                     str_lit: StringLiteral {
                         prefix_key: None,
                         sequence_key: str_maps.add_byte_vec(file.as_bytes()),
-                    }
-                }, column: 0, line: 0
+                    },
+                },
+                location: None,
             }],
         };
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);

@@ -564,8 +564,7 @@ fn parse_initializer_list(
                 }) => *index += 1,
                 Some(Token {
                     r#type: TokenType::PUNCT_ASSIGNMENT,
-                    column,
-                    line,
+                    location: Some(Location { column, line }),
                 }) => {
                     if designation.designator_list.is_empty() {
                         return Err(error_msg("Unexpected =, expected . or [", *line, *column));
@@ -880,7 +879,11 @@ fn parse_struct_union_specifier(
             return Ok(struct_union_specifier);
         }
     }
-    let Token { line, .. } = tokens.last().unwrap() else {
+    let Token {
+        location: Some(Location { line, .. }),
+        ..
+    } = tokens.last().unwrap()
+    else {
         unreachable!()
     };
     return Err(error_msg(
