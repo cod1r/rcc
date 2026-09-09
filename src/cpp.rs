@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::lexer;
 use crate::parser::expressions;
+use crate::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -10,7 +10,7 @@ pub struct Define {
     // if it isn't.
     pub parameters: Option<Vec<usize>>,
     pub var_arg: bool,
-    pub replacement_list: Vec<lexer::Token>,
+    pub replacement_list: Vec<Token>,
 }
 
 // Depth is for replacing multiple macros of the same name in the same replacement list
@@ -20,18 +20,22 @@ struct Macro {
     start: usize,
     end: usize,
     depth: usize,
-    arguments: Option<Vec<Vec<lexer::Token>>>,
+    arguments: Option<Vec<Vec<Token>>>,
 }
 
 fn concat_adjacent_strings(
-    tokens: &[lexer::Token],
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Vec<lexer::Token>, String> {
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<Token>, String> {
     let mut adjacent_strings_concated = Vec::new();
     let mut token_string_concated_index = 0;
     while token_string_concated_index < tokens.len() {
-        if let Some(lexer::Token::StringLiteral {
-            str_lit: first_string_lit,
+        if let Some(Token {
+            r#type:
+                TokenType::StringLiteral {
+                    str_lit: first_string_lit,
+                    ..
+                },
             ..
         }) = tokens.get(token_string_concated_index)
         {
@@ -41,15 +45,20 @@ fn concat_adjacent_strings(
             let mut adjacent_string_lit_index = token_string_concated_index + 1;
             while matches!(
                 tokens.get(adjacent_string_lit_index),
-                Some(
-                    lexer::Token::WHITESPACE { .. }
-                        | lexer::Token::NEWLINE { .. }
-                        | lexer::Token::StringLiteral { .. }
-                )
+                Some(Token {
+                    r#type: TokenType::WHITESPACE
+                        | TokenType::NEWLINE
+                        | TokenType::StringLiteral { .. },
+                    ..
+                })
             ) && adjacent_string_lit_index < tokens.len()
             {
-                if let Some(lexer::Token::StringLiteral {
-                    str_lit: second_string_lit,
+                if let Some(Token {
+                    r#type:
+                        TokenType::StringLiteral {
+                            str_lit: second_string_lit,
+                            ..
+                        },
                     ..
                 }) = tokens.get(adjacent_string_lit_index)
                 {
@@ -72,13 +81,15 @@ fn concat_adjacent_strings(
                 }
                 adjacent_string_lit_index += 1;
             }
-            adjacent_strings_concated.push(lexer::Token::StringLiteral {
-                str_lit: lexer::StringLiteral {
-                    prefix_key: prev_prefix,
-                    sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
+            adjacent_strings_concated.push(Token {
+                r#type: TokenType::StringLiteral {
+                    str_lit: StringLiteral {
+                        prefix_key: prev_prefix,
+                        sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
+                    },
                 },
-                // some positions are wrong af FIXME
-                pos_in_src: 0,
+                column: 0,
+                line: 0,
             });
             // If there is a StringLiteral at adjacent_string_lit_index, then we
             // set token_string_concated_index = adjacent_string_lit_index.
@@ -86,7 +97,10 @@ fn concat_adjacent_strings(
             // the current StringLiteral
             if matches!(
                 tokens.get(adjacent_string_lit_index),
-                Some(lexer::Token::StringLiteral { .. })
+                Some(Token {
+                    r#type: TokenType::StringLiteral { .. },
+                    ..
+                })
             ) {
                 token_string_concated_index = adjacent_string_lit_index;
             } else {
@@ -158,36 +172,46 @@ fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn include_directive(
-    tokens: &[lexer::Token],
-    index: usize,
+    tokens: &[Token],
+    index: &mut usize,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-    final_tokens: &mut Vec<lexer::Token>,
-) -> Result<usize, String> {
-    let mut newline_index = index;
+    str_maps: &mut ByteVecMaps,
+    final_tokens: &mut Vec<Token>,
+) -> Result<(), String> {
+    let mut newline_index = *index;
     while !matches!(
         tokens.get(newline_index),
-        Some(lexer::Token::NEWLINE { .. })
+        Some(Token {
+            r#type: TokenType::NEWLINE,
+            ..
+        })
     ) && newline_index < tokens.len()
     {
         newline_index += 1;
     }
     if !matches!(
         tokens.get(newline_index),
-        Some(lexer::Token::NEWLINE { .. })
+        Some(Token {
+            r#type: TokenType::NEWLINE,
+            ..
+        })
     ) {
         return Err(format!("no newline after include directive"));
     }
     let mut include_tokens = Vec::new();
-    let mut expand_macro_index = index + 1;
+    let mut expand_macro_index = *index + 1;
     while expand_macro_index < newline_index {
-        if let Some(lexer::Token::IDENT { str_map_key, .. }) = tokens.get(expand_macro_index) {
+        if let Some(Token {
+            r#type: TokenType::IDENT { str_map_key, .. },
+            ..
+        }) = tokens.get(expand_macro_index)
+        {
             if defines.contains_key(str_map_key) {
-                expand_macro_index = expand_macro(
+                expand_macro(
                     tokens,
-                    expand_macro_index,
+                    &mut expand_macro_index,
                     defines,
                     str_maps,
                     &mut include_tokens,
@@ -204,36 +228,57 @@ fn include_directive(
     let mut include_index = 0;
     if matches!(
         tokens.get(include_index),
-        Some(lexer::Token::WHITESPACE { .. })
+        Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        })
     ) {
         include_index += 1;
     }
     let mut file_name = None;
     let mut look_at_current_dir = false;
     let mut end_of_file_path_index = 0;
-    if matches!(tokens.get(include_index), Some(lexer::Token::IDENT { .. })) {
+    if matches!(
+        tokens.get(include_index),
+        Some(Token {
+            r#type: TokenType::IDENT { .. },
+            ..
+        })
+    ) {
         include_index += 1;
 
         if matches!(
             tokens.get(include_index),
-            Some(lexer::Token::WHITESPACE { .. })
+            Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            })
         ) {
             include_index += 1;
         }
         match tokens.get(include_index) {
-            Some(lexer::Token::PUNCT_LESS_THAN { .. }) => {
+            Some(Token {
+                r#type: TokenType::PUNCT_LESS_THAN,
+                ..
+            }) => {
                 include_index += 1;
                 let mut punct_greater_than_index = include_index;
                 while !matches!(
                     tokens.get(punct_greater_than_index),
-                    Some(lexer::Token::PUNCT_GREATER_THAN { .. })
+                    Some(Token {
+                        r#type: TokenType::PUNCT_GREATER_THAN,
+                        ..
+                    })
                 ) && punct_greater_than_index < tokens.len()
                 {
                     punct_greater_than_index += 1;
                 }
                 if !matches!(
                     tokens.get(punct_greater_than_index),
-                    Some(lexer::Token::PUNCT_GREATER_THAN { .. })
+                    Some(Token {
+                        r#type: TokenType::PUNCT_GREATER_THAN,
+                        ..
+                    })
                 ) {
                     return Err(format!("No '>' for opening '<' in include directive"));
                 }
@@ -255,13 +300,16 @@ fn include_directive(
                 }
                 end_of_file_path_index = punct_greater_than_index + 1;
             }
-            Some(lexer::Token::StringLiteral {
-                str_lit:
-                    lexer::StringLiteral {
-                        prefix_key: _,
-                        sequence_key,
+            Some(Token {
+                r#type:
+                    TokenType::StringLiteral {
+                        str_lit:
+                            StringLiteral {
+                                prefix_key: _,
+                                sequence_key,
+                            },
                     },
-                pos_in_src: _,
+                ..
             }) => {
                 look_at_current_dir = true;
                 let sequence = &str_maps.key_to_byte_vec[*sequence_key];
@@ -279,7 +327,15 @@ fn include_directive(
     if let Some(slice) = tokens.get(end_of_file_path_index + 1..) {
         if slice
             .iter()
-            .filter(|t| !matches!(t, lexer::Token::WHITESPACE { .. }))
+            .filter(|t| {
+                !matches!(
+                    t,
+                    Token {
+                        r#type: TokenType::WHITESPACE,
+                        ..
+                    }
+                )
+            })
             .count()
             > 0
         {
@@ -318,7 +374,7 @@ fn include_directive(
                         str_maps,
                     )?;
                     final_tokens.extend_from_slice(&tokens_from_file);
-                    return Ok(newline_index + 1);
+                    return Ok(());
                 }
                 Err(_) => {
                     eprintln!("fs::read failed for path: {}", full_path_file);
@@ -333,7 +389,7 @@ fn include_directive(
                         let tokens_from_file =
                             cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
                         final_tokens.extend_from_slice(&tokens_from_file);
-                        return Ok(newline_index + 1);
+                        return Ok(());
                     }
                     Err(_) => {
                         eprintln!("fs::read failed for path: {}", full_path_file);
@@ -346,50 +402,82 @@ fn include_directive(
 }
 
 fn parse_defined_in_if_directive(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: usize,
-    final_eval_tokens: &mut Vec<lexer::Token>,
+    final_eval_tokens: &mut Vec<Token>,
     defines: &HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<usize, String> {
+    str_maps: &mut ByteVecMaps,
+) -> Result<(), String> {
     let mut defined_index = index + 1;
-    if let Some(lexer::Token::WHITESPACE { .. } | lexer::Token::PUNCT_OPEN_PAR { .. }) =
-        tokens.get(defined_index)
+    if let Some(Token {
+        r#type: TokenType::WHITESPACE | TokenType::PUNCT_OPEN_PAR,
+        ..
+    }) = tokens.get(defined_index)
     {
         let start = defined_index;
         defined_index += 1;
-        if let Some(lexer::Token::WHITESPACE { .. }) = tokens.get(defined_index) {
+        if let Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        }) = tokens.get(defined_index)
+        {
             defined_index += 1;
         }
-        if let Some(lexer::Token::PUNCT_OPEN_PAR { .. }) = tokens.get(defined_index) {
+        if let Some(Token {
+            r#type: TokenType::PUNCT_OPEN_PAR,
+            ..
+        }) = tokens.get(defined_index)
+        {
             defined_index += 1;
         }
-        if let Some(lexer::Token::WHITESPACE { .. }) = tokens.get(defined_index) {
+        if let Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        }) = tokens.get(defined_index)
+        {
             defined_index += 1;
         }
-        if let Some(lexer::Token::IDENT {
-            str_map_key: identifier_name_key,
-            pos_in_src,
+        if let Some(Token {
+            r#type:
+                TokenType::IDENT {
+                    str_map_key: identifier_name_key,
+                },
+            ..
         }) = tokens.get(defined_index)
         {
             defined_index += 1;
             if defines.contains_key(&identifier_name_key) {
-                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec(&[b'1']),
-                    suffix: None,
-                    pos_in_src: *pos_in_src,
+                final_eval_tokens.push(Token {
+                    r#type: TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec(&[b'1']),
+                        suffix: None,
+                    },
+                    column: 0,
+                    line: 0,
                 });
             } else {
-                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec(&[b'0']),
-                    suffix: None,
-                    pos_in_src: *pos_in_src,
+                final_eval_tokens.push(Token {
+                    r#type: TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec(&[b'0']),
+                        suffix: None,
+                    },
+                    column: 0,
+                    line: 0,
                 });
             }
-            if matches!(tokens.get(start), Some(lexer::Token::PUNCT_OPEN_PAR { .. })) {
+            if matches!(
+                tokens.get(start),
+                Some(Token {
+                    r#type: TokenType::PUNCT_OPEN_PAR,
+                    ..
+                })
+            ) {
                 while !matches!(
                     tokens.get(defined_index),
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
+                    Some(Token {
+                        r#type: TokenType::PUNCT_CLOSE_PAR,
+                        ..
+                    })
                 ) && defined_index < tokens.len()
                 {
                     defined_index += 1;
@@ -397,7 +485,7 @@ fn parse_defined_in_if_directive(
                 if defined_index == tokens.len() {
                     return Err(format!("Missing closing parenthesis for defined at: TODO!"));
                 }
-                return Ok(defined_index + 1);
+                return Ok(());
             }
         } else {
             return Err(format!("unexpected token: {:?}", tokens[defined_index]));
@@ -405,20 +493,23 @@ fn parse_defined_in_if_directive(
     } else {
         return Err(format!("unexpected token: {:?}", tokens[defined_index]));
     }
-    Ok(defined_index)
+    Ok(())
 }
 fn if_directive(
-    tokens: &mut [lexer::Token],
-    index: usize,
+    tokens: &mut [Token],
+    index: &mut usize,
     defines: &HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<(), String> {
-    let mut balance_index = index;
+    let mut balance_index = *index;
     let mut if_endif_counter = 0;
     let mut if_elif_else_structure_index: Vec<(Vec<u8>, usize, usize)> = Vec::new();
     'outer: loop {
         match tokens.get(balance_index) {
-            Some(lexer::Token::PUNCT_HASH { .. }) => {
+            Some(Token {
+                r#type: TokenType::PUNCT_HASH,
+                ..
+            }) => {
                 let punct_hash_index = balance_index;
                 let mut checks_follows_whitespace_nothing_newline_index = balance_index;
                 let follows_whitespace_nothing_newline = loop {
@@ -429,8 +520,14 @@ fn if_directive(
                     }
 
                     match tokens.get(checks_follows_whitespace_nothing_newline_index) {
-                        Some(lexer::Token::WHITESPACE { .. }) => {}
-                        Some(lexer::Token::NEWLINE { .. }) => break true,
+                        Some(Token {
+                            r#type: TokenType::WHITESPACE,
+                            ..
+                        }) => {}
+                        Some(Token {
+                            r#type: TokenType::NEWLINE,
+                            ..
+                        }) => break true,
                         _ => break false,
                     }
                 };
@@ -438,13 +535,20 @@ fn if_directive(
                     balance_index += 1;
                     if matches!(
                         tokens.get(balance_index),
-                        Some(lexer::Token::WHITESPACE { .. })
+                        Some(Token {
+                            r#type: TokenType::WHITESPACE,
+                            ..
+                        })
                     ) {
                         balance_index += 1;
                     }
                     match tokens.get(balance_index) {
-                        Some(lexer::Token::IDENT {
-                            str_map_key: id_key,
+                        Some(Token {
+                            r#type:
+                                TokenType::IDENT {
+                                    str_map_key: id_key,
+                                    ..
+                                },
                             ..
                         }) => {
                             let id = str_maps.key_to_byte_vec[*id_key].clone();
@@ -452,7 +556,10 @@ fn if_directive(
                                 b"endif" => loop {
                                     balance_index += 1;
                                     match tokens.get(balance_index) {
-                                        Some(lexer::Token::NEWLINE { .. }) => {
+                                        Some(Token {
+                                            r#type: TokenType::NEWLINE,
+                                            ..
+                                        }) => {
                                             if_endif_counter -= 1;
                                             if if_endif_counter == 0 {
                                                 if_elif_else_structure_index.push((
@@ -465,7 +572,10 @@ fn if_directive(
                                             balance_index += 1;
                                             break;
                                         }
-                                        Some(lexer::Token::WHITESPACE { .. }) => {}
+                                        Some(Token {
+                                            r#type: TokenType::WHITESPACE,
+                                            ..
+                                        }) => {}
                                         Some(_) => {
                                             return Err(format!(
                                                 "unexpected token after endif directive: {:?}",
@@ -482,7 +592,10 @@ fn if_directive(
                                 b"if" | b"ifdef" | b"ifndef" => loop {
                                     balance_index += 1;
                                     match tokens.get(balance_index) {
-                                        Some(lexer::Token::NEWLINE { .. }) => {
+                                        Some(Token {
+                                            r#type: TokenType::NEWLINE,
+                                            ..
+                                        }) => {
                                             if_endif_counter += 1;
                                             if if_endif_counter == 1 {
                                                 if_elif_else_structure_index.push((
@@ -505,7 +618,10 @@ fn if_directive(
                                 b"elif" if if_endif_counter == 1 => loop {
                                     balance_index += 1;
                                     match tokens.get(balance_index) {
-                                        Some(lexer::Token::NEWLINE { .. }) => {
+                                        Some(Token {
+                                            r#type: TokenType::NEWLINE,
+                                            ..
+                                        }) => {
                                             if if_endif_counter == 1 {
                                                 if_elif_else_structure_index.push((
                                                     id,
@@ -527,7 +643,10 @@ fn if_directive(
                                 b"else" if if_endif_counter == 1 => loop {
                                     balance_index += 1;
                                     match tokens.get(balance_index) {
-                                        Some(lexer::Token::NEWLINE { .. }) => {
+                                        Some(Token {
+                                            r#type: TokenType::NEWLINE,
+                                            ..
+                                        }) => {
                                             if if_endif_counter == 1 {
                                                 if_elif_else_structure_index.push((
                                                     id,
@@ -538,7 +657,10 @@ fn if_directive(
                                             balance_index += 1;
                                             break;
                                         }
-                                        Some(lexer::Token::WHITESPACE { .. }) => {}
+                                        Some(Token {
+                                            r#type: TokenType::WHITESPACE,
+                                            ..
+                                        }) => {}
                                         Some(_) => {
                                             return Err(format!(
                                                 "unexpected token after else directive: {:?}",
@@ -603,14 +725,22 @@ fn if_directive(
     for index_for_structure_index in 0..if_elif_else_structure_index.len() {
         let (macro_id, start, end) = &if_elif_else_structure_index[index_for_structure_index];
         let mut start_looking = *start;
-        while !matches!(tokens.get(start_looking), Some(lexer::Token::IDENT { .. }))
-            && start_looking < tokens.len()
+        while !matches!(
+            tokens.get(start_looking),
+            Some(Token {
+                r#type: TokenType::IDENT { .. },
+                ..
+            })
+        ) && start_looking < tokens.len()
         {
             start_looking += 1;
         }
         assert!(matches!(
             tokens.get(start_looking),
-            Some(lexer::Token::IDENT { .. })
+            Some(Token {
+                r#type: TokenType::IDENT { .. },
+                ..
+            })
         ));
         start_looking += 1;
         let eval_vec = &tokens[start_looking..*end];
@@ -620,31 +750,37 @@ fn if_directive(
                 let mut eval_vec_index = 0;
                 let mut final_eval_tokens = Vec::new();
                 while eval_vec_index < eval_vec.len() {
-                    if let lexer::Token::IDENT {
-                        str_map_key: curr_id_key,
-                        pos_in_src,
+                    if let Token {
+                        r#type:
+                            TokenType::IDENT {
+                                str_map_key: curr_id_key,
+                            },
+                        ..
                     } = &eval_vec[eval_vec_index]
                     {
                         let curr_id = str_maps.key_to_byte_vec[*curr_id_key].clone();
                         if curr_id != *b"defined" {
                             if !defines.contains_key(curr_id_key) {
-                                final_eval_tokens.push(lexer::Token::CONSTANT_DEC_INT {
-                                    value_key: str_maps.add_byte_vec(&[b'0']),
-                                    suffix: None,
-                                    pos_in_src: *pos_in_src,
+                                final_eval_tokens.push(Token {
+                                    r#type: TokenType::CONSTANT_DEC_INT {
+                                        value_key: str_maps.add_byte_vec(&[b'0']),
+                                        suffix: None,
+                                    },
+                                    column: 0,
+                                    line: 0,
                                 });
                                 eval_vec_index += 1;
                             } else {
-                                eval_vec_index = expand_macro(
+                                expand_macro(
                                     &eval_vec,
-                                    eval_vec_index,
+                                    &mut eval_vec_index,
                                     defines,
                                     str_maps,
                                     &mut final_eval_tokens,
                                 )?;
                             }
                         } else {
-                            eval_vec_index = parse_defined_in_if_directive(
+                            parse_defined_in_if_directive(
                                 eval_vec,
                                 eval_vec_index,
                                 &mut final_eval_tokens,
@@ -662,6 +798,7 @@ fn if_directive(
                 let eval_vec = final_eval_tokens;
                 expressions::eval_constant_expression_integer_when_preprocess(
                     eval_vec.as_slice(),
+                    index,
                     str_maps,
                 )? != 0
             }
@@ -669,7 +806,10 @@ fn if_directive(
                 if eval_vec.iter().any(|t| {
                     !matches!(
                         t,
-                        lexer::Token::IDENT { .. } | lexer::Token::WHITESPACE { .. }
+                        Token {
+                            r#type: TokenType::IDENT { .. } | TokenType::WHITESPACE,
+                            ..
+                        }
                     )
                 }) {
                     return Err(format!(
@@ -677,12 +817,22 @@ fn if_directive(
                         eval_vec
                     ));
                 }
-                let Some(lexer::Token::IDENT {
-                    str_map_key: ident_key,
+                let Some(Token {
+                    r#type:
+                        TokenType::IDENT {
+                            str_map_key: ident_key,
+                            ..
+                        },
                     ..
-                }) = eval_vec
-                    .iter()
-                    .find(|t| matches!(t, lexer::Token::IDENT { .. }))
+                }) = eval_vec.iter().find(|t| {
+                    matches!(
+                        t,
+                        Token {
+                            r#type: TokenType::IDENT { .. },
+                            ..
+                        }
+                    )
+                })
                 else {
                     unreachable!()
                 };
@@ -692,7 +842,10 @@ fn if_directive(
                 if eval_vec.iter().any(|t| {
                     !matches!(
                         t,
-                        lexer::Token::IDENT { .. } | lexer::Token::WHITESPACE { .. }
+                        Token {
+                            r#type: TokenType::IDENT { .. } | TokenType::WHITESPACE,
+                            ..
+                        }
                     )
                 }) {
                     return Err(format!(
@@ -700,12 +853,22 @@ fn if_directive(
                         eval_vec
                     ));
                 }
-                let Some(lexer::Token::IDENT {
-                    str_map_key: ident_key,
+                let Some(Token {
+                    r#type:
+                        TokenType::IDENT {
+                            str_map_key: ident_key,
+                            ..
+                        },
                     ..
-                }) = eval_vec
-                    .iter()
-                    .find(|t| matches!(t, lexer::Token::IDENT { .. }))
+                }) = eval_vec.iter().find(|t| {
+                    matches!(
+                        t,
+                        Token {
+                            r#type: TokenType::IDENT { .. },
+                            ..
+                        }
+                    )
+                })
                 else {
                     unreachable!()
                 };
@@ -726,11 +889,13 @@ fn if_directive(
                 index_looking += 1;
             }
             while index_overwrite < if_elif_else_structure_index.last().unwrap().2 {
-                match tokens[index_overwrite] {
-                    lexer::Token::NEWLINE { .. } => {}
+                match tokens[index_overwrite].r#type {
+                    TokenType::NEWLINE => {}
                     _ => {
-                        tokens[index_overwrite] = lexer::Token::WHITESPACE {
-                            pos_in_src: index_overwrite,
+                        tokens[index_overwrite] = Token {
+                            r#type: TokenType::WHITESPACE,
+                            column: 0,
+                            line: 0,
                         };
                     }
                 }
@@ -741,11 +906,13 @@ fn if_directive(
     }
     let mut index_overwrite = if_elif_else_structure_index[0].1;
     while index_overwrite < if_elif_else_structure_index.last().unwrap().2 {
-        match tokens[index_overwrite] {
-            lexer::Token::NEWLINE { .. } => {}
+        match tokens[index_overwrite].r#type {
+            TokenType::NEWLINE => {}
             _ => {
-                tokens[index_overwrite] = lexer::Token::WHITESPACE {
-                    pos_in_src: index_overwrite,
+                tokens[index_overwrite] = Token {
+                    r#type: TokenType::WHITESPACE,
+                    column: 0,
+                    line: 0,
                 };
             }
         }
@@ -754,23 +921,22 @@ fn if_directive(
     Ok(())
 }
 fn define_directive(
-    tokens: &[lexer::Token],
-    index: usize,
+    tokens: &[Token],
+    index: &mut usize,
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<usize, String> {
-    let mut index_of_identifier = index + 1;
-    let mut end = index_of_identifier;
-    while !matches!(tokens.get(end), Some(lexer::Token::NEWLINE { .. })) && end < tokens.len() {
-        end += 1;
-    }
-    if !matches!(tokens.get(end), Some(lexer::Token::NEWLINE { .. })) {
-        return Err(format!("no newline at end of directive"));
-    }
-    while index_of_identifier < end {
-        match &tokens[index_of_identifier] {
-            lexer::Token::WHITESPACE { .. } => {}
-            lexer::Token::IDENT {
+    str_maps: &mut ByteVecMaps,
+) -> Result<(), String> {
+    todo!("REWRITE THIS");
+    while !matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::NEWLINE,
+            ..
+        })
+    ) {
+        match &tokens[*index].r#type {
+            TokenType::WHITESPACE => {}
+            TokenType::IDENT {
                 str_map_key: id_key,
                 ..
             } => {
@@ -783,44 +949,51 @@ fn define_directive(
                 return Err(format!("unknown token after define directive"));
             }
         }
-        index_of_identifier += 1;
+        *index += 1;
     }
     let mut def_data = Define {
         parameters: None,
         var_arg: false,
         replacement_list: Vec::new(),
     };
-    let Some(lexer::Token::IDENT {
+    let Some(Token{r#type: TokenType::IDENT {
         str_map_key: identifier_of_macro_key,
         ..
-    }) = tokens.get(index_of_identifier)
+    }, ..}) = tokens.get(*index)
     else {
         unreachable!()
     };
     //There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
     //-- means that a whitespace character means the start of the replacement list
-    let mut define_needle_idx = index_of_identifier + 1;
-    if let Some(lexer::Token::PUNCT_OPEN_PAR { .. }) = tokens.get(define_needle_idx) {
+    let mut define_needle_idx = *index + 1;
+    if let Some(Token{ r#type: TokenType::PUNCT_OPEN_PAR, ..}) = tokens.get(define_needle_idx) {
         let start_open_par_idx = define_needle_idx;
         def_data.parameters = Some(Vec::new());
         let mut fn_like_macro_index = define_needle_idx + 1;
         while matches!(
             tokens.get(fn_like_macro_index),
-            Some(lexer::Token::WHITESPACE { .. })
-        ) && fn_like_macro_index < end
+            Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            })
+        ) && fn_like_macro_index < todo!()
         {
             define_needle_idx += 1;
         }
         while matches!(
             tokens.get(fn_like_macro_index),
             Some(
-                lexer::Token::IDENT { .. }
-                    | lexer::Token::PUNCT_COMMA { .. }
-                    | lexer::Token::WHITESPACE { .. }
+                Token{r#type: TokenType::IDENT { .. }
+                    | TokenType::PUNCT_COMMA
+                    | TokenType::WHITESPACE, .. }
             )
         ) {
-            if let Some(lexer::Token::IDENT {
-                str_map_key: arg_key,
+            if let Some(Token {
+                r#type:
+                    TokenType::IDENT {
+                        str_map_key: arg_key,
+                        ..
+                    },
                 ..
             }) = tokens.get(fn_like_macro_index)
             {
@@ -840,37 +1013,44 @@ fn define_directive(
         }
         if matches!(
             tokens.get(fn_like_macro_index),
-            Some(lexer::Token::PUNCT_ELLIPSIS { .. })
+            Some(Token {
+                r#type: TokenType::PUNCT_ELLIPSIS,
+                ..
+            })
         ) {
             def_data.var_arg = true;
             fn_like_macro_index += 1;
         }
         while matches!(
             tokens.get(fn_like_macro_index),
-            Some(lexer::Token::WHITESPACE { .. })
-        ) && fn_like_macro_index < end
+            Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            })
+        ) && fn_like_macro_index < *index
         {
             define_needle_idx += 1;
         }
         if !matches!(
             tokens.get(fn_like_macro_index),
-            Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
+            Some(Token {
+                r#type: TokenType::PUNCT_CLOSE_PAR,
+                ..
+            })
         ) {
             def_data.parameters = None;
             def_data.var_arg = false;
             def_data
                 .replacement_list
-                .extend_from_slice(&tokens[start_open_par_idx + 1..end]);
+                .extend_from_slice(&tokens[start_open_par_idx + 1..]);
         } else {
             def_data
                 .replacement_list
-                .extend_from_slice(&tokens[fn_like_macro_index + 1..end]);
+                .extend_from_slice(&tokens[fn_like_macro_index + 1..]);
         }
         defines.insert(*identifier_of_macro_key, def_data);
     } else {
-        def_data
-            .replacement_list
-            .extend_from_slice(&tokens[index_of_identifier + 1..end]);
+        def_data.replacement_list.extend_from_slice(&tokens);
         defines.insert(*identifier_of_macro_key, def_data);
     }
     if defines.contains_key(&identifier_of_macro_key) {
@@ -894,74 +1074,109 @@ fn define_directive(
                 for t_index in 0..dd.replacement_list.len() {
                     if matches!(
                         dd.replacement_list.get(t_index),
-                        Some(lexer::Token::PUNCT_HASH { .. })
+                        Some(Token {
+                            r#type: TokenType::PUNCT_HASH,
+                            ..
+                        })
                     ) && !matches!(
                         dd.replacement_list.get(t_index + 1),
-                        Some(lexer::Token::IDENT { .. })
+                        Some(Token {
+                            r#type: TokenType::IDENT { .. },
+                            ..
+                        })
                     ) && !matches!(
                         dd.replacement_list.get(t_index + 1..t_index + 3),
-                        Some([lexer::Token::WHITESPACE { .. }, lexer::Token::IDENT { .. }])
+                        Some([
+                            Token {
+                                r#type: TokenType::WHITESPACE,
+                                ..
+                            },
+                            Token {
+                                r#type: TokenType::IDENT { .. },
+                                ..
+                            }
+                        ])
                     ) {
                         return Err(format!("'#' does not immediately precede an argument name"));
                     }
                 }
             }
-            if let Some(lexer::Token::WHITESPACE { .. }) = dd.replacement_list.first() {
+            if let Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            }) = dd.replacement_list.first()
+            {
                 dd.replacement_list.remove(0);
             }
-            if let Some(lexer::Token::WHITESPACE { .. }) = dd.replacement_list.last() {
+            if let Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            }) = dd.replacement_list.last()
+            {
                 dd.replacement_list.pop();
             }
             if matches!(
                 dd.replacement_list.first(),
-                Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                Some(Token {
+                    r#type: TokenType::PUNCT_HASH_HASH,
+                    ..
+                })
             ) || matches!(
                 dd.replacement_list.last(),
-                Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                Some(Token {
+                    r#type: TokenType::PUNCT_HASH_HASH,
+                    ..
+                })
             ) {
                 return Err(format!(
                     "'##' cannot be at the beginning or end of a replacement list"
                 ));
             }
-            return Ok(end + 1);
+            return Ok(());
         }
     }
     Err(format!(
         "define directive not properly formed at {}",
-        index_of_identifier
+        *index
     ))
 }
-fn error_directive(_tokens: &mut Vec<lexer::Token>) {
+fn error_directive(_tokens: &mut Vec<TokenType>) {
     todo!()
 }
-fn line_directive(
-    _tokens: &mut Vec<lexer::Token>,
-    _index: usize,
-    _end: usize,
-) -> Result<(), String> {
+fn line_directive(_tokens: &mut Vec<TokenType>, _index: usize, _end: usize) -> Result<(), String> {
     todo!()
 }
 fn undef_directive(
-    tokens: &[lexer::Token],
-    index: usize,
+    tokens: &[Token],
+    index: &mut usize,
     defines: &mut HashMap<usize, Define>,
-    _str_maps: &mut lexer::ByteVecMaps,
-) -> Result<usize, String> {
-    let mut index_of_identifier = index + 1;
+    _str_maps: &mut ByteVecMaps,
+) -> Result<(), String> {
+    let mut index_of_identifier = *index + 1;
     if matches!(
         tokens.get(index_of_identifier),
-        Some(lexer::Token::WHITESPACE { .. })
+        Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        })
     ) {
         index_of_identifier += 1;
     }
     index_of_identifier += 1;
     if matches!(
         tokens.get(index_of_identifier),
-        Some(lexer::Token::WHITESPACE { .. })
+        Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        })
     ) {
         index_of_identifier += 1;
-        if let Some(lexer::Token::IDENT {
-            str_map_key: identifier_to_be_undef_key,
+        if let Some(Token {
+            r#type:
+                TokenType::IDENT {
+                    str_map_key: identifier_to_be_undef_key,
+                    ..
+                },
             ..
         }) = tokens.get(index_of_identifier)
         {
@@ -969,26 +1184,29 @@ fn undef_directive(
             let mut newline_index = index_of_identifier + 1;
             while !matches!(
                 tokens.get(newline_index),
-                Some(lexer::Token::NEWLINE { .. })
+                Some(Token {
+                    r#type: TokenType::NEWLINE,
+                    ..
+                })
             ) {
                 newline_index += 1;
                 if matches!(tokens.get(newline_index), None) {
                     return Err(String::from("missing newline for undef directive"));
                 }
             }
-            return Ok(newline_index + 1);
+            return Ok(());
         }
     }
     Err(format!("undef directive not formed correctly"))
 }
 fn hash_hash_deletion_and_concat_tokens(
-    replacement_list: &mut Vec<lexer::Token>,
+    replacement_list: &mut Vec<Token>,
     hash_hash_from_args: &[usize],
 ) {
     let mut hash_hash_process_index = 0;
     while hash_hash_process_index < replacement_list.len() {
         let token = replacement_list[hash_hash_process_index];
-        if matches!(token, lexer::Token::PUNCT_HASH_HASH { .. })
+        if matches!(token.r#type, TokenType::PUNCT_HASH_HASH)
             && !hash_hash_from_args.contains(&hash_hash_process_index)
         {
             let mut left_index = hash_hash_process_index - 1;
@@ -997,14 +1215,20 @@ fn hash_hash_deletion_and_concat_tokens(
             // Same thing for right_index.
             while matches!(
                 replacement_list.get(left_index),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
+                Some(Token {
+                    r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
+                    ..
+                })
             ) {
                 left_index -= 1;
             }
             let mut right_index = hash_hash_process_index + 1;
             while matches!(
                 replacement_list.get(right_index),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
+                Some(Token {
+                    r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
+                    ..
+                })
             ) {
                 right_index += 1;
             }
@@ -1017,25 +1241,45 @@ fn hash_hash_deletion_and_concat_tokens(
             //processing token
             match (left_token, right_token) {
                 (
-                    Some(lexer::Token::PLACEMARKER { pos_in_src }),
-                    Some(lexer::Token::PLACEMARKER { .. }),
+                    Some(Token {
+                        r#type: TokenType::PLACEMARKER,
+                        ..
+                    }),
+                    Some(Token {
+                        r#type: TokenType::PLACEMARKER,
+                        ..
+                    }),
                 ) => {
                     for _ in left_index..=right_index {
                         replacement_list.remove(left_index);
                     }
                     replacement_list.insert(
                         left_index,
-                        lexer::Token::PLACEMARKER {
-                            pos_in_src: *pos_in_src,
+                        Token {
+                            r#type: TokenType::PLACEMARKER,
+                            column: 0,
+                            line: 0,
                         },
                     );
                 }
-                (Some(_), Some(lexer::Token::PLACEMARKER { .. })) => {
+                (
+                    Some(_),
+                    Some(Token {
+                        r#type: TokenType::PLACEMARKER,
+                        ..
+                    }),
+                ) => {
                     for _ in left_index + 1..=right_index {
                         replacement_list.remove(left_index + 1);
                     }
                 }
-                (Some(lexer::Token::PLACEMARKER { .. }), Some(_)) => {
+                (
+                    Some(Token {
+                        r#type: TokenType::PLACEMARKER,
+                        ..
+                    }),
+                    Some(_),
+                ) => {
                     for _ in left_index..right_index {
                         replacement_list.remove(left_index);
                     }
@@ -1057,8 +1301,8 @@ fn hash_hash_deletion_and_concat_tokens(
 fn parse_macro_and_replace(
     defines: &HashMap<usize, Define>,
     macro_stack: &mut Vec<Macro>,
-    replacement_list: &mut Vec<lexer::Token>,
-    str_maps: &mut lexer::ByteVecMaps,
+    replacement_list: &mut Vec<Token>,
+    str_maps: &mut ByteVecMaps,
     already_replaced_macros: &mut Vec<(usize, usize)>,
 ) -> Result<(), String> {
     let Some(curr_macro) = macro_stack.pop() else {
@@ -1081,8 +1325,8 @@ fn parse_macro_and_replace(
         let mut token_index = 0;
         while token_index < actual_replacement_list.len() {
             let token = actual_replacement_list[token_index];
-            match token {
-                lexer::Token::IDENT {
+            match token.r#type {
+                TokenType::IDENT {
                     str_map_key: id_key,
                     ..
                 } => {
@@ -1098,23 +1342,32 @@ fn parse_macro_and_replace(
                             p_index += 1;
                         };
                         let argument = if seen_arg_index >= arguments.len() {
-                            Vec::<lexer::Token>::new()
+                            Vec::<Token>::new()
                         } else {
                             arguments[seen_arg_index].clone()
                         };
                         let first_condition = token_index > 0
                             && matches!(
                                 actual_replacement_list.get(token_index - 1),
-                                Some(lexer::Token::PUNCT_HASH { .. })
+                                Some(Token {
+                                    r#type: TokenType::PUNCT_HASH,
+                                    ..
+                                })
                             );
                         let second_condition = token_index > 1
                             && matches!(
                                 actual_replacement_list.get(token_index - 2),
-                                Some(lexer::Token::PUNCT_HASH { .. })
+                                Some(Token {
+                                    r#type: TokenType::PUNCT_HASH,
+                                    ..
+                                })
                             )
                             && matches!(
                                 actual_replacement_list.get(token_index - 1),
-                                Some(lexer::Token::WHITESPACE { .. })
+                                Some(Token {
+                                    r#type: TokenType::WHITESPACE,
+                                    ..
+                                })
                             );
                         if first_condition || second_condition {
                             // stringification of argument token sequence
@@ -1128,12 +1381,14 @@ fn parse_macro_and_replace(
                                 actual_replacement_list.remove(start_remove_index);
                             }
                             for t in argument {
-                                match t {
-                                    lexer::Token::NEWLINE { .. } => {
+                                match t.r#type {
+                                    TokenType::NEWLINE => {
                                         sequence.push(b' ');
                                     }
                                     _ => {
-                                        if let Some(mut bv) = t.to_byte_vec(str_maps) {
+                                        if let Some(mut bv) = t
+                                        .to_byte_vec(str_maps)
+                                        {
                                             if bv.contains(&b'\\') || bv.contains(&b'"') {
                                                 for bv_index in 0..bv.len() {
                                                     if bv[bv_index] == b'\\' || bv[bv_index] == b'"'
@@ -1153,13 +1408,15 @@ fn parse_macro_and_replace(
                             }
                             actual_replacement_list.insert(
                                 start_remove_index,
-                                lexer::Token::StringLiteral {
-                                    str_lit: lexer::StringLiteral {
-                                        prefix_key: None,
-                                        sequence_key: str_maps.add_byte_vec(&sequence),
+                                Token {
+                                    r#type: TokenType::StringLiteral {
+                                        str_lit: StringLiteral {
+                                            prefix_key: None,
+                                            sequence_key: str_maps.add_byte_vec(&sequence),
+                                        },
                                     },
-
-                                    pos_in_src: token_index,
+                                    column: 0,
+                                    line: 0,
                                 },
                             );
                         } else {
@@ -1170,14 +1427,22 @@ fn parse_macro_and_replace(
                                 .filter(|t| {
                                     !matches!(
                                         t,
-                                        lexer::Token::WHITESPACE { .. }
-                                            | lexer::Token::NEWLINE { .. }
+                                        Token {
+                                            r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
+                                            ..
+                                        }
                                     )
                                 })
                                 .count();
                             if count_of_non_whitespace > 0 {
                                 for t in argument {
-                                    if matches!(t, lexer::Token::PUNCT_HASH_HASH { .. }) {
+                                    if matches!(
+                                        t,
+                                        Token {
+                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            ..
+                                        }
+                                    ) {
                                         hash_hash_from_args.push(insert_index);
                                     }
                                     actual_replacement_list.insert(insert_index, t);
@@ -1189,33 +1454,53 @@ fn parse_macro_and_replace(
                                 if (token_index > 1
                                     && matches!(
                                         actual_replacement_list.get(token_index - 2),
-                                        Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                                        Some(Token {
+                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            ..
+                                        })
                                     )
                                     && matches!(
                                         actual_replacement_list.get(token_index - 1),
-                                        Some(lexer::Token::WHITESPACE { .. })
+                                        Some(Token {
+                                            r#type: TokenType::WHITESPACE,
+                                            ..
+                                        })
                                     ))
                                     || (token_index > 0
                                         && matches!(
                                             actual_replacement_list.get(token_index - 1),
-                                            Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                                            Some(Token {
+                                                r#type: TokenType::PUNCT_HASH_HASH,
+                                                ..
+                                            })
                                         ))
                                     || matches!(
                                         actual_replacement_list.get(token_index + 1),
-                                        Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                                        Some(Token {
+                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            ..
+                                        })
                                     )
                                     || (matches!(
                                         actual_replacement_list.get(token_index + 1),
-                                        Some(lexer::Token::WHITESPACE { .. })
+                                        Some(Token {
+                                            r#type: TokenType::WHITESPACE,
+                                            ..
+                                        })
                                     ) && matches!(
                                         actual_replacement_list.get(token_index + 2),
-                                        Some(lexer::Token::PUNCT_HASH_HASH { .. })
+                                        Some(Token {
+                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            ..
+                                        })
                                     ))
                                 {
                                     actual_replacement_list.insert(
                                         insert_index,
-                                        lexer::Token::PLACEMARKER {
-                                            pos_in_src: token_index,
+                                        Token {
+                                            r#type: TokenType::PLACEMARKER,
+                                            column: 0,
+                                            line: 0,
                                         },
                                     );
                                     token_index += 1;
@@ -1233,7 +1518,10 @@ fn parse_macro_and_replace(
     hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list, &hash_hash_from_args);
     let mut placemarker_removal_index = 0;
     while placemarker_removal_index < actual_replacement_list.len() {
-        if let lexer::Token::PLACEMARKER { .. } = actual_replacement_list[placemarker_removal_index]
+        if let Token {
+            r#type: TokenType::PLACEMARKER,
+            ..
+        } = actual_replacement_list[placemarker_removal_index]
         {
             actual_replacement_list.remove(placemarker_removal_index);
             continue;
@@ -1247,7 +1535,7 @@ fn parse_macro_and_replace(
         };
         byte_vec.extend_from_slice(inner_byte_vec.as_slice());
     }
-    let actual_replacement_list = lexer::lexer(byte_vec.as_slice(), true, str_maps)?;
+    let actual_replacement_list = lexer(byte_vec.as_slice(), true, str_maps)?;
     for _ in curr_macro.start..curr_macro.end + 1 {
         replacement_list.remove(curr_macro.start);
     }
@@ -1260,8 +1548,11 @@ fn parse_macro_and_replace(
     // rescanning for further replacement
     let mut moar_macros_index = curr_macro.start;
     'outer: while moar_macros_index < replacement_list.len() {
-        if let Some(lexer::Token::IDENT {
-            str_map_key: key, ..
+        if let Some(Token {
+            r#type: TokenType::IDENT {
+                str_map_key: key, ..
+            },
+            ..
         }) = replacement_list.get(moar_macros_index)
         {
             if defines.contains_key(key) {
@@ -1324,8 +1615,8 @@ fn parse_macro_and_replace(
 // the extended_tokens could have actual tokens that, when combined with the actual tokens in the
 // 'tokens' parameter, become an actual macro function invocation.
 fn parse_function_macro(
-    tokens: &[lexer::Token],
-    extended_tokens: &[lexer::Token],
+    tokens: &[Token],
+    extended_tokens: &[Token],
     start_index: usize,
     defines: &HashMap<usize, Define>,
     // have to pass macro_key in because some macro could expand and have a macro name at the end,
@@ -1333,18 +1624,30 @@ fn parse_function_macro(
     macro_key: usize,
 ) -> Option<Macro> {
     let mut fn_macro_index = start_index;
-    if matches!(tokens.get(fn_macro_index), Some(lexer::Token::IDENT { .. })) {
+    if matches!(
+        tokens.get(fn_macro_index),
+        Some(Token {
+            r#type: TokenType::IDENT { .. },
+            ..
+        })
+    ) {
         fn_macro_index += 1;
     }
     while matches!(
         tokens.get(fn_macro_index),
-        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
+        Some(Token {
+            r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
+            ..
+        })
     ) {
         fn_macro_index += 1;
     }
     if !matches!(
         tokens.get(fn_macro_index),
-        Some(lexer::Token::PUNCT_OPEN_PAR { .. })
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_PAR,
+            ..
+        })
     ) && !matches!(
         extended_tokens.get(
             if !extended_tokens.is_empty() && fn_macro_index >= tokens.len() {
@@ -1353,7 +1656,10 @@ fn parse_function_macro(
                 0
             },
         ),
-        Some(lexer::Token::PUNCT_OPEN_PAR { .. })
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_PAR,
+            ..
+        })
     ) {
         return None;
     }
@@ -1367,12 +1673,7 @@ fn parse_function_macro(
         unreachable!()
     };
     let open_par_index = fn_macro_index;
-    let mut parenth_stack = vec![(
-        lexer::Token::PUNCT_OPEN_PAR {
-            pos_in_src: fn_macro_index,
-        },
-        fn_macro_index,
-    )];
+    let mut parenth_stack = vec![(TokenType::PUNCT_OPEN_PAR, fn_macro_index)];
     fn_macro_index += 1;
     let mut comma_indices = Vec::<usize>::new();
     while !parenth_stack.is_empty()
@@ -1397,22 +1698,17 @@ fn parse_function_macro(
             unreachable!()
         };
         if let Some(t) = ot {
-            match t {
-                lexer::Token::PUNCT_COMMA { .. } => {
+            match t.r#type {
+                TokenType::PUNCT_COMMA => {
                     if comma_indices.len() < parameters.len() {
                         comma_indices.push(fn_macro_index);
                     }
                 }
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src } => {
-                    parenth_stack.push((
-                        lexer::Token::PUNCT_OPEN_PAR {
-                            pos_in_src: *pos_in_src,
-                        },
-                        fn_macro_index,
-                    ));
+                TokenType::PUNCT_OPEN_PAR => {
+                    parenth_stack.push((TokenType::PUNCT_OPEN_PAR, fn_macro_index));
                 }
-                lexer::Token::PUNCT_CLOSE_PAR { .. } => {
-                    if let (lexer::Token::PUNCT_OPEN_PAR { .. }, par_index) =
+                TokenType::PUNCT_CLOSE_PAR => {
+                    if let (TokenType::PUNCT_OPEN_PAR, par_index) =
                         parenth_stack[parenth_stack.len() - 1]
                     {
                         parenth_stack.pop();
@@ -1472,9 +1768,9 @@ fn parse_function_macro(
 //preprocessing file; no other preprocessing tokens are available
 //-- in isolation basically
 fn expand_arguments(
-    argument: &mut Vec<lexer::Token>,
+    argument: &mut Vec<Token>,
     defines: &HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<(), String> {
     let mut already_replaced_macros = Vec::<(usize, usize)>::new();
     let mut current_depth = 1;
@@ -1482,8 +1778,12 @@ fn expand_arguments(
         let mut moar_macros_index = 0;
         let mut macro_stack = Vec::<Macro>::new();
         'outer: while moar_macros_index < argument.len() {
-            if let Some(lexer::Token::IDENT {
-                str_map_key: key, ..
+            if let Some(Token {
+                r#type:
+                    TokenType::IDENT {
+                        str_map_key: key, ..
+                    },
+                ..
             }) = argument.get(moar_macros_index)
             {
                 if defines.contains_key(key) {
@@ -1545,24 +1845,24 @@ fn expand_arguments(
     Ok(())
 }
 fn expand_macro(
-    tokens: &[lexer::Token],
-    index: usize,
+    tokens: &[Token],
+    index: &mut usize,
     defines: &HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-    final_tokens: &mut Vec<lexer::Token>,
-) -> Result<usize, String> {
-    let mut accumulated_replacements = Vec::<lexer::Token>::new();
-    let mut current_token = tokens[index];
+    str_maps: &mut ByteVecMaps,
+    final_tokens: &mut Vec<Token>,
+) -> Result<(), String> {
+    let mut accumulated_replacements = Vec::<Token>::new();
+    let mut current_token = tokens[*index];
     let mut macro_index = index;
     // vector of (macro_key, depth)
     let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
     let mut rechecking = false;
     let mut rechecking_idx = 0;
     'recheck: loop {
-        let lexer::Token::IDENT {
+        let TokenType::IDENT {
             str_map_key: macro_id_key,
             ..
-        } = current_token
+        } = current_token.r#type
         else {
             unreachable!("{:?}", current_token)
         };
@@ -1571,11 +1871,11 @@ fn expand_macro(
         };
         let mut first_macro = if def_data.parameters.is_some() || def_data.var_arg {
             let parsed = if !rechecking {
-                parse_function_macro(tokens, &[], macro_index, defines, macro_id_key)
+                parse_function_macro(tokens, &[], *macro_index, defines, macro_id_key)
             } else {
                 parse_function_macro(
                     &accumulated_replacements,
-                    &tokens[macro_index..],
+                    &tokens[*macro_index..],
                     rechecking_idx,
                     defines,
                     macro_id_key,
@@ -1595,16 +1895,16 @@ fn expand_macro(
                 m
             } else {
                 if !rechecking {
-                    accumulated_replacements.push(tokens[macro_index]);
-                    macro_index += 1;
+                    accumulated_replacements.push(tokens[*macro_index]);
+                    *macro_index += 1;
                 }
                 break 'recheck;
             }
         } else {
             Macro {
                 macro_key: macro_id_key,
-                start: macro_index,
-                end: macro_index,
+                start: *macro_index,
+                end: *macro_index,
                 depth: 1,
                 arguments: None,
             }
@@ -1615,8 +1915,8 @@ fn expand_macro(
             let mut first_part = accumulated_replacements[first_macro.start..].to_vec();
             let length_of_macro = first_macro.end + 1 - first_macro.start;
             first_part.extend_from_slice(
-                &tokens[macro_index
-                    ..macro_index + length_of_macro
+                &tokens[*macro_index
+                    ..*macro_index + length_of_macro
                         - (accumulated_replacements.len() - first_macro.start)],
             );
             accumulated_replacements.truncate(rechecking_idx);
@@ -1627,9 +1927,9 @@ fn expand_macro(
         // THE MACRO INVOCATION IS IN 'tokens', 'macro_index' is only ever used to index 'tokens'
         // so macro_index shouldn't be changed if first_macro.end + 1 is less than macro_index
         if !rechecking {
-            macro_index = first_macro.end + 1;
+            *macro_index = first_macro.end + 1;
         } else {
-            macro_index = macro_index
+            *macro_index = *macro_index
                 + (first_macro.end - (accumulated_replacements.len() - first_macro.start))
                 + 1;
         }
@@ -1653,8 +1953,12 @@ fn expand_macro(
         // the replacement but in tokens like 'f(2)(9)' -> '2*g'. g is fn like macro where the
         // invocation is (9) but 2*g is in final_tokens and (9) is in tokens.
         'outer: for rescan_idx in 0..original_macro.len() {
-            if let Some(lexer::Token::IDENT {
-                str_map_key: key, ..
+            if let Some(Token {
+                r#type:
+                    TokenType::IDENT {
+                        str_map_key: key, ..
+                    },
+                ..
             }) = original_macro.get(rescan_idx)
             {
                 if defines.contains_key(key) {
@@ -1683,14 +1987,14 @@ fn expand_macro(
         break 'recheck;
     }
     final_tokens.extend_from_slice(&accumulated_replacements);
-    Ok(macro_index)
+    Ok(())
 }
 fn preprocessing_directives(
-    tokens: &mut Vec<lexer::Token>,
+    tokens: &mut Vec<Token>,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<(), String> {
     // the C standard talks about "grouping" where the operands are grouped with the operators
     //
@@ -1702,78 +2006,65 @@ fn preprocessing_directives(
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
     let mut index: usize = 0;
+    let mut preceded_only_by_whitespace_nothing_or_newline: bool = true;
     let mut final_tokens = Vec::new();
     while index < tokens.len() {
-        match &tokens[index] {
-            lexer::Token::PUNCT_HASH { .. } => {
-                let mut index_copy = index;
-                let preceded_only_by_whitespace_nothing_or_newline = loop {
-                    if index_copy > 0 {
-                        index_copy -= 1;
-                    } else {
-                        break true;
-                    }
-                    match tokens[index_copy] {
-                        lexer::Token::WHITESPACE { .. } => {}
-                        lexer::Token::NEWLINE { .. } => {
-                            break true;
+        match &tokens[index].r#type {
+            TokenType::WHITESPACE => {}
+            TokenType::NEWLINE => {
+                preceded_only_by_whitespace_nothing_or_newline = true;
+            }
+            TokenType::PUNCT_HASH if preceded_only_by_whitespace_nothing_or_newline => {
+                if let Some(Token {
+                    r#type: TokenType::IDENT { str_map_key: s, .. },
+                    ..
+                }) = tokens.get(index)
+                {
+                    match str_maps.key_to_byte_vec[*s].as_slice() {
+                        b"include" => {
+                            include_directive(
+                                tokens,
+                                &mut index,
+                                curr_path,
+                                include_paths,
+                                defines,
+                                str_maps,
+                                &mut final_tokens,
+                            )?;
                         }
-                        _ => break false,
-                    }
-                };
-                if preceded_only_by_whitespace_nothing_or_newline {
-                    let mut index_of_directive = index + 1;
-                    if let Some(lexer::Token::WHITESPACE { .. }) = tokens.get(index_of_directive) {
-                        index_of_directive += 1;
-                    }
-                    if let Some(lexer::Token::IDENT { str_map_key: s, .. }) =
-                        tokens.get(index_of_directive)
-                    {
-                        match str_maps.key_to_byte_vec[*s].as_slice() {
-                            b"include" => {
-                                index = include_directive(
-                                    tokens,
-                                    index,
-                                    curr_path,
-                                    include_paths,
-                                    defines,
-                                    str_maps,
-                                    &mut final_tokens,
-                                )?;
-                            }
-                            b"if" | b"ifdef" | b"ifndef" => {
-                                if_directive(tokens, index, defines, str_maps)?;
-                            }
-                            b"define" => {
-                                index = define_directive(tokens, index, defines, str_maps)?;
-                            }
-                            b"undef" => {
-                                index = undef_directive(tokens, index, defines, str_maps)?;
-                            }
-                            b"endif" => {
-                                return Err(format!("missing if directive for endif directive"));
-                            }
-                            b"error" => todo!(),
-                            b"line" => todo!(),
-                            b"pragma" => todo!(),
-                            b"\n" => {
-                                index += 1;
-                            }
-                            _ => return Err(format!("unknown preprocessing directive: {}", s)),
+                        b"if" | b"ifdef" | b"ifndef" => {
+                            if_directive(tokens, &mut index, defines, str_maps)?;
                         }
+                        b"define" => {
+                            define_directive(tokens, &mut index, defines, str_maps)?;
+                        }
+                        b"undef" => {
+                            undef_directive(tokens, &mut index, defines, str_maps)?;
+                        }
+                        b"endif" => {
+                            return Err(format!("missing if directive for endif directive"));
+                        }
+                        b"error" => todo!(),
+                        b"line" => todo!(),
+                        b"pragma" => todo!(),
+                        b"\n" => {
+                            index += 1;
+                        }
+                        _ => return Err(format!("unknown preprocessing directive: {}", s)),
                     }
-                    continue;
                 }
             }
-            lexer::Token::IDENT {
+            TokenType::IDENT {
                 str_map_key: key, ..
             } => {
-                if defines.contains_key(key) {
-                    index = expand_macro(tokens, index, defines, str_maps, &mut final_tokens)?;
+                if defines.contains_key(&key) {
+                    expand_macro(tokens, &mut index, defines, str_maps, &mut final_tokens)?;
                     continue;
                 }
             }
-            _ => {}
+            _ => {
+                preceded_only_by_whitespace_nothing_or_newline = false;
+            }
         }
         if index < tokens.len() {
             final_tokens.push(tokens[index]);
@@ -1786,20 +2077,15 @@ fn preprocessing_directives(
     }
     Err(String::from("unable to preprocess"))
 }
-pub fn output_tokens_stdout(tokens: &[lexer::Token], str_maps: &lexer::ByteVecMaps) {
-    print!(
-        "{}",
-        String::from_utf8(
-            tokens
-                .iter()
-                .map(|t| t.to_byte_vec(str_maps).unwrap())
-                .fold(Vec::new(), |mut a: Vec<u8>, e| {
-                    a.extend_from_slice(&e);
-                    a
-                })
-        )
-        .unwrap()
-    );
+pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {
+    let vec_bytes = tokens
+        .iter()
+        .map(|t| t.to_byte_vec(str_maps).unwrap())
+        .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
+            a.extend_from_slice(&e);
+            a
+        });
+    print!("{}", String::from_utf8(vec_bytes).unwrap());
 }
 // TODO: add flag options so that the user could specify if they wanted to only preprocess
 // TODO: implement some kind of warning system
@@ -1808,8 +2094,8 @@ pub fn cpp(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Vec<lexer::Token>, String> {
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<Token>, String> {
     // trigraphs (part of step 1 in the translation phase)
     let mut trigraphs_processed = Vec::new();
     for index in 0..program_str.len() {
@@ -1874,7 +2160,7 @@ pub fn cpp(
     }
     // step 3 in the translation phase
     let comments_removed = comments(backslash_newline_spliced.as_slice())?;
-    let mut lexed_tokens = lexer::lexer(&comments_removed, true, str_maps)?;
+    let mut lexed_tokens = lexer(&comments_removed, true, str_maps)?;
     // step 4 in the translation phase
     preprocessing_directives(
         &mut lexed_tokens,
@@ -1945,8 +2231,8 @@ int main() {
 }"##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let _final_tokens = Vec::<lexer::Token>::new();
+            let mut str_maps = ByteVecMaps::new();
+            let _final_tokens = Vec::<TokenType>::new();
             let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
@@ -1955,21 +2241,21 @@ int main() {
                 &mut str_maps,
             )?;
             let assert_tokens = [
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("int".as_bytes()),
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::IDENT {
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::IDENT {
                     pos_in_src: 1,
                     str_map_key: str_maps.add_byte_vec("main".as_bytes()),
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
-                lexer::Token::WHITESPACE { pos_in_src: 4 },
-                lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 5 },
-                lexer::Token::NEWLINE { pos_in_src: 6 },
-                lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::WHITESPACE { pos_in_src: 4 },
+                TokenType::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                TokenType::NEWLINE { pos_in_src: 6 },
+                TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -1981,8 +2267,8 @@ int main() {
 }"##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let _final_tokens = Vec::<lexer::Token>::new();
+            let mut str_maps = ByteVecMaps::new();
+            let _final_tokens = Vec::<TokenType>::new();
             let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
@@ -1991,21 +2277,21 @@ int main() {
                 &mut str_maps,
             )?;
             let assert_tokens = [
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("int".as_bytes()),
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::IDENT {
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::IDENT {
                     pos_in_src: 1,
                     str_map_key: str_maps.add_byte_vec("main".as_bytes()),
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
-                lexer::Token::WHITESPACE { pos_in_src: 4 },
-                lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 5 },
-                lexer::Token::NEWLINE { pos_in_src: 6 },
-                lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::WHITESPACE { pos_in_src: 4 },
+                TokenType::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                TokenType::NEWLINE { pos_in_src: 6 },
+                TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -2020,8 +2306,8 @@ hi;
 }"##
         .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         preprocessing_directives(
             &mut tokens,
             "./test_c_files/hi2.h",
@@ -2030,28 +2316,28 @@ hi;
             &mut str_maps,
         )?;
         let assert_tokens = vec![
-            lexer::Token::IDENT {
+            TokenType::IDENT {
                 str_map_key: 2,
                 pos_in_src: 0,
             },
-            lexer::Token::WHITESPACE { pos_in_src: 1 },
-            lexer::Token::IDENT {
+            TokenType::WHITESPACE { pos_in_src: 1 },
+            TokenType::IDENT {
                 str_map_key: 3,
                 pos_in_src: 2,
             },
-            lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
-            lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 4 },
-            lexer::Token::WHITESPACE { pos_in_src: 5 },
-            lexer::Token::PUNCT_OPEN_CURLY { pos_in_src: 6 },
-            lexer::Token::NEWLINE { pos_in_src: 7 },
-            lexer::Token::CONSTANT_DEC_INT {
+            TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+            TokenType::PUNCT_CLOSE_PAR { pos_in_src: 4 },
+            TokenType::WHITESPACE { pos_in_src: 5 },
+            TokenType::PUNCT_OPEN_CURLY { pos_in_src: 6 },
+            TokenType::NEWLINE { pos_in_src: 7 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: 6,
                 suffix: None,
                 pos_in_src: 8,
             },
-            lexer::Token::PUNCT_SEMI_COLON { pos_in_src: 9 },
-            lexer::Token::NEWLINE { pos_in_src: 10 },
-            lexer::Token::PUNCT_CLOSE_CURLY { pos_in_src: 11 },
+            TokenType::PUNCT_SEMI_COLON { pos_in_src: 9 },
+            TokenType::NEWLINE { pos_in_src: 10 },
+            TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 11 },
         ];
         assert_eq!(assert_tokens, tokens);
         Ok(())
@@ -2062,8 +2348,8 @@ hi;
 HI(5 5);"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         expand_macro(
@@ -2074,8 +2360,8 @@ HI(5 5);"##
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral {
-                str_lit: lexer::StringLiteral {
+            vec![TokenType::StringLiteral {
+                str_lit: StringLiteral {
                     prefix_key: None,
                     sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
                 },
@@ -2092,8 +2378,8 @@ HI(5 5);"##
 #define in_between(a) mkstr(a)
 #define join(c, d) in_between(c hash_hash d)
 char p[] = join(x, y);"##;
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         let index = 0;
         let mut defines = HashMap::new();
@@ -2103,9 +2389,9 @@ char p[] = join(x, y);"##;
         let mut new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         while new_index < tokens.len() {
             if let Some(
-                [lexer::Token::IDENT {
+                [TokenType::IDENT {
                     str_map_key: first, ..
-                }, lexer::Token::PUNCT_OPEN_PAR { .. }, lexer::Token::IDENT {
+                }, TokenType::PUNCT_OPEN_PAR { .. }, TokenType::IDENT {
                     str_map_key: second,
                     ..
                 }],
@@ -2127,8 +2413,8 @@ char p[] = join(x, y);"##;
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::StringLiteral {
-                str_lit: lexer::StringLiteral {
+            vec![TokenType::StringLiteral {
+                str_lit: StringLiteral {
                     prefix_key: None,
                     sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
                 },
@@ -2145,20 +2431,20 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
 "##
         .as_bytes()
         .to_vec();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut defines = HashMap::new();
         let tokens = cpp(src, "", &["./test_c_files"], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
-                lexer::Token::StringLiteral {
-                    str_lit: lexer::StringLiteral {
+                TokenType::StringLiteral {
+                    str_lit: StringLiteral {
                         prefix_key: None,
                         sequence_key: str_maps.add_byte_vec(" hello world".as_bytes())
                     },
                     pos_in_src: 0
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::NEWLINE { pos_in_src: 2 }
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::NEWLINE { pos_in_src: 2 }
             ],
             tokens
         );
@@ -2166,15 +2452,15 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
     }
     #[test]
     fn test_define_directive() -> Result<(), String> {
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let src = "#define hash_hash # ## #\n";
         let src2 = "#define mkstr(a) # a\n";
         let src3 = "#define in_between(a) mkstr(a)\n";
         let src4 = "#define join(c, d) in_between(c hash_hash d)\n";
-        let mut tokens = lexer::lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens2 = lexer::lexer(&src2.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens3 = lexer::lexer(&src3.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens4 = lexer::lexer(&src4.as_bytes().to_vec(), true, &mut str_maps)?;
+        let mut tokens = lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
+        let mut tokens2 = lexer(&src2.as_bytes().to_vec(), true, &mut str_maps)?;
+        let mut tokens3 = lexer(&src3.as_bytes().to_vec(), true, &mut str_maps)?;
+        let mut tokens4 = lexer(&src4.as_bytes().to_vec(), true, &mut str_maps)?;
         let mut defines = HashMap::new();
         define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         define_directive(&mut tokens2, 0, &mut defines, &mut str_maps)?;
@@ -2190,11 +2476,11 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: None,
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::PUNCT_HASH { pos_in_src: 0 },
-                    lexer::Token::WHITESPACE { pos_in_src: 1 },
-                    lexer::Token::PUNCT_HASH_HASH { pos_in_src: 2 },
-                    lexer::Token::WHITESPACE { pos_in_src: 3 },
-                    lexer::Token::PUNCT_HASH { pos_in_src: 4 },
+                    TokenType::PUNCT_HASH { pos_in_src: 0 },
+                    TokenType::WHITESPACE { pos_in_src: 1 },
+                    TokenType::PUNCT_HASH_HASH { pos_in_src: 2 },
+                    TokenType::WHITESPACE { pos_in_src: 3 },
+                    TokenType::PUNCT_HASH { pos_in_src: 4 },
                 ]
             },
             *defines
@@ -2206,9 +2492,9 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::PUNCT_HASH { pos_in_src: 0 },
-                    lexer::Token::WHITESPACE { pos_in_src: 1 },
-                    lexer::Token::IDENT {
+                    TokenType::PUNCT_HASH { pos_in_src: 0 },
+                    TokenType::WHITESPACE { pos_in_src: 1 },
+                    TokenType::IDENT {
                         str_map_key: str_maps.add_byte_vec("a".as_bytes()),
                         pos_in_src: 2
                     },
@@ -2223,16 +2509,16 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::IDENT {
+                    TokenType::IDENT {
                         pos_in_src: 0,
                         str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
                     },
-                    lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
-                    lexer::Token::IDENT {
+                    TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    TokenType::IDENT {
                         pos_in_src: 2,
                         str_map_key: str_maps.add_byte_vec("a".as_bytes())
                     },
-                    lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                    TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
                 ]
             },
             *defines
@@ -2247,26 +2533,26 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 ]),
                 var_arg: false,
                 replacement_list: vec![
-                    lexer::Token::IDENT {
+                    TokenType::IDENT {
                         pos_in_src: 0,
                         str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
                     },
-                    lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
-                    lexer::Token::IDENT {
+                    TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    TokenType::IDENT {
                         pos_in_src: 1,
                         str_map_key: str_maps.add_byte_vec("c".as_bytes())
                     },
-                    lexer::Token::WHITESPACE { pos_in_src: 2 },
-                    lexer::Token::IDENT {
+                    TokenType::WHITESPACE { pos_in_src: 2 },
+                    TokenType::IDENT {
                         pos_in_src: 3,
                         str_map_key: str_maps.add_byte_vec("hash_hash".as_bytes())
                     },
-                    lexer::Token::WHITESPACE { pos_in_src: 4 },
-                    lexer::Token::IDENT {
+                    TokenType::WHITESPACE { pos_in_src: 4 },
+                    TokenType::IDENT {
                         pos_in_src: 5,
                         str_map_key: str_maps.add_byte_vec("d".as_bytes())
                     },
-                    lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 6 },
+                    TokenType::PUNCT_CLOSE_PAR { pos_in_src: 6 },
                 ]
             },
             *defines
@@ -2282,8 +2568,8 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
 A"##
         .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(src, true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(src, true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -2295,7 +2581,7 @@ A"##
             &mut final_tokens,
         )?;
         assert_eq!(
-            vec![lexer::Token::CONSTANT_DEC_INT {
+            vec![TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix: None,
                 pos_in_src: 0
@@ -2311,8 +2597,8 @@ A"##
 A"##
         .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -2325,19 +2611,19 @@ A"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 0,
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("5".as_bytes()),
                     suffix: None,
                     pos_in_src: 2,
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("6".as_bytes()),
                     suffix: None,
                     pos_in_src: 3
@@ -2353,8 +2639,8 @@ A"##
 HI((,),(,))"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         expand_macro(
@@ -2366,13 +2652,13 @@ HI((,),(,))"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 0 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 1 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 2 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 3 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 4 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 5 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 6 },
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 0 },
+                TokenType::PUNCT_COMMA { pos_in_src: 1 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 2 },
+                TokenType::PUNCT_COMMA { pos_in_src: 3 },
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 4 },
+                TokenType::PUNCT_COMMA { pos_in_src: 5 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 6 },
             ],
             final_tokens
         );
@@ -2384,8 +2670,8 @@ HI((,),(,))"##
 HEHE(HEHE(1,2),HEHE(3,4))"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         expand_macro(
@@ -2397,50 +2683,50 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
-                lexer::Token::IDENT {
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                TokenType::IDENT {
                     pos_in_src: 2,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 5 },
-                lexer::Token::WHITESPACE { pos_in_src: 6 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_COMMA { pos_in_src: 5 },
+                TokenType::WHITESPACE { pos_in_src: 6 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None,
                     pos_in_src: 7
                 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 8 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 9 },
-                lexer::Token::WHITESPACE { pos_in_src: 10 },
-                lexer::Token::IDENT {
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 8 },
+                TokenType::PUNCT_COMMA { pos_in_src: 9 },
+                TokenType::WHITESPACE { pos_in_src: 10 },
+                TokenType::IDENT {
                     pos_in_src: 11,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 12 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 12 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix: None,
                     pos_in_src: 13
                 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 14 },
-                lexer::Token::WHITESPACE { pos_in_src: 15 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_COMMA { pos_in_src: 14 },
+                TokenType::WHITESPACE { pos_in_src: 15 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 16
                 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 17 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 18 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 17 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 18 },
             ],
             final_tokens
         );
@@ -2452,8 +2738,8 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
 HEHE(HEHE(1,2),HEHE(3,4))"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         expand_macro(
@@ -2465,25 +2751,25 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix: None,
                     pos_in_src: 0
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None,
                     pos_in_src: 2
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 5 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 5 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 6
@@ -2500,8 +2786,8 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
 HAHA(C,4)"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -2514,11 +2800,11 @@ HAHA(C,4)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_COMMA { pos_in_src: 0 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::PUNCT_PLUS { pos_in_src: 2 },
-                lexer::Token::WHITESPACE { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_COMMA { pos_in_src: 0 },
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::PUNCT_PLUS { pos_in_src: 2 },
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
@@ -2535,8 +2821,8 @@ HAHA(C,4)"##
 f(2)(9)"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -2549,23 +2835,23 @@ f(2)(9)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None,
                     pos_in_src: 0
                 },
-                lexer::Token::PUNCT_MULT { pos_in_src: 1 },
-                lexer::Token::IDENT {
+                TokenType::PUNCT_MULT { pos_in_src: 1 },
+                TokenType::IDENT {
                     pos_in_src: 2,
                     str_map_key: str_maps.add_byte_vec("f".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("9".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 5 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -2578,8 +2864,8 @@ f(2)(9)"##
 INVOKE(FOO,BAR)"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
@@ -2592,27 +2878,27 @@ INVOKE(FOO,BAR)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("printf".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
-                lexer::Token::StringLiteral {
-                    str_lit: lexer::StringLiteral {
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                TokenType::StringLiteral {
+                    str_lit: StringLiteral {
                         prefix_key: None,
                         sequence_key: str_maps.add_byte_vec("FOO".as_bytes())
                     },
                     pos_in_src: 2
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 3 },
-                lexer::Token::StringLiteral {
-                    str_lit: lexer::StringLiteral {
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::StringLiteral {
+                    str_lit: StringLiteral {
                         prefix_key: None,
                         sequence_key: str_maps.add_byte_vec(" BAR".as_bytes())
                     },
                     pos_in_src: 4
                 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 5 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -2624,8 +2910,8 @@ INVOKE(FOO,BAR)"##
 CHICKEN(1 2,3 4)"##
             .as_bytes();
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let mut final_tokens = Vec::new();
         expand_macro(
@@ -2637,25 +2923,25 @@ CHICKEN(1 2,3 4)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix: None,
                     pos_in_src: 0
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None,
                     pos_in_src: 2
                 },
-                lexer::Token::PUNCT_COMMA { pos_in_src: 3 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::PUNCT_COMMA { pos_in_src: 3 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 5 },
-                lexer::Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 5 },
+                TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 6
@@ -2671,9 +2957,9 @@ CHICKEN(1 2,3 4)"##
 #define PP2(a, b) a/**/b
 PP(/,*)PP2(*,/)"##
             .as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let src = comments(src)?;
-        let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let mut defines = HashMap::new();
         let new_index = define_directive(&mut tokens, 0, &mut defines, &mut str_maps)?;
         let new_index = define_directive(&mut tokens, new_index, &mut defines, &mut str_maps)?;
@@ -2694,11 +2980,11 @@ PP(/,*)PP2(*,/)"##
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_DIV { pos_in_src: 0 },
-                lexer::Token::PUNCT_MULT { pos_in_src: 1 },
-                lexer::Token::PUNCT_MULT { pos_in_src: 2 },
-                lexer::Token::WHITESPACE { pos_in_src: 3 },
-                lexer::Token::PUNCT_DIV { pos_in_src: 4 },
+                TokenType::PUNCT_DIV { pos_in_src: 0 },
+                TokenType::PUNCT_MULT { pos_in_src: 1 },
+                TokenType::PUNCT_MULT { pos_in_src: 2 },
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::PUNCT_DIV { pos_in_src: 4 },
             ],
             final_tokens
         );
@@ -2708,9 +2994,9 @@ PP(/,*)PP2(*,/)"##
     fn eval_expression_test_defined() -> Result<(), String> {
         let src = r##"defined(HI)"##.as_bytes();
         let defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut final_tokens = Vec::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         parse_defined_in_if_directive(
             tokens.as_slice(),
             0,
@@ -2725,9 +3011,9 @@ PP(/,*)PP2(*,/)"##
         assert_eq!(res != 0, false, "failed 1");
         let src = r##"defined HI "##.as_bytes();
         let defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut final_tokens = Vec::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         parse_defined_in_if_directive(
             tokens.as_slice(),
             0,
@@ -2751,18 +3037,18 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
 
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
                         suffix: None,
                         pos_in_src: 0,
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 1 inner test"
@@ -2775,15 +3061,15 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
             assert_eq!(
                 tokens
                     .iter()
                     .filter(|t| !matches!(
                         t,
-                        lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }
+                        TokenType::WHITESPACE { .. } | TokenType::NEWLINE { .. }
                     ))
                     .count(),
                 0,
@@ -2797,18 +3083,18 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
 
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 3 inner test"
@@ -2821,15 +3107,15 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
             assert_eq!(
                 tokens
                     .iter()
                     .filter(|t| !matches!(
                         t,
-                        lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }
+                        TokenType::WHITESPACE { .. } | TokenType::NEWLINE { .. }
                     ))
                     .count(),
                 0,
@@ -2843,18 +3129,18 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
 
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed for 5 inner test"
@@ -2869,17 +3155,17 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let mut tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             if_directive(&mut tokens, 0, &defines, &mut str_maps)?;
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 6"
@@ -2895,7 +3181,7 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let tokens = cpp(
                 src.to_vec(),
                 "",
@@ -2905,12 +3191,12 @@ PP(/,*)PP2(*,/)"##
             )?;
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 7"
@@ -2926,7 +3212,7 @@ PP(/,*)PP2(*,/)"##
         "##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let tokens = cpp(
                 src.to_vec(),
                 "",
@@ -2936,12 +3222,12 @@ PP(/,*)PP2(*,/)"##
             )?;
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
                         suffix: None,
                         pos_in_src: 0,
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 8"
@@ -2956,7 +3242,7 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let tokens = cpp(
                 src.to_vec(),
                 "",
@@ -2966,12 +3252,12 @@ PP(/,*)PP2(*,/)"##
             )?;
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 9"
@@ -2987,7 +3273,7 @@ PP(/,*)PP2(*,/)"##
 "##
             .as_bytes();
             let mut defines = HashMap::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let tokens = cpp(
                 src.to_vec(),
                 "",
@@ -2997,12 +3283,12 @@ PP(/,*)PP2(*,/)"##
             )?;
             assert_eq!(
                 vec![
-                    lexer::Token::CONSTANT_DEC_INT {
+                    TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
                         suffix: None,
                         pos_in_src: 0
                     },
-                    lexer::Token::NEWLINE { pos_in_src: 1 },
+                    TokenType::NEWLINE { pos_in_src: 1 },
                 ],
                 tokens[0..2].to_vec(),
                 "failed 10"
@@ -3016,7 +3302,7 @@ PP(/,*)PP2(*,/)"##
 #define PP ()
 COMMA PP"##;
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(
             src.as_bytes().to_vec(),
             "",
@@ -3026,13 +3312,13 @@ COMMA PP"##;
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("COMMA".as_bytes())
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 1 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
             ],
             tokens,
         );
@@ -3046,7 +3332,7 @@ COMMA PP"##;
 #define GET_SECOND(a,...)GET_SECOND_(a,__VA_ARGS__,)
 GET_SECOND(COMMA PP,T)"##;
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(
             src.as_bytes().to_vec(),
             "",
@@ -3056,8 +3342,8 @@ GET_SECOND(COMMA PP,T)"##;
         )?;
         assert_eq!(
             vec![
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 0 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 1 }
+                TokenType::PUNCT_OPEN_PAR { pos_in_src: 0 },
+                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 1 }
             ],
             tokens,
         );
@@ -3072,7 +3358,7 @@ f(f))"##;
         //h(f)
         //f()
         let mut defines = HashMap::new();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(
             src.as_bytes().to_vec(),
             "",
@@ -3082,12 +3368,12 @@ f(f))"##;
         )?;
         assert_eq!(
             vec![
-                lexer::Token::IDENT {
+                TokenType::IDENT {
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("f".as_bytes())
                 },
-                lexer::Token::PUNCT_OPEN_PAR { pos_in_src: 1 },
-                lexer::Token::PUNCT_CLOSE_PAR { pos_in_src: 2 }
+                TokenType::PUNCT_OPEN_PAR,
+                TokenType::PUNCT_CLOSE_PAR
             ],
             tokens,
         );

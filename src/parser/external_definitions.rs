@@ -1,27 +1,27 @@
 use crate::lexer;
+use crate::lexer::Token;
+use crate::lexer::TokenType;
 use crate::parser;
+use crate::parser::consume_whitespace;
+use crate::parser::declarations::parse_declaration_specifiers;
+use crate::parser::declarations::parse_declarations;
+use crate::parser::declarations::parse_declarator;
+use crate::parser::statements::expected_token;
+use crate::parser::statements::parse_compound_statement;
 pub type TranslationUnit = Vec<ExternalDeclaration>;
 pub fn parse_translation_units(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(TranslationUnit, usize), String> {
-    let mut translation_unit_idx = start_index;
+) -> Result<TranslationUnit, String> {
     let mut translation_units = Vec::new();
-    while translation_unit_idx < tokens.len() {
-        let (external_declaration, new_index) =
-            parse_external_declarations(tokens, translation_unit_idx, flattened, str_maps)?;
+    while *index < tokens.len() {
+        let external_declaration = parse_external_declarations(tokens, index, flattened, str_maps)?;
         translation_units.push(external_declaration);
-        translation_unit_idx = new_index;
-        while matches!(
-            tokens.get(translation_unit_idx),
-            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-        ) {
-            translation_unit_idx += 1;
-        }
+        consume_whitespace(tokens, index);
     }
-    Ok((translation_units, translation_unit_idx))
+    Ok(translation_units)
 }
 pub enum ExternalDeclaration {
     FunctionDef {
@@ -34,98 +34,54 @@ pub enum ExternalDeclaration {
 }
 pub fn parse_external_declarations(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(ExternalDeclaration, usize), String> {
-    let mut external_declaration_idx = start_index;
-    let (declaration_specifier, new_index) = parser::declarations::parse_declaration_specifiers(
-        tokens,
-        external_declaration_idx,
-        flattened,
-        str_maps,
-    )?;
-    external_declaration_idx = new_index;
-    while matches!(
-        tokens.get(external_declaration_idx),
-        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-    ) {
-        external_declaration_idx += 1;
-    }
-    let (new_index, declarator) = parser::declarations::parse_declarator(
-        tokens,
-        external_declaration_idx,
-        flattened,
-        str_maps,
-    )?;
-    external_declaration_idx = new_index;
-    while matches!(
-        tokens.get(external_declaration_idx),
-        Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-    ) {
-        external_declaration_idx += 1;
-    }
-    let Some(t) = tokens.get(external_declaration_idx) else {
+) -> Result<ExternalDeclaration, String> {
+    let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    let Some(t) = tokens.get(*index) else {
         return Err("Unexpected end of tokens".to_string());
     };
     if parser::declarations::is_declaration_token(*t)
-        || matches!(*t, lexer::Token::PUNCT_OPEN_CURLY { .. })
+        || matches!(
+            *t,
+            Token {
+                r#type: TokenType::PUNCT_OPEN_CURLY,
+                ..
+            }
+        )
     {
         let mut declaration_list = Vec::new();
         while !matches!(
-            tokens.get(external_declaration_idx),
-            Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) | None
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::PUNCT_OPEN_CURLY,
+                ..
+            }) | None
         ) {
-            let (declaration, new_index) = parser::declarations::parse_declarations(
-                tokens,
-                external_declaration_idx,
-                flattened,
-                str_maps,
-            )?;
+            let declaration = parse_declarations(tokens, index, flattened, str_maps)?;
             declaration_list.push(declaration);
-            external_declaration_idx = new_index;
-            while matches!(
-                tokens.get(external_declaration_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                external_declaration_idx += 1;
-            }
+            consume_whitespace(tokens, index);
         }
-        if matches!(
-            tokens.get(external_declaration_idx),
-            Some(lexer::Token::PUNCT_OPEN_CURLY { .. })
-        ) {
-            let (compound, new_index) = parser::statements::parse_compound_statement(
-                tokens,
-                external_declaration_idx,
-                flattened,
-                str_maps,
-            )?;
-            external_declaration_idx = new_index;
-            Ok((
-                ExternalDeclaration::FunctionDef {
-                    declaration_specifier,
-                    declarator,
-                    declaration_list: if !declaration_list.is_empty() {
-                        Some(declaration_list)
-                    } else {
-                        None
-                    },
-                    compound_statement: compound,
-                },
-                external_declaration_idx,
-            ))
-        } else {
-            return Err("Expected {".to_string());
-        }
+        expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_CURLY)?;
+        let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
+        expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_CURLY)?;
+        Ok(ExternalDeclaration::FunctionDef {
+            declaration_specifier,
+            declarator,
+            declaration_list: if !declaration_list.is_empty() {
+                Some(declaration_list)
+            } else {
+                None
+            },
+            compound_statement: compound,
+        })
     } else {
-        let (declaration, new_index) =
-            parser::declarations::parse_declarations(tokens, start_index, flattened, str_maps)?;
-        external_declaration_idx = new_index;
-        Ok((
-            ExternalDeclaration::Declaration(declaration),
-            external_declaration_idx,
-        ))
+        let declaration = parse_declarations(tokens, index, flattened, str_maps)?;
+        Ok(ExternalDeclaration::Declaration(declaration))
     }
 }
 

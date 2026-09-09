@@ -1,3 +1,18 @@
 rewrite Token enum to be a struct with TokenType to reduce the amount of code for types, also add line property to Token struct so error msgs are more clean.
 
 make all tests pass
+
+reduce and clean up code ( good god what the fuck did i write back then )
+
+rewrite parsing logic, there's a lot of repeated code that could be put inside functions
+(especially how i deal with whitespace)
+
+a lot of logic dealing with parentheses is just messy. also i implemented the logic
+for parsing balanced parentheses with the wrong assumption that i could just add 1 or subtract 1
+to determine if things are balanced; obviously this does not work; eg: ))((
+
+the way I parsed expressions previously might have required knowing how long the expression length is...
+questionable thoughts on my past self
+
+change token location properties to be an optional tuple bc some tokens get inserted and
+arent from the source

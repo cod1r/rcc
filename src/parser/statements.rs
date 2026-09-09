@@ -1,6 +1,12 @@
 use crate::error;
 use crate::lexer;
+use crate::lexer::ByteVecMaps;
+use crate::lexer::Token;
+use crate::lexer::TokenType;
 use crate::parser;
+use crate::parser::consume_whitespace;
+use crate::parser::declarations::*;
+use crate::parser::expressions::parse_expressions;
 
 pub type StatementIndex = usize;
 pub type LabelIndex = usize;
@@ -85,663 +91,347 @@ pub enum Statement {
     Iteration(IterationIndex),
     Jump(JumpIndex),
 }
-pub fn is_statement_token(t: lexer::Token) -> bool {
+pub fn is_statement_token(t: TokenType) -> bool {
     match t {
-        lexer::Token::IDENT { .. } => true,
-        lexer::Token::KEYWORD_CASE { .. } => true,
-        lexer::Token::KEYWORD_DEFAULT { .. } => true,
-        lexer::Token::PUNCT_OPEN_CURLY { .. } => true,
-        lexer::Token::KEYWORD_IF { .. } => true,
-        lexer::Token::KEYWORD_SWITCH { .. } => true,
-        lexer::Token::KEYWORD_WHILE { .. } => true,
-        lexer::Token::KEYWORD_DO { .. } => true,
-        lexer::Token::KEYWORD_FOR { .. } => true,
-        lexer::Token::KEYWORD_GOTO { .. } => true,
-        lexer::Token::KEYWORD_CONTINUE { .. } => true,
-        lexer::Token::KEYWORD_BREAK { .. } => true,
-        lexer::Token::KEYWORD_RETURN { .. } => true,
+        TokenType::IDENT { .. } => true,
+        TokenType::KEYWORD_CASE => true,
+        TokenType::KEYWORD_DEFAULT => true,
+        TokenType::PUNCT_OPEN_CURLY => true,
+        TokenType::KEYWORD_IF => true,
+        TokenType::KEYWORD_SWITCH => true,
+        TokenType::KEYWORD_WHILE => true,
+        TokenType::KEYWORD_DO => true,
+        TokenType::KEYWORD_FOR => true,
+        TokenType::KEYWORD_GOTO => true,
+        TokenType::KEYWORD_CONTINUE => true,
+        TokenType::KEYWORD_BREAK => true,
+        TokenType::KEYWORD_RETURN => true,
         _ => false,
     }
 }
 pub fn parse_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Statement, usize), String> {
-    let mut idx = start_index;
-    match tokens.get(idx) {
-        Some(
-            lexer::Token::IDENT { .. }
-            | lexer::Token::KEYWORD_CASE { .. }
-            | lexer::Token::KEYWORD_DEFAULT { .. },
-        ) => {
-            let (labeled, new_index) = parse_labeled_statement(tokens, idx, flattened, str_maps)?;
+) -> Result<Statement, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::IDENT { .. } | TokenType::KEYWORD_CASE | TokenType::KEYWORD_DEFAULT,
+            ..
+        }) => {
+            let labeled = parse_labeled_statement(tokens, index, flattened, str_maps)?;
             flattened.label_statements.push(labeled);
-            Ok((
-                Statement::Label(flattened.label_statements.len() - 1),
-                new_index,
-            ))
+            Ok(Statement::Label(flattened.label_statements.len() - 1))
         }
-        Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) => {
-            let (compound, new_index) = parse_compound_statement(tokens, idx, flattened, str_maps)?;
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_CURLY,
+            ..
+        }) => {
+            let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
             flattened.compound_statements.push(compound);
-            Ok((
-                Statement::Compound(flattened.compound_statements.len() - 1),
-                new_index,
-            ))
+            Ok(Statement::Compound(flattened.compound_statements.len() - 1))
         }
-        Some(lexer::Token::KEYWORD_IF { .. } | lexer::Token::KEYWORD_SWITCH { .. }) => {
-            let (selection, new_index) =
-                parse_selection_statement(tokens, idx, flattened, str_maps)?;
+        Some(Token {
+            r#type: TokenType::KEYWORD_IF | TokenType::KEYWORD_SWITCH,
+            ..
+        }) => {
+            let selection = parse_selection_statement(tokens, index, flattened, str_maps)?;
             flattened.selection_statements.push(selection);
-            Ok((
-                Statement::Selection(flattened.selection_statements.len() - 1),
-                new_index,
+            Ok(Statement::Selection(
+                flattened.selection_statements.len() - 1,
             ))
         }
-        Some(
-            lexer::Token::KEYWORD_WHILE { .. }
-            | lexer::Token::KEYWORD_DO { .. }
-            | lexer::Token::KEYWORD_FOR { .. },
-        ) => {
-            let (iteration, new_index) =
-                parse_iteration_statement(tokens, idx, flattened, str_maps)?;
+        Some(Token {
+            r#type:
+                TokenType::KEYWORD_WHILE | TokenType::KEYWORD_DO { .. } | TokenType::KEYWORD_FOR { .. },
+            ..
+        }) => {
+            let iteration = parse_iteration_statement(tokens, index, flattened, str_maps)?;
             flattened.iteration_statements.push(iteration);
-            Ok((
-                Statement::Iteration(flattened.iteration_statements.len() - 1),
-                new_index,
+            Ok(Statement::Iteration(
+                flattened.iteration_statements.len() - 1,
             ))
         }
-        Some(
-            lexer::Token::KEYWORD_GOTO { .. }
-            | lexer::Token::KEYWORD_CONTINUE { .. }
-            | lexer::Token::KEYWORD_BREAK { .. }
-            | lexer::Token::KEYWORD_RETURN { .. },
-        ) => {
-            let (jump, new_index) = parse_jump_statement(tokens, idx, flattened, str_maps)?;
+        Some(Token {
+            r#type:
+                TokenType::KEYWORD_GOTO
+                | TokenType::KEYWORD_CONTINUE
+                | TokenType::KEYWORD_BREAK
+                | TokenType::KEYWORD_RETURN,
+            ..
+        }) => {
+            let jump = parse_jump_statement(tokens, index, flattened, str_maps)?;
             flattened.jump_statements.push(jump);
-            Ok((
-                Statement::Jump(flattened.jump_statements.len() - 1),
-                new_index,
-            ))
+            Ok(Statement::Jump(flattened.jump_statements.len() - 1))
         }
         None => unreachable!(),
-        _ => todo!("parse expression-statement: {:?}", tokens[idx]),
+        _ => todo!("parse expression-statement: {:?}", tokens[*index]),
     }
 }
+
+pub fn expected_identifier(
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
+    idx: &mut usize,
+) -> Result<(), String> {
+    match tokens.get(*idx) {
+        Some(t) if !matches!(t.r#type, TokenType::IDENT { .. }) => {
+            let Token { line, column, .. } = t;
+            let msg = format!("Expected an identifier",);
+            return Err(error(&msg, *line, *column));
+        }
+        None => {
+            let msg = format!("Expected an identifier",);
+            return Err(msg);
+        }
+        _ => {}
+    };
+    *idx += 1;
+    Ok(())
+}
+
+pub fn expected_token(
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
+    idx: &mut usize,
+    token: TokenType,
+) -> Result<(), String> {
+    let dummy_token = Token {
+        r#type: token,
+        line: 0,
+        column: 0,
+    };
+    let msg = format!(
+        "Expected '{}'",
+        match String::from_utf8(dummy_token.to_byte_vec(str_maps).unwrap()) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err("Could not convert token to string".to_string());
+            }
+        }
+    );
+    match tokens.get(*idx) {
+        Some(t) if t.r#type != token => {
+            let Token { column, line, .. } = t;
+            return Err(error(&msg, *line, *column));
+        }
+        None => return Err(msg),
+        _ => {}
+    };
+    *idx += 1;
+    Ok(())
+}
+
 pub fn parse_labeled_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Label, usize), String> {
-    let mut label_idx = start_index;
-    match tokens[label_idx] {
-        lexer::Token::IDENT { str_map_key, .. } => {
-            label_idx += 1;
-            while matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) && label_idx < tokens.len()
-            {
-                label_idx += 1;
-            }
-            if !matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::PUNCT_COLON { .. })
-            ) {
-                todo!("ERROR HERE")
-            }
-            let (statement, new_index) =
-                parse_statement(tokens, label_idx + 1, flattened, str_maps)?;
+) -> Result<Label, String> {
+    match tokens[*index].r#type {
+        TokenType::IDENT { str_map_key, .. } => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
+            let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(statement);
-            Ok((
-                Label::Identifier {
-                    identifier: str_map_key,
-                    statement: flattened.statements.len() - 1,
-                },
-                new_index,
-            ))
+            Ok(Label::Identifier {
+                identifier: str_map_key,
+                statement: flattened.statements.len() - 1,
+            })
         }
-        lexer::Token::KEYWORD_CASE { .. } => {
-            loop {
-                label_idx += 1;
-                if matches!(
-                    tokens.get(label_idx),
-                    Some(lexer::Token::PUNCT_COLON { .. }) | None
-                ) && label_idx < tokens.len()
-                {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::PUNCT_COLON { .. })
-            ) {
-                todo!("ERROR HERE")
-            }
+        TokenType::KEYWORD_CASE => {
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
             // TODO: this is a constant expression so I might need to eval it
             // to make sure the constant expression restraints are applied
-            let (_, expression) = parser::expressions::parse_expressions(
-                &tokens[start_index + 1..label_idx],
-                0,
-                flattened,
-                str_maps,
-            )?;
-            loop {
-                label_idx += 1;
-                if !matches!(
-                    tokens.get(label_idx),
-                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-                ) && label_idx < tokens.len()
-                {
-                    break;
-                }
-            }
-            let (statement, new_index) = parse_statement(tokens, label_idx, flattened, str_maps)?;
+            let expression = parse_expressions(tokens, index, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
+            let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
             flattened.statements.push(statement);
-            Ok((
-                Label::Case {
-                    const_expr: flattened.expressions.len() - 1,
-                    statement: flattened.statements.len() - 1,
-                },
-                new_index,
-            ))
+            Ok(Label::Case {
+                const_expr: flattened.expressions.len() - 1,
+                statement: flattened.statements.len() - 1,
+            })
         }
-        lexer::Token::KEYWORD_DEFAULT { .. } => {
-            label_idx += 1;
-            while matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) && label_idx < tokens.len()
-            {
-                label_idx += 1;
-            }
-            if !matches!(
-                tokens.get(label_idx),
-                Some(lexer::Token::PUNCT_COLON { .. })
-            ) {
-                todo!("ERROR HERE")
-            }
-            let (statement, new_index) =
-                parse_statement(tokens, label_idx + 1, flattened, str_maps)?;
+        TokenType::KEYWORD_DEFAULT => {
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
+            let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(statement);
-            Ok((Label::Default(flattened.statements.len() - 1), new_index))
+            Ok(Label::Default(flattened.statements.len() - 1))
         }
         _ => unreachable!(),
     }
 }
+
 pub fn parse_compound_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Compound, usize), String> {
-    let mut idx = start_index;
-    if !matches!(
-        tokens.get(start_index),
-        Some(lexer::Token::PUNCT_OPEN_CURLY { .. })
-    ) {
-        todo!("ERROR HERE")
-    }
-    loop {
-        idx += 1; // first is guaranteed to be open curly
-        if !matches!(
-            tokens.get(idx),
-            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. }),
-        ) {
-            break;
-        }
-    }
-    let mut curly_balancer = 1;
-    let mut curly_balance_idx = idx;
-    while curly_balancer > 0 {
-        match tokens.get(curly_balance_idx) {
-            Some(lexer::Token::PUNCT_OPEN_CURLY { .. }) => curly_balancer += 1,
-            Some(lexer::Token::PUNCT_CLOSE_CURLY { .. }) => curly_balancer -= 1,
-            None => {
-                todo!("ERROR HERE")
-            }
-            _ => {}
-        }
-        curly_balance_idx += 1;
-    }
-    if !matches!(
-        tokens.get(curly_balance_idx - 1),
-        Some(lexer::Token::PUNCT_CLOSE_CURLY { .. })
-    ) {
-        todo!("ERROR HERE")
-    }
+) -> Result<Compound, String> {
+    consume_whitespace(tokens, index);
     let mut compound = Compound {
         block_item_list: Vec::new(),
     };
-    let mut compound_idx = idx;
-    let end_compound = curly_balance_idx - 1;
-    while compound_idx < end_compound {
-        if let Some(t) = tokens.get(compound_idx) {
-            if is_statement_token(*t) {
-                let (statement, new_index_offset) =
-                    parse_statement(&tokens[idx..end_compound], 0, flattened, str_maps)?;
+    while *index < tokens.len() {
+        if let Some(token) = tokens.get(*index) {
+            if is_statement_token(token.r#type) {
+                let statement = parse_statement(&tokens, index, flattened, str_maps)?;
                 flattened.statements.push(statement);
                 compound
                     .block_item_list
                     .push(BlockItem::Statement(flattened.statements.len() - 1));
-                compound_idx += new_index_offset;
-            } else if parser::declarations::is_declaration_token(*t) {
-                let (declaration, new_index_offset) = parser::declarations::parse_declarations(
-                    &tokens[idx..end_compound],
-                    0,
-                    flattened,
-                    str_maps,
-                )?;
+            } else if parser::declarations::is_declaration_token(*token) {
+                let declaration = parse_declarations(&tokens, index, flattened, str_maps)?;
                 flattened.declarations.push(declaration);
                 compound
                     .block_item_list
                     .push(BlockItem::Declaration(flattened.declarations.len() - 1));
-                compound_idx += new_index_offset;
+            } else if matches!(token.r#type, TokenType::PUNCT_CLOSE_CURLY) {
+                break;
             } else {
-                unreachable!("What the fuck bro: {:?}", t);
+                unreachable!("What the fuck bro: {:?}", token);
             }
         }
-        while matches!(
-            tokens.get(compound_idx),
-            Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-        ) {
-            compound_idx += 1;
-        }
+        consume_whitespace(tokens, index);
     }
-    Ok((compound, curly_balance_idx))
+    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_CURLY)?;
+    Ok(compound)
 }
+
 pub fn parse_selection_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Selection, usize), String> {
-    let mut selection_idx = start_index;
-    match tokens.get(selection_idx) {
-        Some(lexer::Token::KEYWORD_IF { .. }) => {
-            loop {
-                selection_idx += 1;
-                if matches!(
-                    tokens.get(selection_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
-            ) {
-                return Err("EXPECTED (".to_string());
-            }
-            selection_idx += 1;
-            let start = selection_idx;
-            let mut parenth_bal = 1;
-            while parenth_bal > 0 {
-                match tokens.get(selection_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
-                        parenth_bal += 1;
-                    }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
-                        parenth_bal -= 1;
-                    }
-                    Some(_) => {}
-                    None => {
-                        return Err("UNBALANCED".to_string());
-                    }
-                }
-                selection_idx += 1;
-            }
-            if !matches!(
-                tokens.get(selection_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-            ) {
-                return Err("UNBALANCED".to_string());
-            }
-            let (_, expression) = parser::expressions::parse_expressions(
-                &tokens[start..selection_idx - 1],
-                0,
-                flattened,
-                str_maps,
-            )?;
+) -> Result<Selection, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::KEYWORD_IF,
+            ..
+        }) => {
+            *index += 1;
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            let expression = parse_expressions(tokens, index, flattened, str_maps)?;
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
             flattened.expressions.push(expression);
-            while matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                selection_idx += 1;
-            }
-            let (stmt, new_index) = parse_statement(tokens, selection_idx, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
+            let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
             let if_statement_index = flattened.statements.len() - 1;
-            selection_idx = new_index;
-            while matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                selection_idx += 1;
-            }
+            consume_whitespace(tokens, index);
             if matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::KEYWORD_ELSE { .. })
+                tokens.get(*index),
+                Some(Token {
+                    r#type: TokenType::KEYWORD_ELSE,
+                    ..
+                })
             ) {
-                selection_idx += 1;
-                let (stmt2, new_index) =
-                    parse_statement(tokens, selection_idx, flattened, str_maps)?;
+                *index += 1;
+                let stmt2 = parse_statement(tokens, index, flattened, str_maps)?;
                 flattened.statements.push(stmt2);
                 let else_statement_index = flattened.statements.len() - 1;
-                selection_idx = new_index;
-                Ok((
-                    Selection::IfElse {
-                        expression_index: flattened.expressions.len() - 1,
-                        if_statement_index,
-                        else_statement_index,
-                    },
-                    selection_idx,
-                ))
+                Ok(Selection::IfElse {
+                    expression_index: flattened.expressions.len() - 1,
+                    if_statement_index,
+                    else_statement_index,
+                })
             } else {
-                Ok((
-                    Selection::If {
-                        expression_index: flattened.expressions.len() - 1,
-                        statement_index: if_statement_index,
-                    },
-                    selection_idx,
-                ))
+                Ok(Selection::If {
+                    expression_index: flattened.expressions.len() - 1,
+                    statement_index: if_statement_index,
+                })
             }
         }
-        Some(lexer::Token::KEYWORD_SWITCH { .. }) => {
-            loop {
-                selection_idx += 1;
-                if matches!(
-                    tokens.get(selection_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
-            ) {
-                return Err("EXPECTED (".to_string());
-            }
-            selection_idx += 1;
-            let start = selection_idx;
-            let mut parenth_bal = 1;
-            while parenth_bal > 0 {
-                match tokens.get(selection_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
-                        parenth_bal += 1;
-                    }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
-                        parenth_bal -= 1;
-                    }
-                    Some(_) => {}
-                    None => {
-                        return Err("UNBALANCED".to_string());
-                    }
-                }
-                selection_idx += 1;
-            }
-            if !matches!(
-                tokens.get(selection_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-            ) {
-                return Err("UNBALANCED".to_string());
-            }
-            let (_, expression) = parser::expressions::parse_expressions(
-                &tokens[start..selection_idx - 1],
-                0,
-                flattened,
-                str_maps,
-            )?;
+        Some(Token {
+            r#type: TokenType::KEYWORD_SWITCH,
+            ..
+        }) => {
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
             flattened.expressions.push(expression);
-            while matches!(
-                tokens.get(selection_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                selection_idx += 1;
-            }
-            let (stmt, new_index) = parse_statement(tokens, selection_idx, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
+            let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
-            selection_idx = new_index;
-            Ok((
-                Selection::Switch {
-                    expression_index: flattened.expressions.len() - 1,
-                    statement_index: flattened.statements.len() - 1,
-                },
-                selection_idx,
-            ))
+            Ok(Selection::Switch {
+                expression_index: flattened.expressions.len() - 1,
+                statement_index: flattened.statements.len() - 1,
+            })
         }
         _ => {
-            return Err("EXPECTED IF OR SWITCH".to_string());
+            unreachable!();
         }
     }
 }
+
+pub fn error<'a>(msg: &'a str, line: usize, column: usize) -> String {
+    return format!("{} at line: {}, column: {}", msg, line, column);
+}
+
 pub fn parse_iteration_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Iteration, usize), String> {
-    let mut iteration_idx = start_index;
-    match tokens.get(iteration_idx) {
-        Some(lexer::Token::KEYWORD_WHILE { .. }) => {
-            loop {
-                iteration_idx += 1;
-                if matches!(
-                    tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
-            ) {
-                return Err("EXPECTED (".to_string());
-            }
-            iteration_idx += 1;
-            let start = iteration_idx;
-            let mut parenth_bal = 1;
-            while parenth_bal > 0 {
-                match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
-                        parenth_bal += 1;
-                    }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
-                        parenth_bal -= 1;
-                    }
-                    Some(_) => {}
-                    None => {
-                        return Err("UNBALANCED".to_string());
-                    }
-                }
-                iteration_idx += 1;
-            }
-            if !matches!(
-                tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-            ) {
-                return Err("UNBALANCED".to_string());
-            }
-            let (_, expression) = parser::expressions::parse_expressions(
-                &tokens[start..iteration_idx - 1],
-                0,
-                flattened,
-                str_maps,
-            )?;
+) -> Result<Iteration, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::KEYWORD_WHILE,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            let expr = parse_expressions(tokens, index, flattened, str_maps)?;
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            let expression = parse_expressions(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
-            while matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                iteration_idx += 1;
-            }
-            let (stmt, new_index) = parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
+            let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
-            iteration_idx = new_index;
-            Ok((
-                Iteration::While {
-                    expression_index: flattened.expressions.len() - 1,
-                    statement_index: flattened.statements.len() - 1,
-                },
-                iteration_idx,
-            ))
+            Ok(Iteration::While {
+                expression_index: flattened.expressions.len() - 1,
+                statement_index: flattened.statements.len() - 1,
+            })
         }
-        Some(lexer::Token::KEYWORD_DO { .. }) => {
-            iteration_idx += 1;
-            while matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                iteration_idx += 1;
-            }
-            let (stmt, new_index) = parse_statement(tokens, iteration_idx, flattened, str_maps)?;
+        Some(Token {
+            r#type: TokenType::KEYWORD_DO,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
-            iteration_idx = new_index;
-            while matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                iteration_idx += 1;
-            }
-            if !matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::KEYWORD_WHILE { .. })
-            ) {
-                return Err("EXPECTED WHILE".to_string());
-            }
-            loop {
-                iteration_idx += 1;
-                if matches!(
-                    tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
-            ) {
-                return Err("EXPECTED (".to_string());
-            }
-            iteration_idx += 1;
-            let start = iteration_idx;
-            let mut parenth_bal = 1;
-            while parenth_bal > 0 {
-                match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
-                        parenth_bal += 1;
-                    }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
-                        parenth_bal -= 1;
-                    }
-                    Some(_) => {}
-                    None => {
-                        return Err("UNBALANCED".to_string());
-                    }
-                }
-                iteration_idx += 1;
-            }
-            if !matches!(
-                tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-            ) {
-                return Err("UNBALANCED".to_string());
-            }
-            let (_, expression) = parser::expressions::parse_expressions(
-                &tokens[start..iteration_idx - 1],
-                0,
-                flattened,
-                str_maps,
-            )?;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::KEYWORD_WHILE);
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR);
+            let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
-            while matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                iteration_idx += 1;
-            }
-            if !matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-            ) {
-                return Err("EXPECTED ;".to_string());
-            }
-            iteration_idx += 1;
-            Ok((
-                Iteration::DoWhile {
-                    while_expression: flattened.expressions.len() - 1,
-                    statement_index: flattened.statements.len() - 1,
-                },
-                iteration_idx,
-            ))
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            Ok(Iteration::DoWhile {
+                while_expression: flattened.expressions.len() - 1,
+                statement_index: flattened.statements.len() - 1,
+            })
         }
-        Some(lexer::Token::KEYWORD_FOR { .. }) => {
-            loop {
-                iteration_idx += 1;
-                if matches!(
-                    tokens.get(iteration_idx),
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(iteration_idx),
-                Some(lexer::Token::PUNCT_OPEN_PAR { .. })
-            ) {
-                return Err("EXPECTED (".to_string());
-            }
-            iteration_idx += 1;
-            let start = iteration_idx;
-            let mut until_first_semi_colon = start + 1;
-            let mut parenth_bal = 1;
-            while parenth_bal > 0 {
-                match tokens.get(iteration_idx) {
-                    Some(lexer::Token::PUNCT_OPEN_PAR { .. }) => {
-                        parenth_bal += 1;
-                    }
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) => {
-                        parenth_bal -= 1;
-                    }
-                    Some(_) => {}
-                    None => {
-                        return Err("UNBALANCED".to_string());
-                    }
-                }
-                iteration_idx += 1;
-            }
-            if !matches!(
-                tokens.get(iteration_idx - 1),
-                Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-            ) {
-                return Err("UNBALANCED".to_string());
-            }
-            while matches!(
-                tokens.get(until_first_semi_colon),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                until_first_semi_colon += 1;
-            }
-            let Some(t) = tokens.get(until_first_semi_colon) else {
-                return Err("end no good".to_string());
+        Some(Token {
+            r#type: TokenType::KEYWORD_FOR,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            let Some(t) = tokens.get(*index) else {
+                return Err("Unexpected end of tokens".to_string());
             };
-            if parser::declarations::is_declaration_token(*t) {
-                let (declaration, new_index) = parser::declarations::parse_declarations(
-                    &tokens[start..until_first_semi_colon],
-                    0,
-                    flattened,
-                    str_maps,
-                )?;
-                until_first_semi_colon = new_index;
+            if is_declaration_token(*t) {
+                let declaration = parse_declarations(&tokens, index, flattened, str_maps)?;
                 flattened.declarations.push(declaration);
                 let mut ifd = Iteration::ForDeclaration {
                     declaration_index: flattened.declarations.len() - 1,
@@ -749,35 +439,14 @@ pub fn parse_iteration_statement(
                     expression2: None,
                     statement_index: 0,
                 };
-                while matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-                ) {
-                    until_first_semi_colon += 1;
-                }
                 if !matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        ..
+                    })
                 ) {
-                    let start = until_first_semi_colon;
-                    while !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
-                    ) {
-                        until_first_semi_colon += 1;
-                    }
-                    if !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-                    ) {
-                        return Err("missing ;".to_string());
-                    }
-                    let (_, expression) = parser::expressions::parse_expressions(
-                        &tokens[start..until_first_semi_colon],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
+                    let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForDeclaration { expression1, .. } = &mut ifd else {
                         unreachable!()
@@ -792,28 +461,16 @@ pub fn parse_iteration_statement(
                 else {
                     unreachable!()
                 };
-                if iteration_idx - 1 - (until_first_semi_colon + 1) > 0 {
-                    let (_, expression) = parser::expressions::parse_expressions(
-                        &tokens[until_first_semi_colon + 1..iteration_idx - 1],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
+                if *index - 1 - (*index + 1) > 0 {
+                    let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     *expression2 = Some(flattened.expressions.len() - 1);
                 }
-                while matches!(
-                    tokens.get(iteration_idx),
-                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-                ) {
-                    iteration_idx += 1;
-                }
-                let (stmt, new_index) =
-                    parse_statement(tokens, iteration_idx, flattened, str_maps)?;
-                iteration_idx = new_index;
+                consume_whitespace(tokens, index);
+                let stmt = parse_statement(tokens, index, flattened, str_maps)?;
                 flattened.statements.push(stmt);
                 *statement_index = flattened.statements.len() - 1;
-                Ok((ifd, iteration_idx))
+                Ok(ifd)
             } else {
                 let mut fe = Iteration::ForThreeExpr {
                     first_expr_index: None,
@@ -822,28 +479,14 @@ pub fn parse_iteration_statement(
                     statement_index: 0,
                 };
                 if !matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        ..
+                    })
                 ) {
-                    let start = until_first_semi_colon;
-                    while !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
-                    ) {
-                        until_first_semi_colon += 1;
-                    }
-                    if !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-                    ) {
-                        return Err("missing ;".to_string());
-                    }
-                    let (_, expression) = parser::expressions::parse_expressions(
-                        &tokens[start..until_first_semi_colon],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
+                    let expression = parse_expressions(tokens, index, flattened, str_maps)?;
+                    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
                         first_expr_index, ..
@@ -853,36 +496,16 @@ pub fn parse_iteration_statement(
                     };
                     *first_expr_index = Some(flattened.expressions.len() - 1);
                 }
+                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
                 if !matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        ..
+                    })
                 ) {
-                    return Err("missing ;".to_string());
-                }
-                until_first_semi_colon += 1;
-                if !matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-                ) {
-                    let start = until_first_semi_colon;
-                    while !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
-                    ) {
-                        until_first_semi_colon += 1;
-                    }
-                    if !matches!(
-                        tokens.get(until_first_semi_colon),
-                        Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-                    ) {
-                        return Err("missing ;".to_string());
-                    }
-                    let (_, expression) = parser::expressions::parse_expressions(
-                        &tokens[start..until_first_semi_colon],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
+                    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                    let expression = parse_expressions(tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
                         second_expr_index, ..
@@ -892,37 +515,15 @@ pub fn parse_iteration_statement(
                     };
                     *second_expr_index = Some(flattened.expressions.len() - 1);
                 }
+                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
                 if !matches!(
-                    tokens.get(until_first_semi_colon),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: TokenType::PUNCT_CLOSE_PAR,
+                        ..
+                    })
                 ) {
-                    return Err("missing ;".to_string());
-                }
-                until_first_semi_colon += 1;
-                let mut until_close_par = until_first_semi_colon;
-                if !matches!(
-                    tokens.get(until_close_par),
-                    Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-                ) {
-                    let start = until_close_par;
-                    while !matches!(
-                        tokens.get(until_close_par),
-                        Some(lexer::Token::PUNCT_CLOSE_PAR { .. }) | None
-                    ) {
-                        until_close_par += 1;
-                    }
-                    if !matches!(
-                        tokens.get(until_close_par),
-                        Some(lexer::Token::PUNCT_CLOSE_PAR { .. })
-                    ) {
-                        return Err("missing ;".to_string());
-                    }
-                    let (_, expression) = parser::expressions::parse_expressions(
-                        &tokens[start..until_close_par],
-                        0,
-                        flattened,
-                        str_maps,
-                    )?;
+                    let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
                         third_expr_index, ..
@@ -931,6 +532,7 @@ pub fn parse_iteration_statement(
                         unreachable!()
                     };
                     *third_expr_index = Some(flattened.expressions.len() - 1);
+                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
                 }
                 let Iteration::ForThreeExpr {
                     statement_index, ..
@@ -938,144 +540,80 @@ pub fn parse_iteration_statement(
                 else {
                     unreachable!()
                 };
-                while matches!(
-                    tokens.get(iteration_idx),
-                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-                ) {
-                    iteration_idx += 1;
-                }
-                let (stmt, new_index) =
-                    parse_statement(tokens, iteration_idx, flattened, str_maps)?;
-                iteration_idx = new_index;
+                consume_whitespace(tokens, index);
+                let stmt = parse_statement(tokens, index, flattened, str_maps)?;
                 flattened.statements.push(stmt);
                 *statement_index = flattened.statements.len() - 1;
-                Ok((fe, iteration_idx))
+                Ok(fe)
             }
         }
         _ => unreachable!(),
     }
 }
+
 pub fn parse_jump_statement(
     tokens: &[lexer::Token],
-    start_index: usize,
+    index: &mut usize,
     flattened: &mut parser::Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<(Jump, usize), String> {
-    let mut jump_idx = start_index;
-    match tokens.get(jump_idx) {
-        Some(lexer::Token::KEYWORD_GOTO { .. }) => {
-            loop {
-                jump_idx += 1;
-                if matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::IDENT { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(tokens.get(jump_idx), Some(lexer::Token::IDENT { .. })) {
-                return Err("EXPECTED IDENTIFIER".to_string());
-            }
-            let Some(lexer::Token::IDENT { str_map_key, .. }) = tokens.get(jump_idx) else {
+) -> Result<Jump, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::KEYWORD_GOTO,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            expected_identifier(tokens, str_maps, index)?;
+            let Some(Token {
+                r#type: TokenType::IDENT { str_map_key, .. },
+                ..
+            }) = tokens.get(*index - 1)
+            else {
                 unreachable!()
             };
-            jump_idx += 1;
-            while matches!(
-                tokens.get(jump_idx),
-                Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-            ) {
-                jump_idx += 1;
-            }
-            if !matches!(
-                tokens.get(jump_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-            ) {
-                return Err("EXPECTED ;".to_string());
-            }
-            jump_idx += 1;
-            Ok((Jump::Goto(*str_map_key), jump_idx))
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON);
+            Ok(Jump::Goto(*str_map_key))
         }
-        Some(lexer::Token::KEYWORD_CONTINUE { .. }) => {
-            loop {
-                jump_idx += 1;
-                if matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(jump_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-            ) {
-                return Err("EXPECTED ;".to_string());
-            }
-            jump_idx += 1;
-            Ok((Jump::Continue, jump_idx))
+        Some(Token {
+            r#type: TokenType::KEYWORD_CONTINUE,
+            ..
+        }) => {
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            Ok(Jump::Continue)
         }
-        Some(lexer::Token::KEYWORD_BREAK { .. }) => {
-            loop {
-                jump_idx += 1;
-                if matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None
-                ) {
-                    break;
-                }
-            }
-            if !matches!(
-                tokens.get(jump_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-            ) {
-                return Err("EXPECTED ;".to_string());
-            }
-            jump_idx += 1;
-            Ok((Jump::Break, jump_idx))
+        Some(Token {
+            r#type: TokenType::KEYWORD_BREAK,
+            ..
+        }) => {
+            consume_whitespace(tokens, index);
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            Ok(Jump::Break)
         }
-        Some(lexer::Token::KEYWORD_RETURN { .. }) => {
-            loop {
-                jump_idx += 1;
-                if !matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::WHITESPACE { .. } | lexer::Token::NEWLINE { .. })
-                ) && matches!(tokens.get(jump_idx), Some(_) | None)
-                {
-                    break;
-                }
-            }
+        Some(Token {
+            r#type: TokenType::KEYWORD_RETURN,
+            ..
+        }) => {
+            consume_whitespace(tokens, index);
             let mut r = Jump::Return(None);
             if !matches!(
-                tokens.get(jump_idx),
-                Some(lexer::Token::PUNCT_SEMI_COLON { .. })
+                tokens.get(*index),
+                Some(Token {
+                    r#type: TokenType::PUNCT_SEMI_COLON,
+                    ..
+                })
             ) {
-                let start = jump_idx;
-                while !matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. }) | None,
-                ) {
-                    jump_idx += 1;
-                }
-                if !matches!(
-                    tokens.get(jump_idx),
-                    Some(lexer::Token::PUNCT_SEMI_COLON { .. })
-                ) {
-                    return Err("EXPECTED ;".to_string());
-                }
-                let (_, expr) = parser::expressions::parse_expressions(
-                    &tokens[start..jump_idx],
-                    0,
-                    flattened,
-                    str_maps,
-                )?;
+                let expr = parse_expressions(tokens, index, flattened, str_maps)?;
+                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
                 flattened.expressions.push(expr);
                 r = Jump::Return(Some(flattened.expressions.len() - 1));
             }
-            jump_idx += 1;
-            Ok((r, jump_idx))
+            Ok(r)
         }
         _ => {
-            return Err("EXPECTED GOTO, CONTINUE, BREAK, RETURN".to_string());
+            unreachable!();
         }
     }
 }

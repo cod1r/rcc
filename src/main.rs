@@ -3,6 +3,7 @@ mod error;
 mod lexer;
 mod parser;
 mod semantic_analysis;
+use crate::lexer::*;
 use std::collections::HashMap;
 use std::env;
 
@@ -107,17 +108,20 @@ fn main() {
         }
     };
     let mut defines: HashMap<usize, cpp::Define> = HashMap::new();
-    let mut str_maps = lexer::ByteVecMaps::new();
+    let mut str_maps = ByteVecMaps::new();
     let stdc_version = cpp::Define {
         parameters: None,
         var_arg: false,
-        replacement_list: vec![lexer::Token::CONSTANT_DEC_INT {
-            value_key: str_maps.add_byte_vec("201710".as_bytes()),
-            suffix: Some(lexer::Suffix::Integer {
-                integer_type: lexer::IntegerSuffix::Long,
-                key: str_maps.add_byte_vec("L".as_bytes()),
-            }),
-            pos_in_src: 0,
+        replacement_list: vec![Token {
+            r#type: TokenType::CONSTANT_DEC_INT {
+                value_key: str_maps.add_byte_vec("201710".as_bytes()),
+                suffix: Some(Suffix::Integer {
+                    integer_type: IntegerSuffix::Long,
+                    key: str_maps.add_byte_vec("L".as_bytes()),
+                }),
+            },
+            column: 0,
+            line: 0,
         }],
     };
     defines.insert(
@@ -133,12 +137,13 @@ fn main() {
         let define = cpp::Define {
             parameters: None,
             var_arg: false,
-            replacement_list: vec![lexer::Token::StringLiteral {
-                str_lit: lexer::StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec(file.as_bytes()),
-                },
-                pos_in_src: 0,
+            replacement_list: vec![Token {
+                r#type: TokenType::StringLiteral {
+                    str_lit: StringLiteral {
+                        prefix_key: None,
+                        sequence_key: str_maps.add_byte_vec(file.as_bytes()),
+                    }
+                }, column: 0, line: 0
             }],
         };
         defines.insert(str_maps.add_byte_vec("__FILE__".as_bytes()), define);
@@ -170,7 +175,7 @@ fn main() {
                 }
                 let tokens = new_tokens;
                 // re-lexing because keywords were just identifiers before
-                let tokens = match lexer::lexer(tokens.as_slice(), false, &mut str_maps) {
+                let tokens = match lexer(tokens.as_slice(), false, &mut str_maps) {
                     Ok(tks) => tks,
                     Err(err) => {
                         eprintln!("{err}");

@@ -401,583 +401,367 @@ pub enum Suffix {
 
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Copy, Clone)]
-pub enum Token {
+pub enum TokenType {
     IDENT {
         str_map_key: usize,
-        pos_in_src: usize,
     },
-    PLACEMARKER {
-        pos_in_src: usize,
-    },
-    WHITESPACE {
-        pos_in_src: usize,
-    },
-    NEWLINE {
-        pos_in_src: usize,
-    },
-    PREDEF_IDENT___FUNC__ {
-        pos_in_src: usize,
-    },
-    PUNCT_OPEN_SQR {
-        pos_in_src: usize,
-    },
-    PUNCT_CLOSE_SQR {
-        pos_in_src: usize,
-    },
-    PUNCT_OPEN_PAR {
-        pos_in_src: usize,
-    },
-    PUNCT_CLOSE_PAR {
-        pos_in_src: usize,
-    },
-    PUNCT_OPEN_CURLY {
-        pos_in_src: usize,
-    },
-    PUNCT_CLOSE_CURLY {
-        pos_in_src: usize,
-    },
-    PUNCT_DOT {
-        pos_in_src: usize,
-    },
-    PUNCT_ARROW {
-        pos_in_src: usize,
-    },
-    PUNCT_INCREMENT {
-        pos_in_src: usize,
-    },
-    PUNCT_DECREMENT {
-        pos_in_src: usize,
-    },
-    PUNCT_AND_BIT {
-        pos_in_src: usize,
-    },
-    PUNCT_MULT {
-        pos_in_src: usize,
-    },
-    PUNCT_PLUS {
-        pos_in_src: usize,
-    },
-    PUNCT_MINUS {
-        pos_in_src: usize,
-    },
-    PUNCT_TILDE {
-        pos_in_src: usize,
-    },
-    PUNCT_NOT_BOOL {
-        pos_in_src: usize,
-    },
-    PUNCT_DIV {
-        pos_in_src: usize,
-    },
-    PUNCT_MODULO {
-        pos_in_src: usize,
-    },
-    PUNCT_BITSHIFT_LEFT {
-        pos_in_src: usize,
-    },
-    PUNCT_BITSHIFT_RIGHT {
-        pos_in_src: usize,
-    },
-    PUNCT_LESS_THAN {
-        pos_in_src: usize,
-    },
-    PUNCT_GREATER_THAN {
-        pos_in_src: usize,
-    },
-    PUNCT_LESS_THAN_EQ {
-        pos_in_src: usize,
-    },
-    PUNCT_GREATER_THAN_EQ {
-        pos_in_src: usize,
-    },
-    PUNCT_EQ_BOOL {
-        pos_in_src: usize,
-    },
-    PUNCT_NOT_EQ_BOOL {
-        pos_in_src: usize,
-    },
-    PUNCT_XOR_BIT {
-        pos_in_src: usize,
-    },
-    PUNCT_OR_BIT {
-        pos_in_src: usize,
-    },
-    PUNCT_AND_BOOL {
-        pos_in_src: usize,
-    },
-    PUNCT_OR_BOOL {
-        pos_in_src: usize,
-    },
-    PUNCT_QUESTION_MARK {
-        pos_in_src: usize,
-    },
-    PUNCT_COLON {
-        pos_in_src: usize,
-    },
-    PUNCT_SEMI_COLON {
-        pos_in_src: usize,
-    },
-    PUNCT_ELLIPSIS {
-        pos_in_src: usize,
-    },
-    PUNCT_ASSIGNMENT {
-        pos_in_src: usize,
-    },
-    PUNCT_MULT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_DIV_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_MODULO_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_ADD_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_SUB_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_L_SHIFT_BIT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_R_SHIFT_BIT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_AND_BIT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_XOR_BIT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_OR_BIT_ASSIGN {
-        pos_in_src: usize,
-    },
-    PUNCT_COMMA {
-        pos_in_src: usize,
-    },
-    PUNCT_HASH {
-        pos_in_src: usize,
-    },
-    PUNCT_HASH_HASH {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_OPEN_SQR {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_CLOSE_SQR {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_OPEN_CURLY {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_CLOSE_CURLY {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_HASH {
-        pos_in_src: usize,
-    },
-    PUNCT_DIGRAPH_HASH_HASH {
-        pos_in_src: usize,
-    },
-    KEYWORD_AUTO {
-        pos_in_src: usize,
-    },
-    KEYWORD_BREAK {
-        pos_in_src: usize,
-    },
-    KEYWORD_CASE {
-        pos_in_src: usize,
-    },
-    KEYWORD_CHAR {
-        pos_in_src: usize,
-    },
-    KEYWORD_CONST {
-        pos_in_src: usize,
-    },
-    KEYWORD_CONTINUE {
-        pos_in_src: usize,
-    },
-    KEYWORD_DEFAULT {
-        pos_in_src: usize,
-    },
-    KEYWORD_DO {
-        pos_in_src: usize,
-    },
-    KEYWORD_DOUBLE {
-        pos_in_src: usize,
-    },
-    KEYWORD_ELSE {
-        pos_in_src: usize,
-    },
-    KEYWORD_ENUM {
-        pos_in_src: usize,
-    },
-    KEYWORD_EXTERN {
-        pos_in_src: usize,
-    },
-    KEYWORD_FLOAT {
-        pos_in_src: usize,
-    },
-    KEYWORD_FOR {
-        pos_in_src: usize,
-    },
-    KEYWORD_GOTO {
-        pos_in_src: usize,
-    },
-    KEYWORD_IF {
-        pos_in_src: usize,
-    },
-    KEYWORD_INLINE {
-        pos_in_src: usize,
-    },
-    KEYWORD_INT {
-        pos_in_src: usize,
-    },
-    KEYWORD_LONG {
-        pos_in_src: usize,
-    },
-    KEYWORD_REGISTER {
-        pos_in_src: usize,
-    },
-    KEYWORD_RESTRICT {
-        pos_in_src: usize,
-    },
-    KEYWORD_RETURN {
-        pos_in_src: usize,
-    },
-    KEYWORD_SHORT {
-        pos_in_src: usize,
-    },
-    KEYWORD_SIGNED {
-        pos_in_src: usize,
-    },
-    KEYWORD_SIZEOF {
-        pos_in_src: usize,
-    },
-    KEYWORD_STATIC {
-        pos_in_src: usize,
-    },
-    KEYWORD_STRUCT {
-        pos_in_src: usize,
-    },
-    KEYWORD_SWITCH {
-        pos_in_src: usize,
-    },
-    KEYWORD_TYPEDEF {
-        pos_in_src: usize,
-    },
-    KEYWORD_UNION {
-        pos_in_src: usize,
-    },
-    KEYWORD_UNSIGNED {
-        pos_in_src: usize,
-    },
-    KEYWORD_VOID {
-        pos_in_src: usize,
-    },
-    KEYWORD_VOLATILE {
-        pos_in_src: usize,
-    },
-    KEYWORD_WHILE {
-        pos_in_src: usize,
-    },
-    KEYWORD__ALIGNAS {
-        pos_in_src: usize,
-    },
-    KEYWORD__ALIGNOF {
-        pos_in_src: usize,
-    },
-    KEYWORD__ATOMIC {
-        pos_in_src: usize,
-    },
-    KEYWORD__BOOL {
-        pos_in_src: usize,
-    },
-    KEYWORD__COMPLEX {
-        pos_in_src: usize,
-    },
-    KEYWORD__GENERIC {
-        pos_in_src: usize,
-    },
-    KEYWORD__IMAGINARY {
-        pos_in_src: usize,
-    },
-    KEYWORD__NORETURN {
-        pos_in_src: usize,
-    },
-    KEYWORD__STATIC_ASSERT {
-        pos_in_src: usize,
-    },
-    KEYWORD__THREAD_LOCAL {
-        pos_in_src: usize,
-    },
+    PLACEMARKER,
+    WHITESPACE,
+    NEWLINE,
+    PREDEF_IDENT___FUNC__,
+    PUNCT_OPEN_SQR,
+    PUNCT_CLOSE_SQR,
+    PUNCT_OPEN_PAR,
+    PUNCT_CLOSE_PAR,
+    PUNCT_OPEN_CURLY,
+    PUNCT_CLOSE_CURLY,
+    PUNCT_DOT,
+    PUNCT_ARROW,
+    PUNCT_INCREMENT,
+    PUNCT_DECREMENT,
+    PUNCT_AND_BIT,
+    PUNCT_MULT,
+    PUNCT_PLUS,
+    PUNCT_MINUS,
+    PUNCT_TILDE,
+    PUNCT_NOT_BOOL,
+    PUNCT_DIV,
+    PUNCT_MODULO,
+    PUNCT_BITSHIFT_LEFT,
+    PUNCT_BITSHIFT_RIGHT,
+    PUNCT_LESS_THAN,
+    PUNCT_GREATER_THAN,
+    PUNCT_LESS_THAN_EQ,
+    PUNCT_GREATER_THAN_EQ,
+    PUNCT_EQ_BOOL,
+    PUNCT_NOT_EQ_BOOL,
+    PUNCT_XOR_BIT,
+    PUNCT_OR_BIT,
+    PUNCT_AND_BOOL,
+    PUNCT_OR_BOOL,
+    PUNCT_QUESTION_MARK,
+    PUNCT_COLON,
+    PUNCT_SEMI_COLON,
+    PUNCT_ELLIPSIS,
+    PUNCT_ASSIGNMENT,
+    PUNCT_MULT_ASSIGN,
+    PUNCT_DIV_ASSIGN,
+    PUNCT_MODULO_ASSIGN,
+    PUNCT_ADD_ASSIGN,
+    PUNCT_SUB_ASSIGN,
+    PUNCT_L_SHIFT_BIT_ASSIGN,
+    PUNCT_R_SHIFT_BIT_ASSIGN,
+    PUNCT_AND_BIT_ASSIGN,
+    PUNCT_XOR_BIT_ASSIGN,
+    PUNCT_OR_BIT_ASSIGN,
+    PUNCT_COMMA,
+    PUNCT_HASH,
+    PUNCT_HASH_HASH,
+    PUNCT_DIGRAPH_OPEN_SQR,
+    PUNCT_DIGRAPH_CLOSE_SQR,
+    PUNCT_DIGRAPH_OPEN_CURLY,
+    PUNCT_DIGRAPH_CLOSE_CURLY,
+    PUNCT_DIGRAPH_HASH,
+    PUNCT_DIGRAPH_HASH_HASH,
+    KEYWORD_AUTO,
+    KEYWORD_BREAK,
+    KEYWORD_CASE,
+    KEYWORD_CHAR,
+    KEYWORD_CONST,
+    KEYWORD_CONTINUE,
+    KEYWORD_DEFAULT,
+    KEYWORD_DO,
+    KEYWORD_DOUBLE,
+    KEYWORD_ELSE,
+    KEYWORD_ENUM,
+    KEYWORD_EXTERN,
+    KEYWORD_FLOAT,
+    KEYWORD_FOR,
+    KEYWORD_GOTO,
+    KEYWORD_IF,
+    KEYWORD_INLINE,
+    KEYWORD_INT,
+    KEYWORD_LONG,
+    KEYWORD_REGISTER,
+    KEYWORD_RESTRICT,
+    KEYWORD_RETURN,
+    KEYWORD_SHORT,
+    KEYWORD_SIGNED,
+    KEYWORD_SIZEOF,
+    KEYWORD_STATIC,
+    KEYWORD_STRUCT,
+    KEYWORD_SWITCH,
+    KEYWORD_TYPEDEF,
+    KEYWORD_UNION,
+    KEYWORD_UNSIGNED,
+    KEYWORD_VOID,
+    KEYWORD_VOLATILE,
+    KEYWORD_WHILE,
+    KEYWORD__ALIGNAS,
+    KEYWORD__ALIGNOF,
+    KEYWORD__ATOMIC,
+    KEYWORD__BOOL,
+    KEYWORD__COMPLEX,
+    KEYWORD__GENERIC,
+    KEYWORD__IMAGINARY,
+    KEYWORD__NORETURN,
+    KEYWORD__STATIC_ASSERT,
+    KEYWORD__THREAD_LOCAL,
     CONSTANT_ENUM {
-        str_map_key: usize,
-        pos_in_src: usize,
+        value_key: usize,
     },
     CONSTANT_OCTAL_INT {
         value_key: usize,
         suffix: Option<Suffix>,
-        pos_in_src: usize,
     },
     CONSTANT_HEXA_INT {
         value_key: usize,
         suffix: Option<Suffix>,
-        pos_in_src: usize,
     },
     CONSTANT_DEC_INT {
         value_key: usize,
         suffix: Option<Suffix>,
-        pos_in_src: usize,
     },
     CONSTANT_DEC_FLOAT {
         value_key: usize,
         exp_part_key: Option<usize>,
         suffix: Option<Suffix>,
-        pos_in_src: usize,
     },
     CONSTANT_HEXA_FLOAT {
         value_key: usize,
         binary_exp_part_key: usize,
         suffix: Option<Suffix>,
-        pos_in_src: usize,
     },
     StringLiteral {
         str_lit: StringLiteral,
-        pos_in_src: usize,
     },
     CONSTANT_CHAR {
         const_char: ConstantChar,
-        pos_in_src: usize,
     },
 }
+
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Token {
+    pub r#type: TokenType,
+    pub column: usize,
+    pub line: usize,
+}
+
 impl Token {
     pub fn to_byte_vec(&self, str_maps: &ByteVecMaps) -> Option<Vec<u8>> {
-        match self {
-            Token::CONSTANT_HEXA_FLOAT {
+        match self.r#type {
+            TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix,
-                pos_in_src,
             } => {
                 if let Some(suff_key) = suffix {
                     let Suffix::Float { float_type, key } = suff_key else {
                         unreachable!()
                     };
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[binary_exp_part_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[key]);
                     Some(vec)
                 } else {
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*binary_exp_part_key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[binary_exp_part_key]);
                     Some(vec)
                 }
             }
-            Token::CONSTANT_HEXA_INT {
-                value_key,
-                suffix,
-                pos_in_src,
-            } => {
+            TokenType::CONSTANT_HEXA_INT { value_key, suffix } => {
                 if let Some(suff_key) = suffix {
                     let Suffix::Integer { integer_type, key } = suff_key else {
                         unreachable!()
                     };
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[key]);
                     Some(vec)
                 } else {
-                    Some(str_maps.key_to_byte_vec[*value_key].to_vec())
+                    Some(str_maps.key_to_byte_vec[value_key].to_vec())
                 }
             }
-            Token::CONSTANT_DEC_FLOAT {
+            TokenType::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
                 suffix,
-                pos_in_src,
             } => match (exp_part_key, suffix) {
                 (Some(ep_key), Some(suff_key)) => {
                     let Suffix::Float { float_type, key } = suff_key else {
                         unreachable!()
                     };
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*ep_key]);
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[ep_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[key]);
                     Some(vec)
                 }
                 (_, Some(suff_key)) => {
                     let Suffix::Float { float_type, key } = suff_key else {
                         unreachable!()
                     };
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[key]);
                     Some(vec)
                 }
-                _ => Some(str_maps.key_to_byte_vec[*value_key].to_vec()),
+                _ => Some(str_maps.key_to_byte_vec[value_key].to_vec()),
             },
-            Token::CONSTANT_CHAR {
+            TokenType::CONSTANT_CHAR {
                 const_char:
                     ConstantChar {
                         prefix,
                         sequence_key,
                     },
-                pos_in_src,
             } => {
                 if let Some(prefix_byte) = prefix {
-                    let mut vec = vec![*prefix_byte];
+                    let mut vec = vec![prefix_byte];
                     vec.push(b'\'');
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[sequence_key]);
                     vec.push(b'\'');
                     Some(vec)
                 } else {
                     let mut vec = vec![];
                     vec.push(b'\'');
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[sequence_key]);
                     vec.push(b'\'');
                     Some(vec)
                 }
             }
-            Token::StringLiteral {
+            TokenType::StringLiteral {
                 str_lit:
                     StringLiteral {
                         prefix_key,
                         sequence_key,
                     },
-                pos_in_src,
             } => {
                 if let Some(pre_key) = prefix_key {
-                    let mut vec = str_maps.key_to_byte_vec[*pre_key].to_vec();
+                    let mut vec = str_maps.key_to_byte_vec[pre_key].to_vec();
                     vec.push(b'\"');
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[sequence_key]);
                     vec.push(b'\"');
                     Some(vec)
                 } else {
                     let mut vec = vec![b'\"'];
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*sequence_key]);
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[sequence_key]);
                     vec.push(b'\"');
                     Some(vec)
                 }
             }
-            Token::CONSTANT_DEC_INT {
-                value_key,
-                suffix,
-                pos_in_src,
-            } => {
+            TokenType::CONSTANT_DEC_INT { value_key, suffix } => {
                 if let Some(suff_key) = suffix {
                     let Suffix::Integer { integer_type, key } = suff_key else {
                         unreachable!()
                     };
-                    let mut vec = str_maps.key_to_byte_vec[*value_key].to_vec();
-                    vec.extend_from_slice(&str_maps.key_to_byte_vec[*key]);
+                    let mut vec = str_maps.key_to_byte_vec[value_key].to_vec();
+                    vec.extend_from_slice(&str_maps.key_to_byte_vec[key]);
                     Some(vec)
                 } else {
-                    Some(str_maps.key_to_byte_vec[*value_key].to_vec())
+                    Some(str_maps.key_to_byte_vec[value_key].to_vec())
                 }
             }
-            Token::IDENT { str_map_key, .. } => {
-                Some(str_maps.key_to_byte_vec[*str_map_key].to_vec())
+            TokenType::IDENT { str_map_key, .. } => {
+                Some(str_maps.key_to_byte_vec[str_map_key].to_vec())
             }
-            Token::WHITESPACE { .. } => Some(" ".as_bytes().to_vec()),
-            Token::NEWLINE { .. } => Some("\n".as_bytes().to_vec()),
-            Token::PUNCT_OPEN_SQR { .. } => Some("[".as_bytes().to_vec()),
-            Token::PUNCT_CLOSE_SQR { .. } => Some("]".as_bytes().to_vec()),
-            Token::PUNCT_OPEN_PAR { .. } => Some("(".as_bytes().to_vec()),
-            Token::PUNCT_CLOSE_PAR { .. } => Some(")".as_bytes().to_vec()),
-            Token::PUNCT_OPEN_CURLY { .. } => Some("{".as_bytes().to_vec()),
-            Token::PUNCT_CLOSE_CURLY { .. } => Some("}".as_bytes().to_vec()),
-            Token::PUNCT_DOT { .. } => Some(".".as_bytes().to_vec()),
-            Token::PUNCT_ARROW { .. } => Some("{..}=>".as_bytes().to_vec()),
-            Token::PUNCT_INCREMENT { .. } => Some("++".as_bytes().to_vec()),
-            Token::PUNCT_DECREMENT { .. } => Some("--".as_bytes().to_vec()),
-            Token::PUNCT_AND_BIT { .. } => Some("&".as_bytes().to_vec()),
-            Token::PUNCT_MULT { .. } => Some("*".as_bytes().to_vec()),
-            Token::PUNCT_PLUS { .. } => Some("+".as_bytes().to_vec()),
-            Token::PUNCT_MINUS { .. } => Some("-".as_bytes().to_vec()),
-            Token::PUNCT_TILDE { .. } => Some("~".as_bytes().to_vec()),
-            Token::PUNCT_NOT_BOOL { .. } => Some("!".as_bytes().to_vec()),
-            Token::PUNCT_DIV { .. } => Some("/".as_bytes().to_vec()),
-            Token::PUNCT_MODULO { .. } => Some("%".as_bytes().to_vec()),
-            Token::PUNCT_BITSHIFT_LEFT { .. } => Some("<<".as_bytes().to_vec()),
-            Token::PUNCT_BITSHIFT_RIGHT { .. } => Some(">>".as_bytes().to_vec()),
-            Token::PUNCT_LESS_THAN { .. } => Some("<".as_bytes().to_vec()),
-            Token::PUNCT_GREATER_THAN { .. } => Some(">".as_bytes().to_vec()),
-            Token::PUNCT_LESS_THAN_EQ { .. } => Some("<=".as_bytes().to_vec()),
-            Token::PUNCT_GREATER_THAN_EQ { .. } => Some(">=".as_bytes().to_vec()),
-            Token::PUNCT_EQ_BOOL { .. } => Some("==".as_bytes().to_vec()),
-            Token::PUNCT_NOT_EQ_BOOL { .. } => Some("!=".as_bytes().to_vec()),
-            Token::PUNCT_XOR_BIT { .. } => Some("^".as_bytes().to_vec()),
-            Token::PUNCT_OR_BIT { .. } => Some("|".as_bytes().to_vec()),
-            Token::PUNCT_AND_BOOL { .. } => Some("&&".as_bytes().to_vec()),
-            Token::PUNCT_OR_BOOL { .. } => Some("||".as_bytes().to_vec()),
-            Token::PUNCT_QUESTION_MARK { .. } => Some("?".as_bytes().to_vec()),
-            Token::PUNCT_COLON { .. } => Some(":".as_bytes().to_vec()),
-            Token::PUNCT_SEMI_COLON { .. } => Some(";".as_bytes().to_vec()),
-            Token::PUNCT_ELLIPSIS { .. } => Some("...".as_bytes().to_vec()),
-            Token::PUNCT_ASSIGNMENT { .. } => Some("=".as_bytes().to_vec()),
-            Token::PUNCT_MULT_ASSIGN { .. } => Some("*=".as_bytes().to_vec()),
-            Token::PUNCT_DIV_ASSIGN { .. } => Some("/=".as_bytes().to_vec()),
-            Token::PUNCT_MODULO_ASSIGN { .. } => Some("%=".as_bytes().to_vec()),
-            Token::PUNCT_ADD_ASSIGN { .. } => Some("+=".as_bytes().to_vec()),
-            Token::PUNCT_SUB_ASSIGN { .. } => Some("-=".as_bytes().to_vec()),
-            Token::PUNCT_L_SHIFT_BIT_ASSIGN { .. } => Some("<<=".as_bytes().to_vec()),
-            Token::PUNCT_R_SHIFT_BIT_ASSIGN { .. } => Some(">>=".as_bytes().to_vec()),
-            Token::PUNCT_AND_BIT_ASSIGN { .. } => Some("&=".as_bytes().to_vec()),
-            Token::PUNCT_XOR_BIT_ASSIGN { .. } => Some("^=".as_bytes().to_vec()),
-            Token::PUNCT_OR_BIT_ASSIGN { .. } => Some("|=".as_bytes().to_vec()),
-            Token::PUNCT_COMMA { .. } => Some(",".as_bytes().to_vec()),
-            Token::PUNCT_HASH { .. } => Some("#".as_bytes().to_vec()),
-            Token::PUNCT_HASH_HASH { .. } => Some("##".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_OPEN_SQR { .. } => Some("<:".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_CLOSE_SQR { .. } => Some(":>".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_OPEN_CURLY { .. } => Some("<%".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_CLOSE_CURLY { .. } => Some("%>".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_HASH { .. } => Some("%:".as_bytes().to_vec()),
-            Token::PUNCT_DIGRAPH_HASH_HASH { .. } => Some("%:%:".as_bytes().to_vec()),
-            Token::KEYWORD_AUTO { .. } => Some("auto".as_bytes().to_vec()),
-            Token::KEYWORD_BREAK { .. } => Some("break".as_bytes().to_vec()),
-            Token::KEYWORD_CASE { .. } => Some("case".as_bytes().to_vec()),
-            Token::KEYWORD_CHAR { .. } => Some("char".as_bytes().to_vec()),
-            Token::KEYWORD_CONST { .. } => Some("const".as_bytes().to_vec()),
-            Token::KEYWORD_CONTINUE { .. } => Some("continue".as_bytes().to_vec()),
-            Token::KEYWORD_DEFAULT { .. } => Some("default".as_bytes().to_vec()),
-            Token::KEYWORD_DO { .. } => Some("do".as_bytes().to_vec()),
-            Token::KEYWORD_DOUBLE { .. } => Some("double".as_bytes().to_vec()),
-            Token::KEYWORD_ELSE { .. } => Some("else".as_bytes().to_vec()),
-            Token::KEYWORD_ENUM { .. } => Some("enum".as_bytes().to_vec()),
-            Token::KEYWORD_EXTERN { .. } => Some("extern".as_bytes().to_vec()),
-            Token::KEYWORD_FLOAT { .. } => Some("float".as_bytes().to_vec()),
-            Token::KEYWORD_FOR { .. } => Some("for".as_bytes().to_vec()),
-            Token::KEYWORD_GOTO { .. } => Some("goto".as_bytes().to_vec()),
-            Token::KEYWORD_IF { .. } => Some("if".as_bytes().to_vec()),
-            Token::KEYWORD_INLINE { .. } => Some("inline".as_bytes().to_vec()),
-            Token::KEYWORD_INT { .. } => Some("int".as_bytes().to_vec()),
-            Token::KEYWORD_LONG { .. } => Some("long".as_bytes().to_vec()),
-            Token::KEYWORD_REGISTER { .. } => Some("register".as_bytes().to_vec()),
-            Token::KEYWORD_RESTRICT { .. } => Some("restrict".as_bytes().to_vec()),
-            Token::KEYWORD_RETURN { .. } => Some("return".as_bytes().to_vec()),
-            Token::KEYWORD_SHORT { .. } => Some("short".as_bytes().to_vec()),
-            Token::KEYWORD_SIGNED { .. } => Some("signed".as_bytes().to_vec()),
-            Token::KEYWORD_SIZEOF { .. } => Some("sizeof".as_bytes().to_vec()),
-            Token::KEYWORD_STATIC { .. } => Some("static".as_bytes().to_vec()),
-            Token::KEYWORD_STRUCT { .. } => Some("struct".as_bytes().to_vec()),
-            Token::KEYWORD_SWITCH { .. } => Some("switch".as_bytes().to_vec()),
-            Token::KEYWORD_TYPEDEF { .. } => Some("typedef".as_bytes().to_vec()),
-            Token::KEYWORD_UNION { .. } => Some("union".as_bytes().to_vec()),
-            Token::KEYWORD_UNSIGNED { .. } => Some("unsigned".as_bytes().to_vec()),
-            Token::KEYWORD_VOID { .. } => Some("void".as_bytes().to_vec()),
-            Token::KEYWORD_VOLATILE { .. } => Some("volatile".as_bytes().to_vec()),
-            Token::KEYWORD_WHILE { .. } => Some("while".as_bytes().to_vec()),
-            Token::KEYWORD__ALIGNAS { .. } => Some("_Alignas".as_bytes().to_vec()),
-            Token::KEYWORD__ALIGNOF { .. } => Some("_Alignof".as_bytes().to_vec()),
-            Token::KEYWORD__ATOMIC { .. } => Some("_Atomic".as_bytes().to_vec()),
-            Token::KEYWORD__BOOL { .. } => Some("_Bool".as_bytes().to_vec()),
-            Token::KEYWORD__COMPLEX { .. } => Some("_Complex".as_bytes().to_vec()),
-            Token::KEYWORD__GENERIC { .. } => Some("_Generic".as_bytes().to_vec()),
-            Token::KEYWORD__IMAGINARY { .. } => Some("_Imaginary".as_bytes().to_vec()),
-            Token::KEYWORD__NORETURN { .. } => Some("_Noreturn".as_bytes().to_vec()),
-            Token::KEYWORD__STATIC_ASSERT { .. } => Some("_Static_assert".as_bytes().to_vec()),
-            Token::KEYWORD__THREAD_LOCAL { .. } => Some("_Thread_local".as_bytes().to_vec()),
+            TokenType::WHITESPACE => Some(" ".as_bytes().to_vec()),
+            TokenType::NEWLINE => Some("\n".as_bytes().to_vec()),
+            TokenType::PUNCT_OPEN_SQR => Some("[".as_bytes().to_vec()),
+            TokenType::PUNCT_CLOSE_SQR => Some("]".as_bytes().to_vec()),
+            TokenType::PUNCT_OPEN_PAR => Some("(".as_bytes().to_vec()),
+            TokenType::PUNCT_CLOSE_PAR => Some(")".as_bytes().to_vec()),
+            TokenType::PUNCT_OPEN_CURLY => Some("{".as_bytes().to_vec()),
+            TokenType::PUNCT_CLOSE_CURLY => Some("}".as_bytes().to_vec()),
+            TokenType::PUNCT_DOT => Some(".".as_bytes().to_vec()),
+            TokenType::PUNCT_ARROW => Some("{..}=>".as_bytes().to_vec()),
+            TokenType::PUNCT_INCREMENT => Some("++".as_bytes().to_vec()),
+            TokenType::PUNCT_DECREMENT => Some("--".as_bytes().to_vec()),
+            TokenType::PUNCT_AND_BIT => Some("&".as_bytes().to_vec()),
+            TokenType::PUNCT_MULT => Some("*".as_bytes().to_vec()),
+            TokenType::PUNCT_PLUS => Some("+".as_bytes().to_vec()),
+            TokenType::PUNCT_MINUS => Some("-".as_bytes().to_vec()),
+            TokenType::PUNCT_TILDE => Some("~".as_bytes().to_vec()),
+            TokenType::PUNCT_NOT_BOOL => Some("!".as_bytes().to_vec()),
+            TokenType::PUNCT_DIV => Some("/".as_bytes().to_vec()),
+            TokenType::PUNCT_MODULO => Some("%".as_bytes().to_vec()),
+            TokenType::PUNCT_BITSHIFT_LEFT => Some("<<".as_bytes().to_vec()),
+            TokenType::PUNCT_BITSHIFT_RIGHT => Some(">>".as_bytes().to_vec()),
+            TokenType::PUNCT_LESS_THAN => Some("<".as_bytes().to_vec()),
+            TokenType::PUNCT_GREATER_THAN => Some(">".as_bytes().to_vec()),
+            TokenType::PUNCT_LESS_THAN_EQ => Some("<=".as_bytes().to_vec()),
+            TokenType::PUNCT_GREATER_THAN_EQ => Some(">=".as_bytes().to_vec()),
+            TokenType::PUNCT_EQ_BOOL => Some("==".as_bytes().to_vec()),
+            TokenType::PUNCT_NOT_EQ_BOOL => Some("!=".as_bytes().to_vec()),
+            TokenType::PUNCT_XOR_BIT => Some("^".as_bytes().to_vec()),
+            TokenType::PUNCT_OR_BIT => Some("|".as_bytes().to_vec()),
+            TokenType::PUNCT_AND_BOOL => Some("&&".as_bytes().to_vec()),
+            TokenType::PUNCT_OR_BOOL => Some("||".as_bytes().to_vec()),
+            TokenType::PUNCT_QUESTION_MARK => Some("?".as_bytes().to_vec()),
+            TokenType::PUNCT_COLON => Some(":".as_bytes().to_vec()),
+            TokenType::PUNCT_SEMI_COLON => Some(";".as_bytes().to_vec()),
+            TokenType::PUNCT_ELLIPSIS => Some("...".as_bytes().to_vec()),
+            TokenType::PUNCT_ASSIGNMENT => Some("=".as_bytes().to_vec()),
+            TokenType::PUNCT_MULT_ASSIGN => Some("*=".as_bytes().to_vec()),
+            TokenType::PUNCT_DIV_ASSIGN => Some("/=".as_bytes().to_vec()),
+            TokenType::PUNCT_MODULO_ASSIGN => Some("%=".as_bytes().to_vec()),
+            TokenType::PUNCT_ADD_ASSIGN => Some("+=".as_bytes().to_vec()),
+            TokenType::PUNCT_SUB_ASSIGN => Some("-=".as_bytes().to_vec()),
+            TokenType::PUNCT_L_SHIFT_BIT_ASSIGN => Some("<<=".as_bytes().to_vec()),
+            TokenType::PUNCT_R_SHIFT_BIT_ASSIGN => Some(">>=".as_bytes().to_vec()),
+            TokenType::PUNCT_AND_BIT_ASSIGN => Some("&=".as_bytes().to_vec()),
+            TokenType::PUNCT_XOR_BIT_ASSIGN => Some("^=".as_bytes().to_vec()),
+            TokenType::PUNCT_OR_BIT_ASSIGN => Some("|=".as_bytes().to_vec()),
+            TokenType::PUNCT_COMMA => Some(",".as_bytes().to_vec()),
+            TokenType::PUNCT_HASH => Some("#".as_bytes().to_vec()),
+            TokenType::PUNCT_HASH_HASH => Some("##".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_OPEN_SQR => Some("<:".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_CLOSE_SQR => Some(":>".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_OPEN_CURLY => Some("<%".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_CLOSE_CURLY => Some("%>".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_HASH => Some("%:".as_bytes().to_vec()),
+            TokenType::PUNCT_DIGRAPH_HASH_HASH => Some("%:%:".as_bytes().to_vec()),
+            TokenType::KEYWORD_AUTO => Some("auto".as_bytes().to_vec()),
+            TokenType::KEYWORD_BREAK => Some("break".as_bytes().to_vec()),
+            TokenType::KEYWORD_CASE => Some("case".as_bytes().to_vec()),
+            TokenType::KEYWORD_CHAR => Some("char".as_bytes().to_vec()),
+            TokenType::KEYWORD_CONST => Some("const".as_bytes().to_vec()),
+            TokenType::KEYWORD_CONTINUE => Some("continue".as_bytes().to_vec()),
+            TokenType::KEYWORD_DEFAULT => Some("default".as_bytes().to_vec()),
+            TokenType::KEYWORD_DO => Some("do".as_bytes().to_vec()),
+            TokenType::KEYWORD_DOUBLE => Some("double".as_bytes().to_vec()),
+            TokenType::KEYWORD_ELSE => Some("else".as_bytes().to_vec()),
+            TokenType::KEYWORD_ENUM => Some("enum".as_bytes().to_vec()),
+            TokenType::KEYWORD_EXTERN => Some("extern".as_bytes().to_vec()),
+            TokenType::KEYWORD_FLOAT => Some("float".as_bytes().to_vec()),
+            TokenType::KEYWORD_FOR => Some("for".as_bytes().to_vec()),
+            TokenType::KEYWORD_GOTO => Some("goto".as_bytes().to_vec()),
+            TokenType::KEYWORD_IF => Some("if".as_bytes().to_vec()),
+            TokenType::KEYWORD_INLINE => Some("inline".as_bytes().to_vec()),
+            TokenType::KEYWORD_INT => Some("int".as_bytes().to_vec()),
+            TokenType::KEYWORD_LONG => Some("long".as_bytes().to_vec()),
+            TokenType::KEYWORD_REGISTER => Some("register".as_bytes().to_vec()),
+            TokenType::KEYWORD_RESTRICT => Some("restrict".as_bytes().to_vec()),
+            TokenType::KEYWORD_RETURN => Some("return".as_bytes().to_vec()),
+            TokenType::KEYWORD_SHORT => Some("short".as_bytes().to_vec()),
+            TokenType::KEYWORD_SIGNED => Some("signed".as_bytes().to_vec()),
+            TokenType::KEYWORD_SIZEOF => Some("sizeof".as_bytes().to_vec()),
+            TokenType::KEYWORD_STATIC => Some("static".as_bytes().to_vec()),
+            TokenType::KEYWORD_STRUCT => Some("struct".as_bytes().to_vec()),
+            TokenType::KEYWORD_SWITCH => Some("switch".as_bytes().to_vec()),
+            TokenType::KEYWORD_TYPEDEF => Some("typedef".as_bytes().to_vec()),
+            TokenType::KEYWORD_UNION => Some("union".as_bytes().to_vec()),
+            TokenType::KEYWORD_UNSIGNED => Some("unsigned".as_bytes().to_vec()),
+            TokenType::KEYWORD_VOID => Some("void".as_bytes().to_vec()),
+            TokenType::KEYWORD_VOLATILE => Some("volatile".as_bytes().to_vec()),
+            TokenType::KEYWORD_WHILE => Some("while".as_bytes().to_vec()),
+            TokenType::KEYWORD__ALIGNAS => Some("_Alignas".as_bytes().to_vec()),
+            TokenType::KEYWORD__ALIGNOF => Some("_Alignof".as_bytes().to_vec()),
+            TokenType::KEYWORD__ATOMIC => Some("_Atomic".as_bytes().to_vec()),
+            TokenType::KEYWORD__BOOL => Some("_Bool".as_bytes().to_vec()),
+            TokenType::KEYWORD__COMPLEX => Some("_Complex".as_bytes().to_vec()),
+            TokenType::KEYWORD__GENERIC => Some("_Generic".as_bytes().to_vec()),
+            TokenType::KEYWORD__IMAGINARY => Some("_Imaginary".as_bytes().to_vec()),
+            TokenType::KEYWORD__NORETURN => Some("_Noreturn".as_bytes().to_vec()),
+            TokenType::KEYWORD__STATIC_ASSERT => Some("_Static_assert".as_bytes().to_vec()),
+            TokenType::KEYWORD__THREAD_LOCAL => Some("_Thread_local".as_bytes().to_vec()),
             _ => None,
         }
     }
@@ -1055,16 +839,15 @@ fn match_string_literal(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Result<Option<Token>, String> {
+) -> Result<Option<TokenType>, String> {
     let mut byte_index = *index;
-    let mut token = Token::StringLiteral {
+    let mut token = TokenType::StringLiteral {
         str_lit: StringLiteral {
             prefix_key: None,
             sequence_key: 0,
         },
-        pos_in_src: *index,
     };
-    let Token::StringLiteral {
+    let TokenType::StringLiteral {
         str_lit: StringLiteral {
             prefix_key,
             sequence_key,
@@ -1145,7 +928,7 @@ fn match_integer_constant(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Option<TokenType> {
     let mut byte_index = *index;
     match program_str_bytes[byte_index] {
         b'0' if byte_index + 1 < program_str_bytes.len()
@@ -1205,7 +988,7 @@ fn match_integer_constant(
                         None
                     };
                     if is_hexa {
-                        let token = Some(Token::CONSTANT_HEXA_INT {
+                        let token = Some(TokenType::CONSTANT_HEXA_INT {
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
@@ -1237,12 +1020,11 @@ fn match_integer_constant(
                                 }),
                                 None => None,
                             },
-                            pos_in_src: byte_index,
                         });
                         *index = byte_index;
                         token
                     } else {
-                        let token = Some(Token::CONSTANT_OCTAL_INT {
+                        let token = Some(TokenType::CONSTANT_OCTAL_INT {
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
@@ -1274,7 +1056,6 @@ fn match_integer_constant(
                                 }),
                                 None => None,
                             },
-                            pos_in_src: byte_index,
                         });
                         *index = byte_index;
                         token
@@ -1327,7 +1108,7 @@ fn match_integer_constant(
                         } else {
                             None
                         };
-                        let token = Some(Token::CONSTANT_DEC_INT {
+                        let token = Some(TokenType::CONSTANT_DEC_INT {
                             value_key: {
                                 str_maps.add_byte_vec(&program_str_bytes[*index..start_suffex])
                             },
@@ -1359,7 +1140,6 @@ fn match_integer_constant(
                                 }),
                                 None => None,
                             },
-                            pos_in_src: byte_index,
                         });
                         *index = byte_index;
                         return token;
@@ -1377,7 +1157,7 @@ fn match_floating_constant(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Option<Token> {
+) -> Option<TokenType> {
     let mut byte_index = *index;
     let is_hexa = if byte_index + 1 < program_str_bytes.len()
         && (program_str_bytes[byte_index + 1] == b'x' || program_str_bytes[byte_index + 1] == b'X')
@@ -1452,7 +1232,7 @@ fn match_floating_constant(
             None
         };
         if is_hexa {
-            let token = Some(Token::CONSTANT_HEXA_FLOAT {
+            let token = Some(TokenType::CONSTANT_HEXA_FLOAT {
                 value_key: {
                     str_maps.add_byte_vec(&program_str_bytes[*index..end_of_second_digit_sequence])
                 },
@@ -1475,12 +1255,11 @@ fn match_floating_constant(
                     },
                     None => None,
                 },
-                pos_in_src: byte_index,
             });
             *index = byte_index;
             return token;
         } else {
-            let token = Some(Token::CONSTANT_DEC_FLOAT {
+            let token = Some(TokenType::CONSTANT_DEC_FLOAT {
                 value_key: {
                     str_maps.add_byte_vec(&program_str_bytes[*index..end_of_second_digit_sequence])
                 },
@@ -1505,7 +1284,6 @@ fn match_floating_constant(
                     },
                     None => None,
                 },
-                pos_in_src: byte_index,
             });
             *index = byte_index;
             return token;
@@ -1520,7 +1298,7 @@ fn match_character_constant(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Result<Option<Token>, String> {
+) -> Result<Option<TokenType>, String> {
     let mut byte_index = *index;
     if program_str_bytes[byte_index] == b'L'
         || program_str_bytes[byte_index] == b'u'
@@ -1577,7 +1355,7 @@ fn match_character_constant(
         if byte_index < program_str_bytes.len() && program_str_bytes[byte_index] == b'\'' {
             byte_index += 1;
             let mut start_of_sequence = *index;
-            let token = Some(Token::CONSTANT_CHAR {
+            let token = Some(TokenType::CONSTANT_CHAR {
                 const_char: ConstantChar {
                     prefix: if program_str_bytes[*index] == b'\'' {
                         None
@@ -1588,7 +1366,6 @@ fn match_character_constant(
                     sequence_key: str_maps
                         .add_byte_vec(&program_str_bytes[start_of_sequence + 1..byte_index - 1]),
                 },
-                pos_in_src: byte_index,
             });
             *index = byte_index;
             return Ok(token);
@@ -1596,45 +1373,33 @@ fn match_character_constant(
     }
     Ok(None)
 }
-fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<TokenType> {
     let byte_index = *index;
     if byte_index < program_str_bytes.len() {
         match program_str_bytes[byte_index] {
             b'[' => {
                 *index += 1;
-                return Some(Token::PUNCT_OPEN_SQR {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_OPEN_SQR);
             }
             b']' => {
                 *index += 1;
-                return Some(Token::PUNCT_CLOSE_SQR {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_CLOSE_SQR);
             }
             b'(' => {
                 *index += 1;
-                return Some(Token::PUNCT_OPEN_PAR {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_OPEN_PAR);
             }
             b')' => {
                 *index += 1;
-                return Some(Token::PUNCT_CLOSE_PAR {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_CLOSE_PAR);
             }
             b'{' => {
                 *index += 1;
-                return Some(Token::PUNCT_OPEN_CURLY {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_OPEN_CURLY);
             }
             b'}' => {
                 *index += 1;
-                return Some(Token::PUNCT_CLOSE_CURLY {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_CLOSE_CURLY);
             }
             b'.' => {
                 if byte_index + 2 < program_str_bytes.len() {
@@ -1644,153 +1409,111 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                         program_str_bytes[byte_index + 2],
                     ) {
                         *index += 3;
-                        return Some(Token::PUNCT_ELLIPSIS {
-                            pos_in_src: byte_index,
-                        });
+                        return Some(TokenType::PUNCT_ELLIPSIS);
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_DOT {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_DOT);
             }
             b'-' => {
                 if byte_index + 1 < program_str_bytes.len() {
                     match program_str_bytes[byte_index + 1] {
                         b'-' => {
                             *index += 2;
-                            return Some(Token::PUNCT_DECREMENT {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_DECREMENT);
                         }
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_SUB_ASSIGN {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_SUB_ASSIGN);
                         }
                         b'>' => {
                             *index += 2;
-                            return Some(Token::PUNCT_ARROW {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_ARROW);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_MINUS {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_MINUS);
             }
             b'+' => {
                 if byte_index + 1 < program_str_bytes.len() {
                     match program_str_bytes[byte_index + 1] {
                         b'+' => {
                             *index += 2;
-                            return Some(Token::PUNCT_INCREMENT {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_INCREMENT);
                         }
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_ADD_ASSIGN {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_ADD_ASSIGN);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_PLUS {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_PLUS);
             }
             b'&' => {
                 if byte_index + 1 < program_str_bytes.len() {
                     match program_str_bytes[byte_index + 1] {
                         b'&' => {
                             *index += 2;
-                            return Some(Token::PUNCT_AND_BOOL {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_AND_BOOL);
                         }
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_AND_BIT_ASSIGN {
-                                pos_in_src: byte_index,
-                            });
+                            return Some(TokenType::PUNCT_AND_BIT_ASSIGN);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_AND_BIT {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_AND_BIT);
             }
             b'*' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'='
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_MULT_ASSIGN {
-                        pos_in_src: byte_index,
-                    });
+                    return Some(TokenType::PUNCT_MULT_ASSIGN);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_MULT {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_MULT);
             }
             b'~' => {
                 *index += 1;
-                return Some(Token::PUNCT_TILDE {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_TILDE);
             }
             b'!' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'='
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_NOT_EQ_BOOL {
-                        pos_in_src: byte_index,
-                    });
+                    return Some(TokenType::PUNCT_NOT_EQ_BOOL);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_NOT_BOOL {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_NOT_BOOL);
             }
             b'/' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'='
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_DIV_ASSIGN {
-                        pos_in_src: byte_index,
-                    });
+                    return Some(TokenType::PUNCT_DIV_ASSIGN);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_DIV {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_DIV);
             }
             b'%' => {
                 if byte_index + 1 < program_str_bytes.len() {
                     match program_str_bytes[byte_index + 1] {
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_MODULO_ASSIGN {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_MODULO_ASSIGN);
                         }
                         b'>' => {
                             *index += 2;
-                            return Some(Token::PUNCT_DIGRAPH_CLOSE_CURLY {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_DIGRAPH_CLOSE_CURLY);
                         }
                         b':' => {
                             if byte_index + 3 < program_str_bytes.len() {
@@ -1801,23 +1524,17 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                                     program_str_bytes[byte_index + 3],
                                 ) {
                                     *index += 4;
-                                    return Some(Token::PUNCT_DIGRAPH_HASH_HASH {
-                                        pos_in_src: byte_index + 1,
-                                    });
+                                    return Some(TokenType::PUNCT_DIGRAPH_HASH_HASH);
                                 }
                             }
                             *index += 2;
-                            return Some(Token::PUNCT_DIGRAPH_HASH {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_DIGRAPH_HASH);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_MODULO {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_MODULO);
             }
             b'<' => {
                 if byte_index + 1 < program_str_bytes.len() {
@@ -1827,40 +1544,28 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                                 && program_str_bytes[byte_index + 2] == b'='
                             {
                                 *index += 3;
-                                return Some(Token::PUNCT_L_SHIFT_BIT_ASSIGN {
-                                    pos_in_src: byte_index + 1,
-                                });
+                                return Some(TokenType::PUNCT_L_SHIFT_BIT_ASSIGN);
                             }
                             *index += 2;
-                            return Some(Token::PUNCT_BITSHIFT_LEFT {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_BITSHIFT_LEFT);
                         }
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_LESS_THAN_EQ {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_LESS_THAN_EQ);
                         }
                         b':' => {
                             *index += 2;
-                            return Some(Token::PUNCT_DIGRAPH_OPEN_SQR {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_DIGRAPH_OPEN_SQR);
                         }
                         b'%' => {
                             *index += 2;
-                            return Some(Token::PUNCT_DIGRAPH_OPEN_CURLY {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_DIGRAPH_OPEN_CURLY);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_LESS_THAN {
-                    pos_in_src: byte_index,
-                });
+                return Some(TokenType::PUNCT_LESS_THAN);
             }
             b'>' => {
                 if byte_index + 1 < program_str_bytes.len() {
@@ -1870,136 +1575,101 @@ fn match_punctuator(program_str_bytes: &[u8], index: &mut usize) -> Option<Token
                                 && program_str_bytes[byte_index + 2] == b'='
                             {
                                 *index += 3;
-                                return Some(Token::PUNCT_R_SHIFT_BIT_ASSIGN {
-                                    pos_in_src: byte_index + 1,
-                                });
+                                return Some(TokenType::PUNCT_R_SHIFT_BIT_ASSIGN);
                             }
                             *index += 2;
-                            return Some(Token::PUNCT_BITSHIFT_RIGHT {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_BITSHIFT_RIGHT);
                         }
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_GREATER_THAN_EQ {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_GREATER_THAN_EQ);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_GREATER_THAN {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_GREATER_THAN);
             }
             b'=' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'='
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_EQ_BOOL {
-                        pos_in_src: byte_index + 1,
-                    });
+                    return Some(TokenType::PUNCT_EQ_BOOL);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_ASSIGNMENT {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_ASSIGNMENT);
             }
             b'^' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'='
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_XOR_BIT_ASSIGN {
-                        pos_in_src: byte_index + 1,
-                    });
+                    return Some(TokenType::PUNCT_XOR_BIT_ASSIGN);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_XOR_BIT {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_XOR_BIT);
             }
             b'|' => {
                 if byte_index + 1 < program_str_bytes.len() {
                     match program_str_bytes[byte_index + 1] {
                         b'=' => {
                             *index += 2;
-                            return Some(Token::PUNCT_OR_BIT_ASSIGN {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_OR_BIT_ASSIGN);
                         }
                         b'|' => {
                             *index += 2;
-                            return Some(Token::PUNCT_OR_BOOL {
-                                pos_in_src: byte_index + 1,
-                            });
+                            return Some(TokenType::PUNCT_OR_BOOL);
                         }
                         _ => {}
                     }
                 }
                 *index += 1;
-                return Some(Token::PUNCT_OR_BIT {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_OR_BIT);
             }
             b'?' => {
                 *index += 1;
-                return Some(Token::PUNCT_QUESTION_MARK {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_QUESTION_MARK);
             }
             b':' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'>'
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_DIGRAPH_CLOSE_SQR {
-                        pos_in_src: byte_index + 1,
-                    });
+                    return Some(TokenType::PUNCT_DIGRAPH_CLOSE_SQR);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_COLON {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_COLON);
             }
             b';' => {
                 *index += 1;
-                return Some(Token::PUNCT_SEMI_COLON {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_SEMI_COLON);
             }
             b',' => {
                 *index += 1;
-                return Some(Token::PUNCT_COMMA {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_COMMA);
             }
             b'#' => {
                 if byte_index + 1 < program_str_bytes.len()
                     && program_str_bytes[byte_index + 1] == b'#'
                 {
                     *index += 2;
-                    return Some(Token::PUNCT_HASH_HASH {
-                        pos_in_src: byte_index + 1,
-                    });
+                    return Some(TokenType::PUNCT_HASH_HASH);
                 }
                 *index += 1;
-                return Some(Token::PUNCT_HASH {
-                    pos_in_src: byte_index + 1,
-                });
+                return Some(TokenType::PUNCT_HASH);
             }
             _ => {}
         }
     }
     None
 }
+
 fn match_identifier(
     program_str_bytes: &[u8],
     index: &mut usize,
     str_maps: &mut ByteVecMaps,
-) -> Result<Option<Token>, String> {
+) -> Result<Option<TokenType>, String> {
     let mut byte_index = *index;
     while byte_index < program_str_bytes.len() {
         if matches!(
@@ -2021,19 +1691,16 @@ fn match_identifier(
     let bytes = &program_str_bytes[*index..byte_index];
     if !bytes.is_empty() && !bytes[0].is_ascii_digit() && *bytes != *"__func__".as_bytes() {
         *index = byte_index;
-        return Ok(Some(Token::IDENT {
+        return Ok(Some(TokenType::IDENT {
             str_map_key: str_maps.add_byte_vec(bytes),
-            pos_in_src: byte_index,
         }));
     } else if *bytes == *"__func__".as_bytes() {
         *index = byte_index;
-        return Ok(Some(Token::PREDEF_IDENT___FUNC__ {
-            pos_in_src: byte_index,
-        }));
+        return Ok(Some(TokenType::PREDEF_IDENT___FUNC__));
     }
     Ok(None)
 }
-fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
+fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<TokenType> {
     let mut byte_index = *index;
     while byte_index < program_str_bytes.len()
         && (program_str_bytes[byte_index].is_ascii_alphanumeric()
@@ -2087,50 +1754,50 @@ fn match_keyword(program_str_bytes: &[u8], index: &mut usize) -> Option<Token> {
     const KEYWORD__STATIC_ASSERT: &[u8] = "_Static_assert".as_bytes();
     const KEYWORD__THREAD_LOCAL: &[u8] = "_Thread_local".as_bytes();
     let keyword = match bytes {
-        KEYWORD_AUTO => Some(Token::KEYWORD_AUTO { pos_in_src: *index }),
-        KEYWORD_BREAK => Some(Token::KEYWORD_BREAK { pos_in_src: *index }),
-        KEYWORD_CASE => Some(Token::KEYWORD_CASE { pos_in_src: *index }),
-        KEYWORD_CHAR => Some(Token::KEYWORD_CHAR { pos_in_src: *index }),
-        KEYWORD_CONST => Some(Token::KEYWORD_CONST { pos_in_src: *index }),
-        KEYWORD_CONTINUE => Some(Token::KEYWORD_CONTINUE { pos_in_src: *index }),
-        KEYWORD_DEFAULT => Some(Token::KEYWORD_DEFAULT { pos_in_src: *index }),
-        KEYWORD_DO => Some(Token::KEYWORD_DO { pos_in_src: *index }),
-        KEYWORD_DOUBLE => Some(Token::KEYWORD_DOUBLE { pos_in_src: *index }),
-        KEYWORD_ELSE => Some(Token::KEYWORD_ELSE { pos_in_src: *index }),
-        KEYWORD_ENUM => Some(Token::KEYWORD_ENUM { pos_in_src: *index }),
-        KEYWORD_EXTERN => Some(Token::KEYWORD_EXTERN { pos_in_src: *index }),
-        KEYWORD_FLOAT => Some(Token::KEYWORD_FLOAT { pos_in_src: *index }),
-        KEYWORD_FOR => Some(Token::KEYWORD_FOR { pos_in_src: *index }),
-        KEYWORD_GOTO => Some(Token::KEYWORD_GOTO { pos_in_src: *index }),
-        KEYWORD_IF => Some(Token::KEYWORD_IF { pos_in_src: *index }),
-        KEYWORD_INLINE => Some(Token::KEYWORD_INLINE { pos_in_src: *index }),
-        KEYWORD_INT => Some(Token::KEYWORD_INT { pos_in_src: *index }),
-        KEYWORD_LONG => Some(Token::KEYWORD_LONG { pos_in_src: *index }),
-        KEYWORD_REGISTER => Some(Token::KEYWORD_REGISTER { pos_in_src: *index }),
-        KEYWORD_RESTRICT => Some(Token::KEYWORD_RESTRICT { pos_in_src: *index }),
-        KEYWORD_RETURN => Some(Token::KEYWORD_RETURN { pos_in_src: *index }),
-        KEYWORD_SHORT => Some(Token::KEYWORD_SHORT { pos_in_src: *index }),
-        KEYWORD_SIGNED => Some(Token::KEYWORD_SIGNED { pos_in_src: *index }),
-        KEYWORD_SIZEOF => Some(Token::KEYWORD_SIZEOF { pos_in_src: *index }),
-        KEYWORD_STATIC => Some(Token::KEYWORD_STATIC { pos_in_src: *index }),
-        KEYWORD_STRUCT => Some(Token::KEYWORD_STRUCT { pos_in_src: *index }),
-        KEYWORD_SWITCH => Some(Token::KEYWORD_SWITCH { pos_in_src: *index }),
-        KEYWORD_TYPEDEF => Some(Token::KEYWORD_TYPEDEF { pos_in_src: *index }),
-        KEYWORD_UNION => Some(Token::KEYWORD_UNION { pos_in_src: *index }),
-        KEYWORD_UNSIGNED => Some(Token::KEYWORD_UNSIGNED { pos_in_src: *index }),
-        KEYWORD_VOID => Some(Token::KEYWORD_VOID { pos_in_src: *index }),
-        KEYWORD_VOLATILE => Some(Token::KEYWORD_VOLATILE { pos_in_src: *index }),
-        KEYWORD_WHILE => Some(Token::KEYWORD_WHILE { pos_in_src: *index }),
-        KEYWORD__ALIGNAS => Some(Token::KEYWORD__ALIGNAS { pos_in_src: *index }),
-        KEYWORD__ALIGNOF => Some(Token::KEYWORD__ALIGNOF { pos_in_src: *index }),
-        KEYWORD__ATOMIC => Some(Token::KEYWORD__ATOMIC { pos_in_src: *index }),
-        KEYWORD__BOOL => Some(Token::KEYWORD__BOOL { pos_in_src: *index }),
-        KEYWORD__COMPLEX => Some(Token::KEYWORD__COMPLEX { pos_in_src: *index }),
-        KEYWORD__GENERIC => Some(Token::KEYWORD__GENERIC { pos_in_src: *index }),
-        KEYWORD__IMAGINARY => Some(Token::KEYWORD__IMAGINARY { pos_in_src: *index }),
-        KEYWORD__NORETURN => Some(Token::KEYWORD__NORETURN { pos_in_src: *index }),
-        KEYWORD__STATIC_ASSERT => Some(Token::KEYWORD__STATIC_ASSERT { pos_in_src: *index }),
-        KEYWORD__THREAD_LOCAL => Some(Token::KEYWORD__THREAD_LOCAL { pos_in_src: *index }),
+        KEYWORD_AUTO => Some(TokenType::KEYWORD_AUTO),
+        KEYWORD_BREAK => Some(TokenType::KEYWORD_BREAK),
+        KEYWORD_CASE => Some(TokenType::KEYWORD_CASE),
+        KEYWORD_CHAR => Some(TokenType::KEYWORD_CHAR),
+        KEYWORD_CONST => Some(TokenType::KEYWORD_CONST),
+        KEYWORD_CONTINUE => Some(TokenType::KEYWORD_CONTINUE),
+        KEYWORD_DEFAULT => Some(TokenType::KEYWORD_DEFAULT),
+        KEYWORD_DO => Some(TokenType::KEYWORD_DO),
+        KEYWORD_DOUBLE => Some(TokenType::KEYWORD_DOUBLE),
+        KEYWORD_ELSE => Some(TokenType::KEYWORD_ELSE),
+        KEYWORD_ENUM => Some(TokenType::KEYWORD_ENUM),
+        KEYWORD_EXTERN => Some(TokenType::KEYWORD_EXTERN),
+        KEYWORD_FLOAT => Some(TokenType::KEYWORD_FLOAT),
+        KEYWORD_FOR => Some(TokenType::KEYWORD_FOR),
+        KEYWORD_GOTO => Some(TokenType::KEYWORD_GOTO),
+        KEYWORD_IF => Some(TokenType::KEYWORD_IF),
+        KEYWORD_INLINE => Some(TokenType::KEYWORD_INLINE),
+        KEYWORD_INT => Some(TokenType::KEYWORD_INT),
+        KEYWORD_LONG => Some(TokenType::KEYWORD_LONG),
+        KEYWORD_REGISTER => Some(TokenType::KEYWORD_REGISTER),
+        KEYWORD_RESTRICT => Some(TokenType::KEYWORD_RESTRICT),
+        KEYWORD_RETURN => Some(TokenType::KEYWORD_RETURN),
+        KEYWORD_SHORT => Some(TokenType::KEYWORD_SHORT),
+        KEYWORD_SIGNED => Some(TokenType::KEYWORD_SIGNED),
+        KEYWORD_SIZEOF => Some(TokenType::KEYWORD_SIZEOF),
+        KEYWORD_STATIC => Some(TokenType::KEYWORD_STATIC),
+        KEYWORD_STRUCT => Some(TokenType::KEYWORD_STRUCT),
+        KEYWORD_SWITCH => Some(TokenType::KEYWORD_SWITCH),
+        KEYWORD_TYPEDEF => Some(TokenType::KEYWORD_TYPEDEF),
+        KEYWORD_UNION => Some(TokenType::KEYWORD_UNION),
+        KEYWORD_UNSIGNED => Some(TokenType::KEYWORD_UNSIGNED),
+        KEYWORD_VOID => Some(TokenType::KEYWORD_VOID),
+        KEYWORD_VOLATILE => Some(TokenType::KEYWORD_VOLATILE),
+        KEYWORD_WHILE => Some(TokenType::KEYWORD_WHILE),
+        KEYWORD__ALIGNAS => Some(TokenType::KEYWORD__ALIGNAS),
+        KEYWORD__ALIGNOF => Some(TokenType::KEYWORD__ALIGNOF),
+        KEYWORD__ATOMIC => Some(TokenType::KEYWORD__ATOMIC),
+        KEYWORD__BOOL => Some(TokenType::KEYWORD__BOOL),
+        KEYWORD__COMPLEX => Some(TokenType::KEYWORD__COMPLEX),
+        KEYWORD__GENERIC => Some(TokenType::KEYWORD__GENERIC),
+        KEYWORD__IMAGINARY => Some(TokenType::KEYWORD__IMAGINARY),
+        KEYWORD__NORETURN => Some(TokenType::KEYWORD__NORETURN),
+        KEYWORD__STATIC_ASSERT => Some(TokenType::KEYWORD__STATIC_ASSERT),
+        KEYWORD__THREAD_LOCAL => Some(TokenType::KEYWORD__THREAD_LOCAL),
         _ => None,
     };
     if keyword.is_some() {
@@ -2143,7 +1810,7 @@ fn chain_lex(
     index: &mut usize,
     is_pp: bool,
     str_maps: &mut ByteVecMaps,
-) -> Result<Option<Token>, String> {
+) -> Result<Option<TokenType>, String> {
     let punctuator = match_punctuator(program_str_bytes, index);
     if punctuator.is_some() {
         return Ok(punctuator);
@@ -2176,6 +1843,11 @@ fn chain_lex(
     }
     Ok(None)
 }
+
+pub fn unknown_token(c: char, line: usize) -> String {
+    return format!("Unknown token {} at line: {}", c, line);
+}
+
 pub fn lexer(
     program_str_bytes: &[u8],
     // when we preprocess, keywords are just identifiers
@@ -2183,26 +1855,39 @@ pub fn lexer(
     str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
+    let mut column: usize = 0;
     let mut index: usize = 0;
+    let mut line: usize = 0;
     while index < program_str_bytes.len() {
         if program_str_bytes[index] == b'\n' {
-            tokens.push(Token::NEWLINE { pos_in_src: index });
+            tokens.push(Token {
+                r#type: TokenType::NEWLINE,
+                column: index,
+                line,
+            });
             index += 1;
+            line += 1;
+            column = 0;
         } else if !program_str_bytes[index].is_ascii_whitespace() {
-            let token = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
-            if let Ok(Some(t)) = token {
-                tokens.push(t);
+            let token_type = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
+            if let Ok(Some(token_type)) = token_type {
+                tokens.push(Token {
+                    r#type: token_type,
+                    column,
+                    line,
+                });
             } else {
-                return Err(format!(
-                    "Unknown Token: {}",
-                    char::from(program_str_bytes[index])
-                ));
+                return Err(unknown_token(char::from(program_str_bytes[index]), line));
             }
         } else {
             while matches!(program_str_bytes.get(index), Some(b' ' | b'\t')) {
                 index += 1;
             }
-            tokens.push(Token::WHITESPACE { pos_in_src: index });
+            tokens.push(Token {
+                r#type: TokenType::WHITESPACE,
+                column,
+                line,
+            });
         }
     }
     Ok(tokens)
@@ -2223,18 +1908,18 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                lexer::Token::KEYWORD_CONST { pos_in_src: 0 },
-                lexer::Token::WHITESPACE { pos_in_src: 6 },
-                lexer::Token::KEYWORD_FLOAT { pos_in_src: 6 },
-                lexer::Token::WHITESPACE { pos_in_src: 12 },
-                lexer::Token::IDENT {
+                lexer::TokenType::KEYWORD_CONST { pos_in_src: 0 },
+                lexer::TokenType::WHITESPACE { pos_in_src: 6 },
+                lexer::TokenType::KEYWORD_FLOAT { pos_in_src: 6 },
+                lexer::TokenType::WHITESPACE { pos_in_src: 12 },
+                lexer::TokenType::IDENT {
                     str_map_key: 0,
                     pos_in_src: 13
                 },
-                lexer::Token::WHITESPACE { pos_in_src: 14 },
-                lexer::Token::PUNCT_ASSIGNMENT { pos_in_src: 15 },
-                lexer::Token::WHITESPACE { pos_in_src: 16 },
-                lexer::Token::CONSTANT_DEC_FLOAT {
+                lexer::TokenType::WHITESPACE { pos_in_src: 14 },
+                lexer::TokenType::PUNCT_ASSIGNMENT { pos_in_src: 15 },
+                lexer::TokenType::WHITESPACE { pos_in_src: 16 },
+                lexer::TokenType::CONSTANT_DEC_FLOAT {
                     value_key: 1,
                     exp_part_key: None,
                     suffix: None,
@@ -2253,16 +1938,16 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                Token::KEYWORD_INT { pos_in_src: 0 },
-                Token::WHITESPACE { pos_in_src: 1 },
-                Token::IDENT {
+                TokenType::KEYWORD_INT { pos_in_src: 0 },
+                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::IDENT {
                     str_map_key: str_maps.add_byte_vec("\\UAAAA_URMOM".as_bytes()),
                     pos_in_src: 2
                 },
-                Token::WHITESPACE { pos_in_src: 3 },
-                Token::PUNCT_ASSIGNMENT { pos_in_src: 4 },
-                Token::WHITESPACE { pos_in_src: 5 },
-                Token::CONSTANT_DEC_INT {
+                TokenType::WHITESPACE { pos_in_src: 3 },
+                TokenType::PUNCT_ASSIGNMENT { pos_in_src: 4 },
+                TokenType::WHITESPACE { pos_in_src: 5 },
+                TokenType::CONSTANT_DEC_INT {
                     suffix: None,
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     pos_in_src: 6
@@ -2278,7 +1963,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
-            vec![Token::StringLiteral {
+            vec![TokenType::StringLiteral {
                 str_lit: StringLiteral {
                     prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
                     sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
@@ -2297,15 +1982,15 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                Token::CONSTANT_CHAR {
+                TokenType::CONSTANT_CHAR {
                     const_char: ConstantChar {
                         prefix: Some(b'u'),
                         sequence_key: str_maps.add_byte_vec("hehe".as_bytes())
                     },
                     pos_in_src: 0
                 },
-                Token::PUNCT_SEMI_COLON { pos_in_src: 1 },
-                Token::StringLiteral {
+                TokenType::PUNCT_SEMI_COLON { pos_in_src: 1 },
+                TokenType::StringLiteral {
                     str_lit: StringLiteral {
                         prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
                         sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
@@ -2324,7 +2009,7 @@ mod tests {
         let token = match_identifier(src, &mut 0, &mut str_maps)?;
         assert_eq!(
             token,
-            Some(lexer::Token::IDENT {
+            Some(lexer::TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("foo\\u1234bar".as_bytes()),
                 pos_in_src: 0
             })
@@ -2339,7 +2024,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT {
+            Some(super::TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
@@ -2362,7 +2047,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT {
+            Some(super::TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
@@ -2463,7 +2148,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT {
+            Some(super::TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
@@ -2485,7 +2170,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut 0, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_DEC_FLOAT {
+            Some(super::TokenType::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
                 suffix: _,
@@ -2508,7 +2193,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_DEC_FLOAT {
+            Some(super::TokenType::CONSTANT_DEC_FLOAT {
                 value_key,
                 exp_part_key,
                 suffix,
@@ -2536,7 +2221,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT {
+            Some(super::TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix,
@@ -2564,7 +2249,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let float_token = match_floating_constant(s_bytes, &mut index, &mut str_maps);
         match &float_token {
-            Some(super::Token::CONSTANT_HEXA_FLOAT {
+            Some(super::TokenType::CONSTANT_HEXA_FLOAT {
                 value_key,
                 binary_exp_part_key,
                 suffix,
@@ -2594,7 +2279,7 @@ mod tests {
             panic!("Didn't get Some(char token)")
         };
         match &char_token {
-            super::Token::CONSTANT_CHAR {
+            super::TokenType::CONSTANT_CHAR {
                 const_char:
                     ConstantChar {
                         prefix: _,
@@ -2618,7 +2303,7 @@ mod tests {
             panic!("Didn't get Some(char token)")
         };
         match &char_token {
-            super::Token::CONSTANT_CHAR {
+            super::TokenType::CONSTANT_CHAR {
                 const_char:
                     ConstantChar {
                         prefix,
@@ -2643,7 +2328,7 @@ mod tests {
             panic!("Didn't get Some(char token)")
         };
         match &char_token {
-            super::Token::CONSTANT_CHAR {
+            super::TokenType::CONSTANT_CHAR {
                 const_char:
                     ConstantChar {
                         prefix,
@@ -2668,7 +2353,7 @@ mod tests {
             panic!("Didn't get Some(char token)")
         };
         match &char_token {
-            super::Token::CONSTANT_CHAR {
+            super::TokenType::CONSTANT_CHAR {
                 const_char:
                     ConstantChar {
                         prefix,
@@ -2693,7 +2378,7 @@ mod tests {
             panic!("Didn't get Some(string literal)")
         };
         match &string_literal {
-            super::Token::StringLiteral {
+            super::TokenType::StringLiteral {
                 str_lit:
                     StringLiteral {
                         prefix_key,
@@ -2721,7 +2406,7 @@ mod tests {
             panic!("Didn't get Some(string literal)")
         };
         match &string_literal {
-            super::Token::StringLiteral {
+            super::TokenType::StringLiteral {
                 str_lit:
                     StringLiteral {
                         prefix_key,
@@ -2746,7 +2431,7 @@ mod tests {
             panic!("Didn't get Some(string literal)")
         };
         match &string_literal {
-            super::Token::StringLiteral {
+            super::TokenType::StringLiteral {
                 str_lit:
                     StringLiteral {
                         prefix_key,
@@ -2772,43 +2457,43 @@ mod tests {
 
         let tokens = lexer(&s_bytes.to_vec(), false, &mut str_maps)?;
         let tokens_assert = vec![
-            Token::KEYWORD_INT { pos_in_src: 0 },
-            Token::WHITESPACE { pos_in_src: 1 },
-            Token::IDENT {
+            TokenType::KEYWORD_INT { pos_in_src: 0 },
+            TokenType::WHITESPACE { pos_in_src: 1 },
+            TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("main".as_bytes()),
                 pos_in_src: 2,
             },
-            Token::PUNCT_OPEN_PAR { pos_in_src: 3 },
-            Token::PUNCT_CLOSE_PAR { pos_in_src: 4 },
-            Token::WHITESPACE { pos_in_src: 6 },
-            Token::PUNCT_OPEN_CURLY { pos_in_src: 7 },
-            Token::NEWLINE { pos_in_src: 8 },
-            Token::KEYWORD_INT { pos_in_src: 10 },
-            Token::WHITESPACE { pos_in_src: 11 },
-            Token::IDENT {
+            TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+            TokenType::PUNCT_CLOSE_PAR { pos_in_src: 4 },
+            TokenType::WHITESPACE { pos_in_src: 6 },
+            TokenType::PUNCT_OPEN_CURLY { pos_in_src: 7 },
+            TokenType::NEWLINE { pos_in_src: 8 },
+            TokenType::KEYWORD_INT { pos_in_src: 10 },
+            TokenType::WHITESPACE { pos_in_src: 11 },
+            TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("hi".as_bytes()),
                 pos_in_src: 12,
             },
-            Token::WHITESPACE { pos_in_src: 13 },
-            Token::PUNCT_ASSIGNMENT { pos_in_src: 14 },
-            Token::WHITESPACE { pos_in_src: 15 },
-            Token::CONSTANT_DEC_INT {
+            TokenType::WHITESPACE { pos_in_src: 13 },
+            TokenType::PUNCT_ASSIGNMENT { pos_in_src: 14 },
+            TokenType::WHITESPACE { pos_in_src: 15 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix: None,
                 pos_in_src: 16,
             },
-            Token::PUNCT_SEMI_COLON { pos_in_src: 17 },
-            Token::NEWLINE { pos_in_src: 18 },
-            Token::KEYWORD_RETURN { pos_in_src: 19 },
-            Token::WHITESPACE { pos_in_src: 20 },
-            Token::CONSTANT_DEC_INT {
+            TokenType::PUNCT_SEMI_COLON { pos_in_src: 17 },
+            TokenType::NEWLINE { pos_in_src: 18 },
+            TokenType::KEYWORD_RETURN { pos_in_src: 19 },
+            TokenType::WHITESPACE { pos_in_src: 20 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("0".as_bytes()),
                 suffix: None,
                 pos_in_src: 21,
             },
-            Token::PUNCT_SEMI_COLON { pos_in_src: 22 },
-            Token::NEWLINE { pos_in_src: 23 },
-            Token::PUNCT_CLOSE_CURLY { pos_in_src: 24 },
+            TokenType::PUNCT_SEMI_COLON { pos_in_src: 22 },
+            TokenType::NEWLINE { pos_in_src: 23 },
+            TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 24 },
         ];
         assert_eq!(tokens, tokens_assert);
         Ok(())
@@ -2830,38 +2515,38 @@ mod tests {
         str_maps.add_byte_vec("main".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
-            Token::PUNCT_HASH { pos_in_src: 0 },
-            Token::IDENT {
+            TokenType::PUNCT_HASH { pos_in_src: 0 },
+            TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("include".as_bytes()),
                 pos_in_src: 1,
             },
-            Token::WHITESPACE { pos_in_src: 2 },
-            Token::PUNCT_LESS_THAN { pos_in_src: 3 },
-            Token::IDENT {
+            TokenType::WHITESPACE { pos_in_src: 2 },
+            TokenType::PUNCT_LESS_THAN { pos_in_src: 3 },
+            TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("stdio".as_bytes()),
                 pos_in_src: 4,
             },
-            Token::PUNCT_DOT { pos_in_src: 5 },
-            Token::IDENT {
+            TokenType::PUNCT_DOT { pos_in_src: 5 },
+            TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("h".as_bytes()),
                 pos_in_src: 6,
             },
-            Token::PUNCT_GREATER_THAN { pos_in_src: 7 },
-            Token::NEWLINE { pos_in_src: 8 },
-            Token::IDENT {
+            TokenType::PUNCT_GREATER_THAN { pos_in_src: 7 },
+            TokenType::NEWLINE { pos_in_src: 8 },
+            TokenType::IDENT {
                 pos_in_src: 9,
                 str_map_key: str_maps.add_byte_vec("int".as_bytes()),
             },
-            Token::WHITESPACE { pos_in_src: 10 },
-            Token::IDENT {
+            TokenType::WHITESPACE { pos_in_src: 10 },
+            TokenType::IDENT {
                 pos_in_src: 11,
                 str_map_key: str_maps.add_byte_vec("main".as_bytes()),
             },
-            Token::PUNCT_OPEN_PAR { pos_in_src: 12 },
-            Token::PUNCT_CLOSE_PAR { pos_in_src: 13 },
-            Token::WHITESPACE { pos_in_src: 14 },
-            Token::PUNCT_OPEN_CURLY { pos_in_src: 15 },
-            Token::PUNCT_CLOSE_CURLY { pos_in_src: 16 },
+            TokenType::PUNCT_OPEN_PAR { pos_in_src: 12 },
+            TokenType::PUNCT_CLOSE_PAR { pos_in_src: 13 },
+            TokenType::WHITESPACE { pos_in_src: 14 },
+            TokenType::PUNCT_OPEN_CURLY { pos_in_src: 15 },
+            TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 16 },
         ];
         assert_eq!(tokens, tokens_assert);
         Ok(())
@@ -2875,49 +2560,49 @@ mod tests {
         str_maps.add_byte_vec("endif".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
-            Token::PUNCT_HASH { pos_in_src: 0 },
-            Token::IDENT {
+            TokenType::PUNCT_HASH { pos_in_src: 0 },
+            TokenType::IDENT {
                 pos_in_src: 1,
                 str_map_key: str_maps.add_byte_vec("if".as_bytes()),
             },
-            Token::WHITESPACE { pos_in_src: 2 },
-            Token::CONSTANT_DEC_INT {
+            TokenType::WHITESPACE { pos_in_src: 2 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
                 suffix: None,
                 pos_in_src: 3,
             },
-            Token::WHITESPACE { pos_in_src: 4 },
-            Token::PUNCT_PLUS { pos_in_src: 5 },
-            Token::WHITESPACE { pos_in_src: 6 },
-            Token::CONSTANT_DEC_INT {
+            TokenType::WHITESPACE { pos_in_src: 4 },
+            TokenType::PUNCT_PLUS { pos_in_src: 5 },
+            TokenType::WHITESPACE { pos_in_src: 6 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
                 suffix: None,
                 pos_in_src: 7,
             },
-            Token::NEWLINE { pos_in_src: 8 },
-            Token::PUNCT_HASH { pos_in_src: 9 },
-            Token::IDENT {
+            TokenType::NEWLINE { pos_in_src: 8 },
+            TokenType::PUNCT_HASH { pos_in_src: 9 },
+            TokenType::IDENT {
                 pos_in_src: 10,
                 str_map_key: str_maps.add_byte_vec("define".as_bytes()),
             },
-            Token::WHITESPACE { pos_in_src: 11 },
-            Token::IDENT {
+            TokenType::WHITESPACE { pos_in_src: 11 },
+            TokenType::IDENT {
                 pos_in_src: 12,
                 str_map_key: str_maps.add_byte_vec("CHICKEN".as_bytes()),
             },
-            Token::WHITESPACE { pos_in_src: 13 },
-            Token::CONSTANT_DEC_INT {
+            TokenType::WHITESPACE { pos_in_src: 13 },
+            TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("5".as_bytes()),
                 suffix: None,
                 pos_in_src: 14,
             },
-            Token::NEWLINE { pos_in_src: 15 },
-            Token::PUNCT_HASH { pos_in_src: 16 },
-            Token::IDENT {
+            TokenType::NEWLINE { pos_in_src: 15 },
+            TokenType::PUNCT_HASH { pos_in_src: 16 },
+            TokenType::IDENT {
                 pos_in_src: 17,
                 str_map_key: str_maps.add_byte_vec("endif".as_bytes()),
             },
-            Token::NEWLINE { pos_in_src: 18 },
+            TokenType::NEWLINE { pos_in_src: 18 },
         ];
         assert_eq!(tokens, tokens_assert);
         Ok(())

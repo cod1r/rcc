@@ -4,8 +4,20 @@ pub mod declarations;
 pub mod expressions;
 pub mod external_definitions;
 pub mod statements;
-
+use crate::lexer::*;
 type ParserTypeIndex = usize;
+
+pub fn consume_whitespace(tokens: &[Token], index: &mut usize) {
+    while matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
+            ..
+        })
+    ) {
+        *index += 1;
+    }
+}
 
 // Some structures don't need to be in here
 // because those types don't get cloned often
@@ -55,7 +67,12 @@ pub fn parser(
 ) -> Result<external_definitions::TranslationUnit, String> {
     // TODO: we need to finish parsing statements or syntax that encapsulates a lot of things
     let mut flattened = Flattened::new();
-    let (translation_units, _) =
-        external_definitions::parse_translation_units(tokens, 0, &mut flattened, str_maps)?;
+    let mut index = 0;
+    let translation_units = external_definitions::parse_translation_units(
+        tokens,
+        &mut index,
+        &mut flattened,
+        str_maps,
+    )?;
     Ok(translation_units)
 }
