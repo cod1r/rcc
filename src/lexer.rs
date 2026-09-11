@@ -1885,14 +1885,14 @@ pub fn lexer(
                 return Err(unknown_token(char::from(program_str_bytes[index]), line));
             }
         } else {
-            column += 1;
-            while matches!(program_str_bytes.get(index), Some(b' ' | b'\t')) {
-                index += 1;
-            }
             tokens.push(Token {
                 r#type: TokenType::WHITESPACE,
                 location: Some(Location { column, line }),
             });
+            while matches!(program_str_bytes.get(index), Some(b' ' | b'\t')) {
+                index += 1;
+                column += 1;
+            }
         }
     }
     Ok(tokens)

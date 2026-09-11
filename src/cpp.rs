@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
+use crate::error::*;
+use crate::lexer::*;
 use crate::parser::expressions;
-use crate::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -115,7 +116,7 @@ fn concat_adjacent_strings(
     Ok(adjacent_strings_concated)
 }
 
-fn comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
+fn process_comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut byte_index = 0;
     let mut comments_removed = Vec::new();
     while byte_index < bytes.len() {
@@ -1985,6 +1986,89 @@ fn expand_macro(
     final_tokens.extend_from_slice(&accumulated_replacements);
     Ok(())
 }
+
+fn parse_control_line(
+    tokens: &mut Vec<Token>,
+    index: &mut usize,
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+    str_maps: &mut ByteVecMaps,
+    final_tokens: &mut Vec<Token>,
+) -> Result<(), String> {
+    let Some(Token {
+        r#type: TokenType::IDENT { str_map_key: s },
+        location: Some(Location { line, column }),
+    }) = tokens.get(*index)
+    else {
+        unreachable!()
+    };
+    match str_maps.key_to_byte_vec[*s].as_slice() {
+        b"include" => {
+            include_directive(
+                tokens,
+                index,
+                curr_path,
+                include_paths,
+                defines,
+                str_maps,
+                final_tokens,
+            )?;
+        }
+        b"define" => {
+            define_directive(tokens, index, defines, str_maps)?;
+        }
+        b"error" => todo!(),
+        b"line" => todo!(),
+        b"pragma" => todo!(),
+        _ => {
+            return Err(error_msg(
+                "Unknown control line preprocessing directive",
+                *line,
+                *column,
+            ))
+        }
+    }
+    Ok(())
+}
+fn parse_endif_line() {}
+fn parse_else_group() {}
+fn parse_elif_group() {}
+fn parse_elif_groups() {}
+fn parse_if_group() {}
+fn parse_if_section(
+    tokens: &mut Vec<Token>,
+    index: &mut usize,
+    str_maps: &ByteVecMaps,
+    final_tokens: &mut Vec<Token>,
+    defines: &mut HashMap<usize, Define>,
+    if_directive_type: &[u8],
+) {
+    *index += 1;
+    match if_directive_type {
+        b"if" => {}
+        b"ifdef" => {}
+        b"ifndef" => {}
+        _ => unreachable!(),
+    }
+}
+fn parse_preprocessing_group_part() {}
+fn parse_preprocessing_group() {}
+fn check_valid_directive(tokens: &[Token], index: usize) -> bool {
+    let mut newline_comes_after_idx = index + 1;
+    while newline_comes_after_idx < tokens.len()
+        && !matches!(
+            tokens.get(newline_comes_after_idx),
+            Some(Token {
+                r#type: TokenType::NEWLINE,
+                ..
+            }),
+        )
+    {
+        newline_comes_after_idx += 1;
+    }
+    newline_comes_after_idx < tokens.len()
+}
 fn preprocessing_directives(
     tokens: &mut Vec<Token>,
     curr_path: &str,
@@ -2010,15 +2094,39 @@ fn preprocessing_directives(
             TokenType::NEWLINE => {
                 preceded_only_by_whitespace_nothing_or_newline = true;
             }
-            TokenType::PUNCT_HASH if preceded_only_by_whitespace_nothing_or_newline => {
-                if let Some(Token {
-                    r#type: TokenType::IDENT { str_map_key: s, .. },
-                    ..
-                }) = tokens.get(index)
-                {
-                    match str_maps.key_to_byte_vec[*s].as_slice() {
-                        b"include" => {
-                            include_directive(
+            TokenType::PUNCT_HASH
+                if preceded_only_by_whitespace_nothing_or_newline
+                    && matches!(
+                        tokens.get(index + 1),
+                        Some(Token {
+                            r#type: TokenType::IDENT { .. },
+                            ..
+                        })
+                    ) =>
+            {
+                index += 1;
+                let newline_comes_after = check_valid_directive(tokens, index);
+                if newline_comes_after {
+                    let Some(Token {
+                        r#type: TokenType::IDENT { str_map_key },
+                        ..
+                    }) = tokens.get(index)
+                    else {
+                        unreachable!()
+                    };
+                    match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
+                        b"if" | b"ifdef" | b"ifndef" => {
+                            parse_if_section(
+                                tokens,
+                                &mut index,
+                                str_maps,
+                                &mut final_tokens,
+                                defines,
+                                str_maps.key_to_byte_vec[*str_map_key].as_slice(),
+                            );
+                        }
+                        b"include" | b"define" | b"error" | b"line" | b"undef" => {
+                            parse_control_line(
                                 tokens,
                                 &mut index,
                                 curr_path,
@@ -2026,27 +2134,9 @@ fn preprocessing_directives(
                                 defines,
                                 str_maps,
                                 &mut final_tokens,
-                            )?;
+                            );
                         }
-                        b"if" | b"ifdef" | b"ifndef" => {
-                            if_directive(tokens, &mut index, defines, str_maps)?;
-                        }
-                        b"define" => {
-                            define_directive(tokens, &mut index, defines, str_maps)?;
-                        }
-                        b"undef" => {
-                            undef_directive(tokens, &mut index, defines, str_maps)?;
-                        }
-                        b"endif" => {
-                            return Err(format!("missing if directive for endif directive"));
-                        }
-                        b"error" => todo!(),
-                        b"line" => todo!(),
-                        b"pragma" => todo!(),
-                        b"\n" => {
-                            index += 1;
-                        }
-                        _ => return Err(format!("unknown preprocessing directive: {}", s)),
+                        _ => {}
                     }
                 }
             }
@@ -2083,16 +2173,8 @@ pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {
         });
     print!("{}", String::from_utf8(vec_bytes).unwrap());
 }
-// TODO: add flag options so that the user could specify if they wanted to only preprocess
-// TODO: implement some kind of warning system
-pub fn cpp(
-    program_str: Vec<u8>,
-    curr_path: &str,
-    include_paths: &[&str],
-    defines: &mut HashMap<usize, Define>,
-    str_maps: &mut ByteVecMaps,
-) -> Result<Vec<Token>, String> {
-    // trigraphs (part of step 1 in the translation phase)
+
+fn process_trigraphs(program_str: Vec<u8>) -> Vec<u8> {
     let mut trigraphs_processed = Vec::new();
     for index in 0..program_str.len() {
         trigraphs_processed.push(if index + 3 < program_str.len() {
@@ -2139,8 +2221,9 @@ pub fn cpp(
             program_str[index]
         })
     }
-    let program_str = trigraphs_processed;
-    // step 2 in the translation phase
+    trigraphs_processed
+}
+fn process_line_continuation(program_str: Vec<u8>) -> Vec<u8> {
     let mut backslash_newline_spliced = Vec::with_capacity(program_str.len());
     let mut add_index = 0;
     while add_index < program_str.len() {
@@ -2154,9 +2237,24 @@ pub fn cpp(
         backslash_newline_spliced.push(program_str[add_index]);
         add_index += 1;
     }
+    backslash_newline_spliced
+}
+// TODO: add flag options so that the user could specify if they wanted to only preprocess
+// TODO: implement some kind of warning system
+pub fn cpp(
+    program_str: Vec<u8>,
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<Token>, String> {
+    // trigraphs (part of step 1 in the translation phase)
+    let program_str = process_trigraphs(program_str);
+    // step 2 in the translation phase
+    let program_str = process_line_continuation(program_str);
     // step 3 in the translation phase
-    let comments_removed = comments(backslash_newline_spliced.as_slice())?;
-    let mut lexed_tokens = lexer(&comments_removed, true, str_maps)?;
+    let program_str = process_comments(program_str.as_slice())?;
+    let mut lexed_tokens = lexer(&program_str, true, str_maps)?;
     // step 4 in the translation phase
     preprocessing_directives(
         &mut lexed_tokens,
