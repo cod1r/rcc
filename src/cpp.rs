@@ -493,6 +493,7 @@ fn parse_defined_in_if_directive(
     }
     Ok(())
 }
+
 fn if_directive(
     tokens: &mut [Token],
     index: &mut usize,
@@ -915,6 +916,7 @@ fn if_directive(
     }
     Ok(())
 }
+
 fn define_directive(
     tokens: &[Token],
     index: &mut usize,
@@ -2022,7 +2024,7 @@ fn parse_control_line(
         b"line" => todo!(),
         b"pragma" => todo!(),
         _ => {
-            return Err(error_msg(
+            return Err(error(
                 "Unknown control line preprocessing directive",
                 *line,
                 *column,
@@ -2031,7 +2033,7 @@ fn parse_control_line(
     }
     Ok(())
 }
-fn parse_endif_line() {}
+fn parse_endif_line() -> Result<(), String> {}
 fn parse_else_group() {}
 fn parse_elif_group() {}
 fn parse_elif_groups() {}
@@ -2043,14 +2045,16 @@ fn parse_if_section(
     final_tokens: &mut Vec<Token>,
     defines: &mut HashMap<usize, Define>,
     if_directive_type: &[u8],
-) {
+) -> Result<(), String> {
     *index += 1;
+    consume_whitespace(tokens, index);
     match if_directive_type {
         b"if" => {}
         b"ifdef" => {}
         b"ifndef" => {}
         _ => unreachable!(),
     }
+    parse_endif_line()
 }
 fn parse_preprocessing_group_part() {}
 fn parse_preprocessing_group() {}

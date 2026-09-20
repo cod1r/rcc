@@ -1,3 +1,3 @@
-pub fn error_msg(msg: &'static str, line: usize, column: usize) -> String {
+pub fn error<'a>(msg: &'a str, line: usize, column: usize) -> String {
     return format!("{} at line: {}, column: {}", msg, line, column);
 }

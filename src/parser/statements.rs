@@ -1,11 +1,9 @@
-use crate::error;
-use crate::lexer;
-use crate::lexer::ByteVecMaps;
+use crate::error::*;
 use crate::lexer::*;
-use crate::parser;
 use crate::parser::consume_whitespace;
 use crate::parser::declarations::*;
-use crate::parser::expressions::parse_expressions;
+use crate::parser::expressions::*;
+use crate::parser::*;
 
 pub type StatementIndex = usize;
 pub type LabelIndex = usize;
@@ -20,14 +18,14 @@ pub enum Label {
         statement: StatementIndex,
     },
     Case {
-        const_expr: parser::expressions::ExpressionIndex,
+        const_expr: expressions::ExpressionIndex,
         statement: StatementIndex,
     },
     Default(StatementIndex),
 }
 #[derive(Copy, Clone)]
 pub enum BlockItem {
-    Declaration(parser::declarations::DeclarationIndex),
+    Declaration(declarations::DeclarationIndex),
     Statement(StatementIndex),
 }
 #[derive(Clone)]
@@ -35,43 +33,43 @@ pub struct Compound {
     block_item_list: Vec<BlockItem>,
 }
 #[derive(Copy, Clone)]
-pub struct Expression(Option<parser::expressions::ExpressionIndex>);
+pub struct Expression(Option<expressions::ExpressionIndex>);
 #[derive(Copy, Clone)]
 pub enum Selection {
     If {
-        expression_index: parser::expressions::ExpressionIndex,
+        expression_index: expressions::ExpressionIndex,
         statement_index: StatementIndex,
     },
     IfElse {
-        expression_index: parser::expressions::ExpressionIndex,
+        expression_index: expressions::ExpressionIndex,
         if_statement_index: StatementIndex,
         else_statement_index: StatementIndex,
     },
     Switch {
-        expression_index: parser::expressions::ExpressionIndex,
+        expression_index: expressions::ExpressionIndex,
         statement_index: StatementIndex,
     },
 }
 #[derive(Copy, Clone)]
 pub enum Iteration {
     While {
-        expression_index: parser::expressions::ExpressionIndex,
+        expression_index: expressions::ExpressionIndex,
         statement_index: StatementIndex,
     },
     DoWhile {
         statement_index: StatementIndex,
-        while_expression: parser::expressions::ExpressionIndex,
+        while_expression: expressions::ExpressionIndex,
     },
     ForThreeExpr {
-        first_expr_index: Option<parser::expressions::ExpressionIndex>,
-        second_expr_index: Option<parser::expressions::ExpressionIndex>,
-        third_expr_index: Option<parser::expressions::ExpressionIndex>,
+        first_expr_index: Option<expressions::ExpressionIndex>,
+        second_expr_index: Option<expressions::ExpressionIndex>,
+        third_expr_index: Option<expressions::ExpressionIndex>,
         statement_index: StatementIndex,
     },
     ForDeclaration {
-        declaration_index: parser::declarations::DeclarationIndex,
-        expression1: Option<parser::expressions::ExpressionIndex>,
-        expression2: Option<parser::expressions::ExpressionIndex>,
+        declaration_index: declarations::DeclarationIndex,
+        expression1: Option<expressions::ExpressionIndex>,
+        expression2: Option<expressions::ExpressionIndex>,
         statement_index: StatementIndex,
     },
 }
@@ -80,7 +78,7 @@ pub enum Jump {
     Goto(usize),
     Continue,
     Break,
-    Return(Option<parser::expressions::ExpressionIndex>),
+    Return(Option<expressions::ExpressionIndex>),
 }
 #[derive(Copy, Clone)]
 pub enum Statement {
@@ -109,10 +107,10 @@ pub fn is_statement_token(t: TokenType) -> bool {
     }
 }
 pub fn parse_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Statement, String> {
     match tokens.get(*index) {
         Some(Token {
@@ -196,48 +194,11 @@ pub fn expected_identifier(
     Ok(())
 }
 
-pub fn expected_token(
-    tokens: &[Token],
-    str_maps: &mut ByteVecMaps,
-    idx: &mut usize,
-    token: TokenType,
-) -> Result<(), String> {
-    let dummy_token = Token {
-        r#type: token,
-        location: None,
-    };
-    let msg = format!(
-        "Expected '{}'",
-        match String::from_utf8(dummy_token.to_byte_vec(str_maps).unwrap()) {
-            Ok(s) => s,
-            Err(_) => {
-                return Err("Could not convert token to string".to_string());
-            }
-        }
-    );
-    match tokens.get(*idx) {
-        Some(t) if t.r#type != token => {
-            let Token {
-                location: Some(Location { column, line }),
-                ..
-            } = t
-            else {
-                unreachable!()
-            };
-            return Err(error(&msg, *line, *column));
-        }
-        None => return Err(msg),
-        _ => {}
-    };
-    *idx += 1;
-    Ok(())
-}
-
 pub fn parse_labeled_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Label, String> {
     match tokens[*index].r#type {
         TokenType::IDENT { str_map_key, .. } => {
@@ -278,10 +239,10 @@ pub fn parse_labeled_statement(
 }
 
 pub fn parse_compound_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Compound, String> {
     consume_whitespace(tokens, index);
     let mut compound = Compound {
@@ -295,7 +256,7 @@ pub fn parse_compound_statement(
                 compound
                     .block_item_list
                     .push(BlockItem::Statement(flattened.statements.len() - 1));
-            } else if parser::declarations::is_declaration_token(*token) {
+            } else if declarations::is_declaration_token(*token) {
                 let declaration = parse_declarations(&tokens, index, flattened, str_maps)?;
                 flattened.declarations.push(declaration);
                 compound
@@ -314,10 +275,10 @@ pub fn parse_compound_statement(
 }
 
 pub fn parse_selection_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Selection, String> {
     match tokens.get(*index) {
         Some(Token {
@@ -379,15 +340,11 @@ pub fn parse_selection_statement(
     }
 }
 
-pub fn error<'a>(msg: &'a str, line: usize, column: usize) -> String {
-    return format!("{} at line: {}, column: {}", msg, line, column);
-}
-
 pub fn parse_iteration_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Iteration, String> {
     match tokens.get(*index) {
         Some(Token {
@@ -562,10 +519,10 @@ pub fn parse_iteration_statement(
 }
 
 pub fn parse_jump_statement(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Jump, String> {
     match tokens.get(*index) {
         Some(Token {
@@ -640,9 +597,9 @@ mod tests {
     fn parse_compound_statement_test() -> Result<(), String> {
         {
             let src = r#"{ int hi = 5; }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (stmt, _) = parse_compound_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             let Compound { block_item_list } = stmt;
             assert!(matches!(
@@ -656,9 +613,9 @@ mod tests {
     fn parse_labeled_statement_test() -> Result<(), String> {
         {
             let src = r#"case 1 + 1 : { int hi = 5; }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (label, _) = parse_labeled_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(label, Label::Case { .. }));
             let Label::Case {
@@ -689,9 +646,9 @@ mod tests {
     fn parse_selection_statement_test() -> Result<(), String> {
         {
             let src = r#"if (1 + 1) { int hi = 5; }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (selection, _) =
                 parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(selection, Selection::If { .. }));
@@ -723,9 +680,9 @@ mod tests {
                     int hi = 5;
                 }
             }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (selection, _) =
                 parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(selection, Selection::Switch { .. }));
@@ -759,9 +716,9 @@ mod tests {
             let src = r#"while (1) {
                 int hi = 5;
             }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (iteration, _) =
                 parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::While { .. }));
@@ -770,18 +727,18 @@ mod tests {
             let src = r#"do {
                 int hi = 5;
             } while (1);"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (iteration, _) =
                 parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::DoWhile { .. }));
         }
         {
             let src = r#"do while(1) {} while (0);"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (iteration, _) =
                 parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::DoWhile { .. }));
@@ -790,9 +747,9 @@ mod tests {
             let src = r#"for (1;1;1) {
                 int hi = 5;
             }"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (iteration, _) =
                 parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::ForThreeExpr { .. }));
@@ -803,33 +760,33 @@ mod tests {
     fn parse_jump_statement_test() -> Result<(), String> {
         {
             let src = r#"goto chicken;"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Goto(_)));
         }
         {
             let src = r#"continue;"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Continue));
         }
         {
             let src = r#"break;"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Break));
         }
         {
             let src = r#"return 1;"#;
-            let mut flattened = parser::Flattened::new();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Return(_)));
         }

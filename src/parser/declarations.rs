@@ -251,10 +251,11 @@ pub type InitializerIndex = usize;
 pub type DesignationIndex = usize;
 pub type InitializerListIndex = usize;
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub struct InitializerList {
+pub struct DesignationInitializer {
     designation: Option<DesignationIndex>,
     initializer: Option<InitializerIndex>,
 }
+pub type InitializerList = Vec<DesignationInitializer>;
 #[derive(Copy, Clone)]
 pub enum Initializer {
     AssignmentExpression(ExpressionIndex),
@@ -509,87 +510,124 @@ pub fn parse_initializer(
     }
 }
 
+fn parse_designator(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+) -> Result<Designator, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_SQR,
+            ..
+        }) => {
+            *index += 1;
+            let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
+            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+            flattened.expressions.push(expr);
+            return Designator::WithConstantExpr(flattened.expressions.len() - 1);
+        }
+        Some(Token {
+            r#type: TokenType::PUNCT_DOT,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            expected_identifier(tokens, str_maps, index)?;
+            let Some(Token {
+                r#type: TokenType::IDENT { str_map_key, .. },
+                ..
+            }) = tokens.get(*index)
+            else {
+                unreachable!()
+            };
+            return Designator::WithIdentifier(*str_map_key);
+        }
+        _ => {}
+    }
+    match tokens.get(*index) {
+        Some(Token { line, column, .. }) => {
+            return Err(error("Unexpected =, expected . or [", *line, *column));
+        }
+        _ => {}
+    }
+    return Err("Unexpected =, expected . or [".to_string());
+}
+
+fn parse_designator_list(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+) -> Result<Vec<Designator>, String> {
+    let mut designators = Vec::new();
+    while !matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::PUNCT_ASSIGNMENT,
+            ..
+        })
+    ) {
+        designators.push(parse_designator(tokens, index, flattened)?);
+    }
+    Ok(designators)
+}
+
+fn parse_designation(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+) -> Result<Designation, String> {
+    let mut designation = Designation {
+        designator_list: parse_designator_list(tokens, index, flattened)?,
+    };
+    consume_whitespace(tokens, index);
+    Ok(designation)
+}
+
 fn parse_initializer_list(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
     str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Vec<InitializerList>, String> {
+) -> Result<InitializerList, String> {
     consume_whitespace(tokens, index);
-    let mut initializer_lists = Vec::new();
+    let mut initializer_list = Vec::new();
     loop {
         if *index >= tokens.len() {
             break;
         }
-        let mut designation = Designation {
-            designator_list: Vec::new(),
-        };
-        loop {
-            match tokens.get(*index) {
-                Some(Token {
-                    r#type: TokenType::PUNCT_OPEN_SQR,
-                    ..
-                }) => {
-                    *index += 1;
-                    let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
-                    flattened.expressions.push(expr);
-                    designation
-                        .designator_list
-                        .push(Designator::WithConstantExpr(
-                            flattened.expressions.len() - 1,
-                        ));
-                }
-                Some(Token {
-                    r#type: TokenType::PUNCT_DOT,
-                    ..
-                }) => {
-                    *index += 1;
-                    consume_whitespace(tokens, index);
-                    expected_identifier(tokens, str_maps, index)?;
-                    let Some(Token {
-                        r#type: TokenType::IDENT { str_map_key, .. },
-                        ..
-                    }) = tokens.get(*index)
-                    else {
-                        unreachable!()
-                    };
-                    designation
-                        .designator_list
-                        .push(Designator::WithIdentifier(*str_map_key));
-                }
-                Some(Token {
-                    r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
-                    ..
-                }) => *index += 1,
-                Some(Token {
-                    r#type: TokenType::PUNCT_ASSIGNMENT,
-                    location: Some(Location { column, line }),
-                }) => {
-                    if designation.designator_list.is_empty() {
-                        return Err(error_msg("Unexpected =, expected . or [", *line, *column));
-                    }
-                    *index += 1;
-                    break;
-                }
-                _ => {
-                    break;
-                }
-            }
+        let mut designation = None;
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::PUNCT_OPEN_SQR | TokenType::PUNCT_DOT,
+                ..
+            })
+        ) {
+            let designation_parsed = parse_designation(tokens, index, flattened)?;
+            flattened.designations.push(designation_parsed);
+            designation = Some(flattened.designations.len() - 1);
         }
-        consume_whitespace(tokens, index);
-        expected_token(tokens, str_maps, index, TokenType::PUNCT_COMMA)?;
         let init = parse_initializer(&tokens, index, flattened, str_maps)?;
         flattened.initializers.push(init);
-        flattened.designations.push(designation);
-        let initializer_list = InitializerList {
-            designation: Some(flattened.designations.len() - 1),
+        let initializer_list = DesignationInitializer {
+            designation,
             initializer: Some(flattened.initializers.len() - 1),
         };
-        initializer_lists.push(initializer_list);
+        initializer_list.push(initializer_list);
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::PUNCT_COMMA,
+                ..
+            })
+        ) {
+            break;
+        }
         *index += 1;
     }
-    Ok(initializer_lists)
+    consume_token(tokens, index, TokenType::PUNCT_COMMA)?;
+    expected_token(tokens, index, TokenType::PUNCT_CLOSE_CURLY)?;
+    Ok(initializer_list)
 }
 
 fn parse_pointer(tokens: &[lexer::Token], index: &mut usize) -> Option<Vec<Pointer>> {
@@ -886,7 +924,7 @@ fn parse_struct_union_specifier(
     else {
         unreachable!()
     };
-    return Err(error_msg(
+    return Err(error(
         "Unexpected end of struct-or-union specific",
         *line,
         0,

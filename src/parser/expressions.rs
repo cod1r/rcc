@@ -1,42 +1,15 @@
-use crate::error;
-use crate::lexer;
-use crate::lexer::Token;
-use crate::lexer::TokenType;
+use crate::error::*;
+use crate::lexer::*;
 use crate::parser::declarations::*;
 use crate::parser::statements::*;
 use crate::parser::Flattened;
 use crate::parser::*;
-#[derive(Copy, Clone)]
-pub enum PrimaryInner {
-    Token(Token),
-    Expr(usize),
-}
 
-impl PrimaryInner {
-    pub fn new_p_token(t: Token) -> Result<Self, String> {
-        if matches!(
-            t,
-            Token {
-                r#type: TokenType::IDENT { .. }
-                    | TokenType::StringLiteral { .. }
-                    | TokenType::CONSTANT_DEC_INT { .. }
-                    | TokenType::CONSTANT_HEXA_INT { .. }
-                    | TokenType::CONSTANT_DEC_FLOAT { .. }
-                    | TokenType::CONSTANT_HEXA_FLOAT { .. }
-                    | TokenType::CONSTANT_CHAR { .. }
-                    | TokenType::CONSTANT_OCTAL_INT { .. }
-                    | TokenType::CONSTANT_ENUM { .. },
-                ..
-            }
-        ) {
-            return Ok(Self::Token(t));
-        }
-        Err(format!("not allowed token passed in"))
-    }
-    pub fn new_p_expr(e_index: usize) -> Self {
-        Self::Expr(e_index)
-    }
-}
+// The parsing functions written are closely modeled after the syntax groups defined in https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2310.pdf
+// It was hard for me to decide whether to write the logic where `parse_conditional_expression` will ALWAYS return conditional expressions or to follow the syntax grouping/precedence but
+// I just decided that it's just simpler to write things similar to how the syntax is designed. That way I get precedence without having to write a precedence table.
+
+// The original parsing logic had a stack and left and right expressions which made everything super complicated and not maintainable for me
 
 pub enum Type {
     Void,
@@ -52,136 +25,7 @@ pub enum Type {
 }
 
 pub type ExpressionIndex = usize;
-pub trait Binary {
-    fn get_first(&self) -> Option<ExpressionIndex>;
-    fn get_second(&self) -> Option<ExpressionIndex>;
-    fn change_first(&mut self, expr_index: Option<ExpressionIndex>);
-    fn change_second(&mut self, expr_index: Option<ExpressionIndex>);
-}
 
-macro_rules! impl_binary {
-    ($($type: ty) *) => {
-        $(impl Binary for $type {
-            fn get_first(&self) -> Option<ExpressionIndex> {
-                self.first
-            }
-            fn get_second(&self) -> Option<ExpressionIndex> {
-                self.second
-            }
-            fn change_first(&mut self, expr_index: Option<ExpressionIndex>) {
-                self.first = expr_index;
-            }
-            fn change_second(&mut self, expr_index: Option<ExpressionIndex>) {
-                self.second = expr_index;
-            }
-        })*
-    }
-}
-
-impl_binary!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
-
-#[derive(Copy, Clone)]
-pub struct Conditional {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-    pub third: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub struct LogicalOR {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub struct LogicalAND {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub struct BitOR {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub struct BitXOR {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub struct BitAND {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub enum EqualityOp {
-    Equal,
-    NotEqual,
-}
-
-#[derive(Copy, Clone)]
-pub struct Equality {
-    pub op: EqualityOp,
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub enum RelationalOp {
-    LessThan,
-    LessThanEq,
-    GreaterThan,
-    GreaterThanEq,
-}
-
-#[derive(Copy, Clone)]
-pub struct Relational {
-    pub op: RelationalOp,
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub enum BitShiftOp {
-    Left,
-    Right,
-}
-
-#[derive(Copy, Clone)]
-pub struct BitShift {
-    pub op: BitShiftOp,
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-
-#[derive(Copy, Clone)]
-pub enum AdditiveOps {
-    Add,
-    Sub,
-}
-
-#[derive(Copy, Clone)]
-pub struct Additive {
-    pub op: AdditiveOps,
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
-#[derive(Copy, Clone)]
-pub enum MultiplicativeOps {
-    Mult,
-    Div,
-    Mod,
-}
-#[derive(Copy, Clone)]
-pub struct Multiplicative {
-    pub op: MultiplicativeOps,
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
-}
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum UnaryOp {
     Ampersand,
@@ -198,190 +42,172 @@ pub enum UnaryOp {
 #[derive(Copy, Clone)]
 pub struct Unary {
     pub op: UnaryOp,
-    pub first: Option<ExpressionIndex>,
+    pub first: ExpressionIndex,
 }
 #[derive(Copy, Clone)]
 pub struct Cast {
     type_name: Option<TypeNameIndex>,
     cast_expr: Option<usize>,
 }
-#[derive(Copy, Clone)]
-pub enum PostFixIncrementDecrement {
-    Increment,
-    Decrement,
-}
+
 pub type ArgumentExprListIndex = usize;
 #[derive(Copy, Clone)]
 pub enum PostFix {
     WithSubscript {
-        first: Option<ExpressionIndex>,
-        subscript: Option<ExpressionIndex>,
+        first: ExpressionIndex,
+        subscript: ExpressionIndex,
     },
     WithFunctionCall {
-        first: Option<ExpressionIndex>,
+        first: ExpressionIndex,
         argument_expr_idx: ArgumentExprListIndex,
     },
     WithMember {
-        first: Option<ExpressionIndex>,
+        first: ExpressionIndex,
         member_ident_key: usize,
     },
     WithPointerToMember {
-        first: Option<ExpressionIndex>,
+        first: ExpressionIndex,
         member_ident_key: usize,
     },
     WithIncrementDecrement {
         first: ExpressionIndex,
-        op: PostFixIncrementDecrement,
+        op: TokenType,
     },
     WithTypeNameInitializerList {
         type_name: TypeNameIndex,
         initializer_list: InitializerListIndex,
     },
 }
+
 #[derive(Copy, Clone)]
-pub struct Assignment {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
+enum BinaryExprType {
+    Comma,
+    Assignment,
+    LogOR,
+    LogAND,
+    BitOR,
+    BitAND,
+    BitXOR,
+    Eq,
+    NotEq,
+    LessThan,
+    GreaterThan,
+    LessThanEq,
+    GreaterThanEq,
+    BitShiftLeft,
+    BitShiftRight,
+    Add,
+    Sub,
+    Mult,
+    Div,
+    Mod,
+    ArgExprList,
 }
 
 #[derive(Copy, Clone)]
-pub struct Comma {
-    pub first: Option<ExpressionIndex>,
-    pub second: Option<ExpressionIndex>,
+pub struct Conditional {
+    pub first: ExpressionIndex,
+    pub second: ExpressionIndex,
+    pub third: ExpressionIndex,
+}
+
+enum PrimaryType {
+    Token(Token),
+    Expr(ExpressionIndex),
 }
 
 #[derive(Copy, Clone)]
 pub enum Expr {
-    Comma(Comma),
-    Assignment(Assignment),
+    Binary {
+        r#type: BinaryExprType,
+        first: Option<ExpressionIndex>,
+        second: Option<ExpressionIndex>,
+    },
     Conditional(Conditional),
-    LogicalOR(LogicalOR),
-    LogicalAND(LogicalAND),
-    BitOR(BitOR),
-    BitXOR(BitXOR),
-    BitAND(BitAND),
-    Equality(Equality),
-    Relational(Relational),
-    BitShift(BitShift),
-    Additive(Additive),
-    Multiplicative(Multiplicative),
     Unary(Unary),
     Cast(Cast),
     PostFix(PostFix),
-    Primary(Option<PrimaryInner>),
+    Primary(PrimaryType),
 }
 
 impl Expr {
     pub fn priority(&self) -> u8 {
         match self {
-            Expr::Primary(_) => u8::MAX,
-            Expr::PostFix(_) => u8::MAX - 1,
-            Expr::Unary(_) => u8::MAX - 2,
-            Expr::Cast(_) => u8::MAX - 3,
-            Expr::Multiplicative(_) => u8::MAX - 4,
-            Expr::Additive(_) => u8::MAX - 5,
-            Expr::BitShift(_) => u8::MAX - 6,
-            Expr::Relational(_) => u8::MAX - 7,
-            Expr::Equality(_) => u8::MAX - 8,
-            Expr::BitAND(_) => u8::MAX - 9,
-            Expr::BitXOR(_) => u8::MAX - 10,
-            Expr::BitOR(_) => u8::MAX - 11,
-            Expr::LogicalAND(_) => u8::MAX - 12,
-            Expr::LogicalOR(_) => u8::MAX - 13,
+            Expr::Binary(b) => match b.r#type {
+                Mult | Div | Mod => u8::MAX - 4,
+                Add | Sub => u8::MAX - 5,
+                BitShiftLeft | BitShiftRight => u8::MAX - 6,
+                LessThan | GreaterThan | LessThanEq | GreaterThanEq => u8::MAX - 7,
+                NotEq | Eq => u8::MAX - 8,
+                BitAND => u8::MAX - 9,
+                BitXOR => u8::MAX - 10,
+                BitOR => u8::MAX - 11,
+                LogAND => u8::MAX - 12,
+                LogOR => u8::MAX - 13,
+                Assignment => u8::MAX - 15,
+                Comma => u8::MAX - 16,
+            },
             Expr::Conditional(_) => u8::MAX - 14,
-            Expr::Assignment(_) => u8::MAX - 15,
+            Expr::Unary(_) => u8::MAX - 2,
+            Expr::PostFix(_) => u8::MAX - 1,
             Expr::Comma(_) => u8::MAX - 16,
+            Expr::Primary(_) => u8::MAX,
+            Expr::Cast(_) => u8::MAX - 3,
         }
     }
 }
-macro_rules! case_where_it_could_be_unary_or_additive {
-    ($parserTypeVar:ident, $rightExprVar:ident, $token:expr) => {
-        if $parserTypeVar.second.is_none() {
-            $rightExprVar = Some(Expr::Unary(Unary {
-                op: match $token {
-                    TokenType::PUNCT_PLUS { .. } => UnaryOp::Add,
-                    TokenType::PUNCT_MINUS { .. } => UnaryOp::Sub,
-                    TokenType::PUNCT_NOT_BOOL { .. } => UnaryOp::LogicalNOT,
-                    TokenType::PUNCT_TILDE { .. } => UnaryOp::BitNOT,
-                    _ => unreachable!(),
-                },
-                first: None,
-            }));
-        } else {
-            $rightExprVar = Some(Expr::Additive(Additive {
-                op: match $token {
-                    TokenType::PUNCT_PLUS { .. } => AdditiveOps::Add,
-                    TokenType::PUNCT_MINUS { .. } => AdditiveOps::Sub,
-                    _ => unreachable!(),
-                },
-                first: None,
-                second: None,
-            }));
+
+fn match_right_and_do_operation(a: Expr) {
+    match right {
+        // Primary has the highest priority
+        Expr::Primary(p) => {
+            assert!(p.is_some());
+            assert!($a.second.is_none());
         }
-    };
+        Expr::PostFix(p) => match p {
+            PostFix::WithSubscript { first, .. } => {
+                *first = a.second;
+            }
+            PostFix::WithFunctionCall { first, .. } => {
+                *first = a.second;
+            }
+            PostFix::WithMember { first, .. } => {
+                *first = a.second;
+            }
+            PostFix::WithPointerToMember { first, .. } => {
+                *first = a.second;
+            }
+            _ => todo!(),
+        },
+        Expr::Unary(_u) => {
+            assert!(a.second.is_none());
+        }
+        Expr::Cast(_) => todo!(),
+        Expr::Binary { first, second, .. } => {
+            assert!(i.first.is_none());
+            right.first = a.second;
+        }
+        _ => unreachable!(),
+    }
 }
-/*
-   Expr::Primary
-   Expr::PostFix
-   Expr::Unary
-   Expr::Cast
-   Expr::Multiplicative
-   Expr::Additive
-   Expr::BitShift
-   Expr::Relational
-   Expr::Equality
-   Expr::BitAND
-   Expr::BitXOR
-   Expr::BitOR
-   Expr::LogicalAND
-   Expr::LogicalOR
-   Expr::Conditional
-   Expr::Assignment
-   Expr::Comma
-*/
 // right expr has a higher priority so it takes the previous expr's
 // right operand or if there isn't a right operand, it takes the only operand
 fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
     assert!(right.priority() > left.priority());
-    macro_rules! match_right_and_do_operation {
-        ($($e: ident) * , $a: ident) => {
-            match right {
-                // Primary has the highest priority
-                Expr::Primary(p) => {
-                    assert!(p.is_some());
-                    assert!($a.second.is_none());
-                }
-                Expr::PostFix(p) => {
-                    match p {
-                        PostFix::WithSubscript { first, .. } => {
-                            *first = $a.second;
-                        },
-                        PostFix::WithFunctionCall { first, .. } => {
-                            *first = $a.second;
-                        },
-                        PostFix::WithMember { first, .. } => {
-                            *first = $a.second;
-                        },
-                        PostFix::WithPointerToMember { first, .. } => {
-                            *first = $a.second;
-                        },
-                        _ => todo!(),
-                    }
-                },
-                Expr::Unary(_u) => {
-                    assert!($a.second.is_none());
-                }
-                Expr::Cast(_) => todo!(),
-                $(Expr::$e(i) => {
-                    assert!(i.first.is_none());
-                    i.first = $a.second;
-                })*
-                _ => unreachable!(),
+    match left {
+        Expr::Unary(u) => match right {
+            Expr::Primary(p) => {
+                assert!(p.is_some());
+                assert!(u.first.is_none());
             }
-        };
-    }
-    macro_rules! match_right_assign_to_third {
-        ($($e: ident) *, $c: ident) => {
+            _ => unreachable!(),
+        },
+        Expr::Binary { .. } => {
+            match_right_and_do_operation(left);
+        }
+        Expr::Conditional(c) => {
+            assert!(c.first.is_some());
+            assert!(c.second.is_some());
             match right {
                 Expr::Primary(p) => {
                     assert!(p.is_some());
@@ -390,72 +216,43 @@ fn right_has_higher_priority(left: &mut Expr, right: &mut Expr) {
                 Expr::Unary(_u) => {
                     assert!($c.third.is_none());
                 }
-                $(Expr::$e(i) => {
-                    assert!(i.first.is_none());
-                    i.first = $c.third;
-                })*
-                _ => unreachable!(),
-            }
-        };
-    }
-    macro_rules! match_left_and_match_right {
-        ($($e: ident) *) => {
-            match left {
-                Expr::Unary(u) => match right {
-                    Expr::Primary(p) => {
-                        assert!(p.is_some());
-                        assert!(u.first.is_none());
-                    }
-                    _ => unreachable!(),
-                },
-                $(Expr::$e(i) => {
-                    match_right_and_do_operation!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma, i);
-                })*
-                Expr::Conditional(c) => {
-                    assert!(c.first.is_some());
-                    assert!(c.second.is_some());
-                    match_right_assign_to_third!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma, c);
+                Expr::Binary { first, .. } => {
+                    assert!(first.is_none());
+                    right.first = c.third;
                 }
                 _ => unreachable!(),
             }
-        };
+        }
+        _ => unreachable!(),
     }
-    match_left_and_match_right!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
 }
 
 fn left_has_higher_eq_priority(left: usize, right: &mut Expr) {
     let index = Some(left);
-    macro_rules! set_to_unwrapped {
-        ($($e: ident) *) => {
-            match right {
-                Expr::PostFix(p) => {
-                    match p {
-                        PostFix::WithSubscript { first, .. } => {
-                            *first = index;
-                        },
-                        PostFix::WithFunctionCall { first, .. } => {
-                            *first = index;
-                        },
-                        PostFix::WithMember { first, .. } => {
-                            *first = index;
-                        },
-                        PostFix::WithPointerToMember { first, .. } => {
-                            *first = index;
-                        },
-                        _ => todo!(),
-                    }
-                }
-                Expr::Primary(Some(ref mut p)) => {
-                    *p = PrimaryInner::new_p_expr(left);
-                }
-                $(Expr::$e(ref mut i) => {
-                    i.first = index;
-                })*
-                _ => unreachable!(),
+    match right {
+        Expr::PostFix(p) => match p {
+            PostFix::WithSubscript { first, .. } => {
+                *first = index;
             }
-        };
+            PostFix::WithFunctionCall { first, .. } => {
+                *first = index;
+            }
+            PostFix::WithMember { first, .. } => {
+                *first = index;
+            }
+            PostFix::WithPointerToMember { first, .. } => {
+                *first = index;
+            }
+            _ => todo!(),
+        },
+        Expr::Primary(Some(ref mut p)) => {
+            *p = PrimaryInner::new_p_expr(left);
+        }
+        Expr::Binary { first, second, .. } => {
+            *first = index;
+        }
+        _ => unreachable!(),
     }
-    set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
 }
 macro_rules! expression_operators {
     () => {
@@ -511,11 +308,809 @@ macro_rules! primary_tokens {
             | TokenType::CONSTANT_ENUM { .. }
     };
 }
+
+macro_rules! unary_tokens {
+    () => {
+        TokenType::PUNCT_INCREMENT
+            | TokenType::PUNCT_DECREMENT
+            | TokenType::KEYWORD_SIZEOF
+            | TokenType::KEYWORD__ALIGNOF
+    };
+}
+
+macro_rules! unary_ops {
+    () => {
+        TokenType::PUNCT_AND_BIT
+            | TokenType::PUNCT_MULT
+            | TokenType::PUNCT_ADD
+            | TokenType::PUNCT_MINUS
+            | TokenType::PUNCT_TILDE
+            | TokenType::PUNCT_NOT_BOOL
+    };
+}
+
+macro_rules! assignment_ops {
+    () => {
+        TokenType::PUNCT_ASSIGNMENT
+            | TokenType::PUNCT_MODULO_ASSIGN
+            | TokenType::PUNCT_DIV_ASSIGN
+            | TokenType::PUNCT_MULT_ASSIGN
+            | TokenType::PUNCT_ADD_ASSIGN
+            | TokenType::PUNCT_SUB_ASSIGN
+            | TokenType::PUNCT_L_SHIFT_BIT_ASSIGN
+            | TokenType::PUNCT_R_SHIFT_BIT_ASSIGN
+            | TokenType::PUNCT_AND_BIT_ASSIGN
+            | TokenType::PUNCT_XOR_BIT_ASSIGN
+            | TokenType::PUNCT_OR_BIT_ASSIGN
+    };
+}
+
+fn handle_increment_decrement_binary_expr(
+    expr_struct: Expr,
+    tokens: &[Token],
+    index: usize,
+    stack: &mut Vec<Expr>,
+    curr_expr: &mut Option<Expr>,
+    flattened: &mut Flattened,
+) {
+    // previous expression has a second operand, which
+    // means the second operand is actually a postfix
+    // expression, due to the current operator
+    // occurring after.
+    if let Some(Expr::Binary { .. }) = expr_struct.second {
+        flattened
+            .expressions
+            .push(Expr::PostFix(PostFix::WithIncrementDecrement {
+                first: expr_struct,
+                op: match tokens.get(*index) {
+                    Some(Token {
+                        r#type: TokenType::PUNCT_INCREMENT,
+                        ..
+                    }) => PostFixIncrementDecrement::Increment,
+                    Some(Token {
+                        r#type: TokenType::PUNCT_DECREMENT,
+                        ..
+                    }) => PostFixIncrementDecrement::Decrement,
+                    _ => unreachable!(),
+                },
+            }));
+        expr_struct.second = Some(flattened.expressions.len() - 1);
+    } else {
+        // previous expression does not have a second
+        // operand which means the second operand is
+        // actually a unary expression
+        stack.push(expr_struct);
+        *curr_expr = Some(Expr::Unary(Unary {
+            first: None,
+            op: match tokens.get(index) {
+                Some(Token {
+                    r#type: TokenType::PUNCT_INCREMENT,
+                    ..
+                }) => UnaryOp::Increment,
+                Some(Token {
+                    r#type: TokenType::PUNCT_DECREMENT,
+                    ..
+                }) => UnaryOp::Decrement,
+                _ => unreachable!(),
+            },
+        }));
+    }
+}
+
+fn parse_increment_decrement(
+    tokens: &[Token],
+    index: usize,
+    curr_expr: &mut Option<Expr>,
+    stack: &mut Vec<Expr>,
+    flattened: &mut Flattened,
+) -> Result<(), String> {
+    match curr_expr {
+        Some(Expr::Conditional(_)) => todo!(),
+        Some(Expr::Cast(ref mut c)) => {
+            if let Some(cast_expr_key) = c.cast_expr {
+                flattened
+                    .expressions
+                    .push(Expr::PostFix(PostFix::WithIncrementDecrement {
+                        first: cast_expr_key,
+                        op: match tokens.get(index) {
+                            Some(Token {
+                                r#type: TokenType::PUNCT_INCREMENT,
+                                ..
+                            }) => PostFixIncrementDecrement::Increment,
+                            Some(Token {
+                                r#type: TokenType::PUNCT_DECREMENT,
+                                ..
+                            }) => PostFixIncrementDecrement::Decrement,
+                            _ => unreachable!(),
+                        },
+                    }));
+                c.cast_expr = Some(flattened.expressions.len() - 1);
+            } else {
+                // cast expression has a None for it's first
+                // expression which means we have a unary
+                // expression
+                stack.push(curr_expr.unwrap());
+                *curr_expr = Some(Expr::Unary(Unary {
+                    first: None,
+                    op: match tokens.get(index) {
+                        Some(Token {
+                            r#type: TokenType::PUNCT_INCREMENT,
+                            ..
+                        }) => UnaryOp::Increment,
+                        Some(Token {
+                            r#type: TokenType::PUNCT_DECREMENT,
+                            ..
+                        }) => UnaryOp::Decrement,
+                        _ => unreachable!(),
+                    },
+                }));
+            }
+        }
+        Some(Expr::Unary(ref mut u)) => {
+            if let Some(first_key) = u.first {
+                flattened
+                    .expressions
+                    .push(Expr::PostFix(PostFix::WithIncrementDecrement {
+                        first: first_key,
+                        op: match tokens.get(index) {
+                            Some(Token {
+                                r#type: TokenType::PUNCT_INCREMENT,
+                                ..
+                            }) => PostFixIncrementDecrement::Increment,
+                            Some(Token {
+                                r#type: TokenType::PUNCT_DECREMENT,
+                                ..
+                            }) => PostFixIncrementDecrement::Decrement,
+                            _ => unreachable!(),
+                        },
+                    }));
+                u.first = Some(flattened.expressions.len() - 1);
+            } else {
+                // technically unary op after a unary op isn't
+                // allowed because unary ops can only be applied to
+                // modifiable l-values but that's up to the
+                // semantic analyzer to handle
+                stack.push(curr_expr.unwrap());
+                *curr_expr = Some(Expr::Unary(Unary {
+                    first: None,
+                    op: match tokens.get(index) {
+                        Some(Token {
+                            r#type: TokenType::PUNCT_INCREMENT,
+                            ..
+                        }) => UnaryOp::Increment,
+                        Some(Token {
+                            r#type: TokenType::PUNCT_DECREMENT,
+                            ..
+                        }) => UnaryOp::Decrement,
+                        _ => unreachable!(),
+                    },
+                }));
+            }
+        }
+        Some(Expr::PostFix(_) | Expr::Primary(_)) => {
+            flattened.expressions.push(curr_expr.unwrap());
+            *curr_expr = Some(Expr::PostFix(PostFix::WithIncrementDecrement {
+                first: flattened.expressions.len() - 1,
+                op: match tokens.get(index) {
+                    Some(Token {
+                        r#type: TokenType::PUNCT_INCREMENT,
+                        ..
+                    }) => PostFixIncrementDecrement::Increment,
+                    Some(Token {
+                        r#type: TokenType::PUNCT_DECREMENT,
+                        ..
+                    }) => PostFixIncrementDecrement::Decrement,
+                    _ => unreachable!(),
+                },
+            }));
+        }
+        Some(Expr::Binary { .. }) => {
+            handle_increment_decrement_binary_expr(
+                curr_expr.unwrap(),
+                tokens,
+                index,
+                stack,
+                curr_expr,
+                flattened,
+            );
+        }
+        None => {
+            *curr_expr = Some(Expr::Unary(Unary {
+                first: None,
+                op: match tokens.get(index) {
+                    Some(Token {
+                        r#type: TokenType::PUNCT_INCREMENT,
+                        ..
+                    }) => UnaryOp::Increment,
+                    Some(Token {
+                        r#type: TokenType::PUNCT_DECREMENT,
+                        ..
+                    }) => UnaryOp::Decrement,
+                    _ => unreachable!(),
+                },
+            }));
+        }
+    }
+    Ok(())
+}
+
+fn parse_primary_expression(tokens: &[Token], index: &mut usize) -> Result<Expr, String> {
+    if !matches(tokens.get(*index), Some(primary_tokens!())) {
+        match tokens.get(*index) {
+            Some(Token { line, column, .. }) => {
+                return Err(error("Expected primary token", line, column));
+            }
+            None => {
+                return Err("Expected primary token".to_string());
+            }
+        }
+    }
+    Primary(PrimaryType::Token(tokens[*index]))
+}
+
+fn parse_argument_expression_list(tokens: &[Token], index: &mut usize) -> Result<Expr, String> {
+    todo!();
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::PUNCT_COMMA,
+            ..
+        }) => {}
+        _ => break,
+    }
+    *index += 1;
+}
+
+fn parse_postfix_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+    last_postfix_expression: Option<Expr>,
+) -> Result<Expr, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_PAR,
+            ..
+        }) => {
+            *index += 1;
+            if last_postfix_expression.is_none() {
+                // typename and initializer postfix expression
+                let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
+                consume_whitespace(tokens, index);
+                expected_token(tokens, index, str_maps, TokenType::PUNCT_CLOSE_PAR)?;
+                consume_whitespace(tokens, index);
+                expected_token(tokens, index, str_maps, TokenType::PUNCT_OPEN_CURLY)?;
+                let initializer_list = parse_initializer_list(tokens, index, flattened, str_maps)?;
+                return Ok(Expr::PostFix(PostFix::WithTypeNameInitializerList {
+                    type_name,
+                    initializer_list,
+                }));
+            } else {
+                // postfix argument expression list expression
+                parse_argument_expression_list(tokens, index)?;
+            }
+        }
+        Some(
+            t @ Token {
+                r#type:
+                    TokenType::PUNCT_INCREMENT
+                    | TokenType::PUNCT_DECREMENT
+                    | TokenType::PUNCT_ARROW
+                    | TokenType::PUNCT_DOT,
+                line,
+                column,
+            },
+        ) => {
+            *index += 1;
+            if last_postfix_expression.is_none() {
+                return Err(error("Expected expression before", line, column));
+            }
+            let Token { r#type, .. } = t;
+            flattened.expressions.push(last_postfix_expression.unwrap());
+            return Ok(Expr::PostFix(PostFix::WithIncrementDecrement {
+                op: r#type,
+                first: flattened.expressions.len() - 1,
+            }));
+        }
+        _ => {
+            break;
+        }
+    }
+}
+
+fn parse_unary_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: unary_ops!(),
+                ..
+            },
+        ) => {
+            let cast_expr = parse_cast_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(cast_expr);
+            Ok(Expr::Unary(Unary {
+                op: t.r#type,
+                first: flattened.expressions.len() - 1,
+            }))
+        }
+    }
+}
+
+fn parse_cast_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::PUNCT_OPEN_PAR,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
+            expected_token(tokens, index, TokenType::PUNCT_CLOSE_PAR)?;
+            consume_whitespace(tokens, index);
+            let cast_expression = parse_cast_expression(tokens, index, flattened, str_maps)?;
+            flattened.type_names.push(type_name);
+            flattened.expressions.push(cast_expression);
+            Ok(Expr::Cast(Cast {
+                type_name: flattened.type_names.len() - 1,
+                cast_expression: flattened.expressions.len() - 1,
+            }))
+        }
+        _ => parse_unary_expression(tokens, index, flattened, str_maps)?,
+    }
+}
+
+fn parse_multiplicative_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let cast_expr = parse_cast_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::PUNCT_MULT | TokenType::PUNCT_DIV | TokenType::PUNCT_MOD,
+            ..
+        }) => {
+            *index += 1;
+            let second_operand = parse_cast_expression(tokens, index, flattenex, str_maps)?;
+            flattened.expressions.push(cast_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: BinaryExprType::Mult,
+                first,
+                second,
+            })
+        }
+        _ => Ok(cast_expr),
+    }
+}
+
+fn parse_additive_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let mult_expr = parse_multiplicative_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_PLUS | TokenType::PUNCT_MINUS,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand =
+                parse_multiplicative_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(mult_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(mult_expr),
+    }
+}
+
+fn parse_shift_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let add_expr = parse_additive_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_BITSHIFT_LEFT | TokenType::PUNCT_BITSHIFT_RIGHT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_additive_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(add_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(add_expr),
+    }
+}
+
+fn parse_relational_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let shift_expr = parse_shift_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type:
+                    TokenType::PUNCT_LESS_THAN
+                    | TokenType::PUNCT_LESS_THAN_EQ
+                    | TokenType::PUNCT_GREATER_THAN
+                    | TokenType::PUNCT_GREATER_THAN_EQ,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_shift_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(shift_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(shift_expr),
+    }
+}
+
+fn parse_equality_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let relational_expr = parse_relational_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_NOT_EQ_BOOL | TokenType::PUNCT_EQ_BOOL,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_relational_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(relational_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(relational_expr),
+    }
+}
+
+fn parse_bitwise_AND_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let eq_expr = parse_equality_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_AND_BIT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_equality_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(eq_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(eq_expr),
+    }
+}
+
+fn parse_bitwise_XOR_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let bit_and_expr = parse_bitwise_AND_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_XOR_BIT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_bitwise_AND_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(bit_and_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(bit_and_expr),
+    }
+}
+
+fn parse_bitwise_OR_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let bit_xor_expr = parse_bitwise_XOR_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_OR_BIT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_bitwise_XOR_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(bit_xor_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(bit_xor_expr),
+    }
+}
+
+fn parse_logical_AND_expression() -> Result<(), String> {
+    let bit_or_expr = parse_bitwise_OR_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_OR_BIT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_bitwise_OR_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(bit_or_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(bit_or_expr),
+    }
+}
+
+fn parse_logical_OR_expression() -> Result<(), String> {
+    let logical_and_expr = parse_logical_AND_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_OR_BIT,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_logical_AND_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(logical_and_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(logical_and_expr),
+    }
+}
+
+fn parse_conditional_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let first_expr = parse_logical_OR_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    if matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::PUNCT_QUESTION_PARK..
+        })
+    ) {
+        flattened.expressions.push(first_expr);
+        let first_idx = flattened.expressions.len() - 1;
+
+        *index += 1;
+        consume_whitespace(tokens, index);
+
+        let expression = parse_expressions(tokens, index, flattened, str_maps)?;
+        flattened.expressions.push(expression);
+        let second_idx = flattened.expressions.len() - 1;
+
+        consume_whitespace(tokens, index);
+        expected_token(tokens, index, TokenType::PUNCT_COLON)?;
+        consume_whitespace(tokens, index);
+
+        let conditional = parse_conditional_expression(tokens, index, flattened, str_maps)?;
+        flattened.expressions.push(conditional);
+        let third_idx = flattened.expressions.len() - 1;
+
+        return Ok(Expr::Conditional(Conditional {
+            first: first_idx,
+            second: second_idx,
+            third: third_idx,
+        }));
+    }
+
+    Ok(first_expr)
+}
+
+pub fn parse_assignment_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let conditional = parse_conditional_expression(tokens, index, flattened, str_maps)?;
+    if matches!(
+        conditional,
+        Expr::Unary(_) | Expr::PostFix(_) | Expr::Primary(_)
+    ) {
+        consume_whitespace(tokens, index);
+        match tokens.get(*index) {
+            Some(
+                t @ Token {
+                    r#type: assignment_ops!(),
+                    ..
+                },
+            ) => {
+                *index += 1;
+                // this basically attempts to transform `var += 1` to `var = var + 1`
+                let assignment_expr =
+                    parse_assignment_expression(tokens, index, flattened, str_maps)?;
+                flattened.expressions.push(conditional);
+                let first = flattened.expressions.len() - 1;
+                flattened.expressions.push(assignment_expr);
+                let second = flattened.expressions.len() - 1;
+                let transformed = Expr::Binary {
+                    r#type: match t.r#type {
+                        TokenType::PUNCT_ASSIGNMENT => BinaryExprType::Assignment,
+                        TokenType::PUNCT_MODULO_ASSIGN => BinaryExprType::Mod,
+                        TokenType::PUNCT_DIV_ASSIGN => BinaryExprType::Div,
+                        TokenType::PUNCT_MULT_ASSIGN => BinaryExprType::Mult,
+                        TokenType::PUNCT_ADD_ASSIGN => BinaryExprType::Add,
+                        TokenType::PUNCT_SUB_ASSIGN => BinaryExprType::Sub,
+                        TokenType::PUNCT_L_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftLeft,
+                        TokenType::PUNCT_R_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftRight,
+                        TokenType::PUNCT_AND_BIT_ASSIGN => BinaryExprType::BitAND,
+                        TokenType::PUNCT_XOR_BIT_ASSIGN => BinaryExprType::BitXOR,
+                        TokenType::PUNCT_OR_BIT_ASSIGN => BinaryExprType::BitOR,
+                    },
+                    first,
+                    second,
+                };
+                flattened.expressions.push(transformed);
+                let second = flattened.expressions.len() - 1;
+                return Ok(Expr::Binary {
+                    r#type: BinaryExprType::Assignment,
+                    first,
+                    second,
+                });
+            }
+            Some(Token { line, column, .. }) => {
+                return Err(error("Expected assignment operator", line, column))
+            }
+            _ => return Err("Expected assignment operator".to_string()),
+        }
+    }
+    Ok(conditional)
+}
+
+pub fn parse_comma_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &ByteVecMaps,
+) -> Result<Expr, String> {
+    let assignment_expr = parse_assignment_expression(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(
+            t @ Token {
+                r#type: TokenType::PUNCT_COMMA,
+                ..
+            },
+        ) => {
+            *index += 1;
+            let second_operand = parse_assignment_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(assignment_expr);
+            let first = flattened.expressions.len() - 1;
+            flattened.expressions.push(second_operand);
+            let second = flattened.expressions.len() - 1;
+            Ok(Expr::Binary {
+                r#type: t.r#type,
+                first,
+                second,
+            })
+        }
+        _ => Ok(assignment_expr),
+    }
+}
+
 pub fn parse_expressions(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Expr, String> {
     // stack is used for expressions that have nested levels
     // -- like ( ( ... ) ) or 5 + 6 * 4 -> 5 + (6 * 4)
@@ -529,22 +1124,29 @@ pub fn parse_expressions(
     // expression with an argument expression list is parsed
     let mut parsing_argument_expression_list_in_postfix = Vec::new();
     while *index < tokens.len() {
-        let Token { r#type, .. } = tokens[*index];
+        let Token {
+            r#type,
+            location: Some(Location { line, column }),
+        } = tokens[*index]
+        else {
+            unreachable!()
+        };
         match r#type {
             //Comma expressions
             TokenType::PUNCT_COMMA => {
                 if curr_expr.is_none() {
-                    todo!("ERROR HERE")
+                    return Err(error("Expected expression before ','", line, column));
                 }
                 let Some(curr_expr_inside) = curr_expr else {
                     unreachable!()
                 };
                 if let Some(false) = parsing_argument_expression_list_in_postfix.last() {
                     flattened.expressions.push(curr_expr_inside);
-                    curr_expr = Some(Expr::Comma(Comma {
+                    curr_expr = Some(Expr::Binary {
+                        r#type: BinaryExprType::Comma,
                         first: Some(flattened.expressions.len() - 1),
                         second: None,
-                    }));
+                    });
                 } else {
                     let Some(recent_arg_list) = flattened.argument_expr_list_list.last_mut() else {
                         unreachable!()
@@ -566,278 +1168,28 @@ pub fn parse_expressions(
             | TokenType::PUNCT_AND_BIT_ASSIGN
             | TokenType::PUNCT_XOR_BIT_ASSIGN
             | TokenType::PUNCT_OR_BIT_ASSIGN => {
-                if curr_expr.is_none() {
-                    todo!("ERROR HERE")
-                }
-                match curr_expr {
-                    Some(Expr::Unary(_) | Expr::Primary(_)) => {
-                        let Some(expr) = curr_expr else {
-                            unreachable!()
-                        };
-                        flattened.expressions.push(expr);
-                        let assignment = Assignment {
-                            first: Some(flattened.expressions.len() - 1),
-                            second: None,
-                        };
-                        curr_expr = Some(Expr::Assignment(assignment));
-                    }
-                    Some(Expr::Assignment(a)) => {
-                        let assignment = Assignment {
-                            first: a.second,
-                            second: None,
-                        };
-                        stack.push(Expr::Assignment(a));
-                        curr_expr = Some(Expr::Assignment(assignment));
-                    }
-                    _ => {
-                        todo!("ERROR HERE")
-                    }
-                }
-                if tokens.get(*index).is_none()
-                    || match tokens.get(*index) {
-                        Some(Token {
-                            r#type: primary_tokens!(),
-                            ..
-                        }) => false,
-                        _ => true,
-                    }
-                {
-                    todo!("ERROR HERE")
-                }
+                *index += 1;
+                parse_assignment_expression(
+                    curr_expr, tokens, index, flattened, &mut stack, str_maps,
+                )?;
             }
             // Postfix but with unary edge cases
             TokenType::PUNCT_INCREMENT | TokenType::PUNCT_DECREMENT => {
-                match curr_expr {
-                    Some(mut curr_expr_inside) => {
-                        macro_rules! check_if_second_some_or_none {
-                                    ($($e: ident)*) => {
-                                        match curr_expr_inside {
-                                            $(Expr::$e(ref mut inside) => {
-                                                // previous expression has a second operand, which
-                                                // means the second operand is actually a postfix
-                                                // expression, due to the current operator
-                                                // occurring after.
-                                                if let Some(inside_expr_key) = inside.second {
-                                                    flattened.expressions.push(Expr::PostFix(PostFix::WithIncrementDecrement {
-                                                        first: inside_expr_key,
-                                                        op: match tokens.get(*index) {
-                                                            Some(Token { r#type: TokenType::PUNCT_INCREMENT, .. }) => {
-                                                                PostFixIncrementDecrement::Increment
-                                                            }
-                                                            Some(Token { r#type: TokenType::PUNCT_DECREMENT, .. }) => {
-                                                                PostFixIncrementDecrement::Decrement
-                                                            }
-                                                            _ => unreachable!(),
-                                                        },
-                                                    }));
-                                                    inside.second = Some(flattened.expressions.len() - 1);
-                                                } else {
-                                                    // previous expression does not have a second
-                                                    // operand which means the second operand is
-                                                    // actually a unary expression
-                                                    stack.push(curr_expr_inside);
-                                                    curr_expr = Some(Expr::Unary (Unary{
-                                                        first: None,
-                                                        op: match tokens.get(*index) {
-                                                            Some(Token { r#type: TokenType::PUNCT_INCREMENT, .. }) => {
-                                                                UnaryOp::Increment
-                                                            }
-                                                            Some(Token { r#type: TokenType::PUNCT_DECREMENT, .. }) => {
-                                                                UnaryOp::Decrement
-                                                            }
-                                                            _ => unreachable!(),
-                                                        },
-                                                    }));
-                                                }
-                                            })*
-                                            _ => unreachable!()
-                                        }
-                                    }
-                                }
-                        if !matches!(
-                            curr_expr_inside,
-                            Expr::Conditional(_)
-                                | Expr::Primary(_)
-                                | Expr::Cast(_)
-                                | Expr::Unary(_)
-                                | Expr::PostFix(_)
-                        ) {
-                            check_if_second_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
-                        } else {
-                            match curr_expr_inside {
-                                Expr::Cast(ref mut c) => {
-                                    if let Some(cast_expr_key) = c.cast_expr {
-                                        flattened.expressions.push(Expr::PostFix(
-                                            PostFix::WithIncrementDecrement {
-                                                first: cast_expr_key,
-                                                op: match tokens.get(*index) {
-                                                    Some(Token {
-                                                        r#type: TokenType::PUNCT_INCREMENT,
-                                                        ..
-                                                    }) => PostFixIncrementDecrement::Increment,
-                                                    Some(Token {
-                                                        r#type: TokenType::PUNCT_DECREMENT,
-                                                        ..
-                                                    }) => PostFixIncrementDecrement::Decrement,
-                                                    _ => unreachable!(),
-                                                },
-                                            },
-                                        ));
-                                        c.cast_expr = Some(flattened.expressions.len() - 1);
-                                    } else {
-                                        // cast expression has a None for it's first
-                                        // expression which means we have a unary
-                                        // expression
-                                        stack.push(curr_expr_inside);
-                                        curr_expr = Some(Expr::Unary(Unary {
-                                            first: None,
-                                            op: match tokens.get(*index) {
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_INCREMENT,
-                                                    ..
-                                                }) => UnaryOp::Increment,
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_DECREMENT,
-                                                    ..
-                                                }) => UnaryOp::Decrement,
-                                                _ => unreachable!(),
-                                            },
-                                        }));
-                                    }
-                                }
-                                Expr::Unary(ref mut u) => {
-                                    if let Some(first_key) = u.first {
-                                        flattened.expressions.push(Expr::PostFix(
-                                            PostFix::WithIncrementDecrement {
-                                                first: first_key,
-                                                op: match tokens.get(*index) {
-                                                    Some(Token {
-                                                        r#type: TokenType::PUNCT_INCREMENT,
-                                                        ..
-                                                    }) => PostFixIncrementDecrement::Increment,
-                                                    Some(Token {
-                                                        r#type: TokenType::PUNCT_DECREMENT,
-                                                        ..
-                                                    }) => PostFixIncrementDecrement::Decrement,
-                                                    _ => unreachable!(),
-                                                },
-                                            },
-                                        ));
-                                        u.first = Some(flattened.expressions.len() - 1);
-                                    } else {
-                                        // technically unary op after a unary op isn't
-                                        // allowed because unary ops can only be applied to
-                                        // modifiable l-values but that's up to the
-                                        // semantic analyzer to handle
-                                        stack.push(curr_expr_inside);
-                                        curr_expr = Some(Expr::Unary(Unary {
-                                            first: None,
-                                            op: match tokens.get(*index) {
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_INCREMENT,
-                                                    ..
-                                                }) => UnaryOp::Increment,
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_DECREMENT,
-                                                    ..
-                                                }) => UnaryOp::Decrement,
-                                                _ => unreachable!(),
-                                            },
-                                        }));
-                                    }
-                                }
-                                Expr::PostFix(_) => {
-                                    flattened.expressions.push(curr_expr_inside);
-                                    curr_expr =
-                                        Some(Expr::PostFix(PostFix::WithIncrementDecrement {
-                                            first: flattened.expressions.len() - 1,
-                                            op: match tokens.get(*index) {
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_INCREMENT,
-                                                    ..
-                                                }) => PostFixIncrementDecrement::Increment,
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_DECREMENT,
-                                                    ..
-                                                }) => PostFixIncrementDecrement::Decrement,
-                                                _ => unreachable!(),
-                                            },
-                                        }));
-                                }
-                                Expr::Primary(_) => {
-                                    flattened.expressions.push(curr_expr_inside);
-                                    curr_expr =
-                                        Some(Expr::PostFix(PostFix::WithIncrementDecrement {
-                                            first: flattened.expressions.len() - 1,
-                                            op: match tokens.get(*index) {
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_INCREMENT,
-                                                    ..
-                                                }) => PostFixIncrementDecrement::Increment,
-                                                Some(Token {
-                                                    r#type: TokenType::PUNCT_DECREMENT,
-                                                    ..
-                                                }) => PostFixIncrementDecrement::Decrement,
-                                                _ => unreachable!(),
-                                            },
-                                        }));
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
-                    None => {
-                        curr_expr = Some(Expr::Unary(Unary {
-                            first: None,
-                            op: match tokens.get(*index) {
-                                Some(Token {
-                                    r#type: TokenType::PUNCT_INCREMENT,
-                                    ..
-                                }) => UnaryOp::Increment,
-                                Some(Token {
-                                    r#type: TokenType::PUNCT_DECREMENT,
-                                    ..
-                                }) => UnaryOp::Decrement,
-                                _ => unreachable!(),
-                            },
-                        }));
-                    }
-                }
+                parse_increment_decrement(tokens, *index, &mut curr_expr, &mut stack, flattened)?;
             }
             TokenType::PUNCT_DOT | TokenType::PUNCT_ARROW | TokenType::PUNCT_OPEN_SQR => {
                 if curr_expr.is_some() {
-                    match tokens.get(*index) {
-                        Some(Token {
-                            r#type: TokenType::PUNCT_DOT | TokenType::PUNCT_ARROW,
-                            ..
-                        }) => {
+                    match r#type {
+                        TokenType::PUNCT_DOT | TokenType::PUNCT_ARROW => {
                             let dot_or_arrow = tokens[*index];
                             consume_whitespace(tokens, index);
                             if !matches!(
                                 tokens.get(*index),
                                 Some(Token {
-                                    r#type: TokenType::IDENT { .. }
-                                        | TokenType::CONSTANT_DEC_FLOAT { .. }
-                                        | TokenType::CONSTANT_HEXA_FLOAT { .. }
-                                        | TokenType::CONSTANT_DEC_INT { .. }
-                                        | TokenType::CONSTANT_OCTAL_INT { .. }
-                                        | TokenType::CONSTANT_HEXA_INT { .. },
-                                    ..
+                                    r#type: TokenType::IDENT { .. }..
                                 })
                             ) {
-                                let Token {
-                                    r#type: TokenType::CONSTANT_DEC_INT { value_key, .. },
-                                    ..
-                                } = tokens.get(*index).unwrap()
-                                else {
-                                    unreachable!()
-                                };
-                                println!("{}", matches!(curr_expr, Some(Expr::Multiplicative(_))));
-                                todo!(
-                                    "ERROR HERE: {:?}",
-                                    String::from_utf8(str_maps.key_to_byte_vec[*value_key].clone())
-                                        .expect("")
-                                )
+                                return Err(error("Expected identifier", line, column));
                             }
                             let Some(Token {
                                 r#type: TokenType::IDENT { str_map_key, .. },
@@ -861,10 +1213,7 @@ pub fn parse_expressions(
                             curr_expr = Some(Expr::PostFix(postfix_type));
                             *index += 1;
                         }
-                        Some(Token {
-                            r#type: TokenType::PUNCT_OPEN_SQR,
-                            ..
-                        }) => {
+                        TokenType::PUNCT_OPEN_SQR => {
                             let Some(mut curr_expr_inside) = curr_expr else {
                                 unreachable!()
                             };
@@ -891,14 +1240,22 @@ pub fn parse_expressions(
                         _ => unreachable!(),
                     }
                 } else {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected token {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
                 // Dont need to check for identifier after because the identifier is already
                 // parsed before due to postfix struct requiring that identifiers be consumed
             }
             TokenType::PUNCT_CLOSE_SQR => {
                 if curr_expr.is_none() {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected token {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
                 while let Some(mut e) = stack.pop() {
                     let Some(unwrapped) = curr_expr else {
@@ -934,26 +1291,21 @@ pub fn parse_expressions(
                                 unwrapped.priority()
                             );
                             let unwrapped = Some(flattened.expressions.len() - 1);
-                            macro_rules! set_to_unwrapped {
-                                ($($e: ident) *) => {
-                                    match e {
-                                        Expr::Primary(ref mut p) => {
-                                            *p = Some(PrimaryInner::Expr(unwrapped.unwrap()));
-                                        }
-                                        Expr::Unary(ref mut u) => {
-                                            u.first = unwrapped;
-                                        }
-                                        $(Expr::$e(ref mut i) => {
-                                            i.second = unwrapped;
-                                        })*
-                                        Expr::Conditional(ref mut c) => {
-                                            c.third = unwrapped;
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                };
+                            match e {
+                                Expr::Primary(ref mut p) => {
+                                    *p = Some(PrimaryInner::Expr(unwrapped.unwrap()));
+                                }
+                                Expr::Unary(ref mut u) => {
+                                    u.first = unwrapped;
+                                }
+                                Expr::Binary { ref mut second, .. } => {
+                                    *second = unwrapped;
+                                }
+                                Expr::Conditional(ref mut c) => {
+                                    c.third = unwrapped;
+                                }
+                                _ => unreachable!(),
                             }
-                            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                             curr_expr = Some(e);
                         }
                     }
@@ -983,39 +1335,33 @@ pub fn parse_expressions(
                 if curr_expr.is_none() {
                     curr_expr = Some(primary);
                 } else {
-                    macro_rules! primary_second_assign {
-                        ($($e:ident)*) => {
-                            match &mut curr_expr {
-                                Some(Expr::PostFix(_)) => {
-                                    todo!("ERROR HERE")
-                                },
-                                Some(Expr::Unary(u)) => {
-                                    assert!(u.first.is_none());
-                                    u.first = Some(last_index);
-                                }
-                                Some(Expr::Cast(c)) => {
-                                    c.cast_expr = Some(last_index);
-                                },
-                                $(Some(Expr::$e(i)) => {
-                                    i.second = Some(last_index);
-                                })*
-                                Some(Expr::Conditional(c)) => {
-                                    if c.first.is_none() {
-                                        c.first = Some(last_index);
-                                    } else if c.second.is_none() {
-                                        c.second = Some(last_index);
-                                    } else if c.third.is_none() {
-                                        c.third = Some(last_index);
-                                    }
-                                }
-                                _ => {
-                                    todo!("ERROR HERE")
-                                },
+                    match &mut curr_expr {
+                        Some(Expr::PostFix(_)) => {
+                            todo!("ERROR HERE")
+                        }
+                        Some(Expr::Unary(u)) => {
+                            assert!(u.first.is_none());
+                            u.first = Some(last_index);
+                        }
+                        Some(Expr::Cast(c)) => {
+                            c.cast_expr = Some(last_index);
+                        }
+                        Some(Expr::Binary { second, .. }) => {
+                            *second = Some(last_index);
+                        }
+                        Some(Expr::Conditional(c)) => {
+                            if c.first.is_none() {
+                                c.first = Some(last_index);
+                            } else if c.second.is_none() {
+                                c.second = Some(last_index);
+                            } else if c.third.is_none() {
+                                c.third = Some(last_index);
                             }
-                        };
+                        }
+                        _ => {
+                            todo!("ERROR HERE")
+                        }
                     }
-
-                    primary_second_assign!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                 }
 
                 consume_whitespace(tokens, index);
@@ -1027,27 +1373,6 @@ pub fn parse_expressions(
                     flattened.argument_expr_list_list.push(Vec::new());
                     parsing_argument_expression_list_in_postfix.push(true);
                     // have to do this matching bc postfix is an enum not struct
-                    macro_rules! swap_second_expr_and_postfix {
-                        ($($e:ident)*) => {
-                            let Some(curr_expr_inside) = &mut curr_expr else { unreachable!() };
-                            match curr_expr_inside {
-                                $(Expr::$e(mut inside) => {
-                                    let Some(curr_expr_second_key) = inside.second else {
-                                        unreachable!()
-                                    };
-                                    inside.second = None;
-                                    stack.push(*curr_expr_inside);
-                                    stack.push(
-                                        Expr::PostFix(PostFix::WithFunctionCall {
-                                            first: Some(curr_expr_second_key),
-                                            argument_expr_idx: flattened.argument_expr_list_list.len() - 1,
-                                        }));
-                                    curr_expr = None;
-                                })*
-                                _ => unreachable!()
-                            }
-                        };
-                    }
                     if !matches!(
                         curr_expr,
                         Some(
@@ -1058,7 +1383,31 @@ pub fn parse_expressions(
                                 | Expr::Conditional(_)
                         )
                     ) {
-                        swap_second_expr_and_postfix!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
+                        let Some(curr_expr_inside) = curr_expr else {
+                            unreachable!()
+                        };
+                        match curr_expr_inside {
+                            Expr::Binary {
+                                second,
+                                r#type,
+                                first,
+                            } => {
+                                let Some(curr_expr_second_key) = second else {
+                                    unreachable!()
+                                };
+                                stack.push(Expr::Binary {
+                                    r#type,
+                                    first,
+                                    second: None,
+                                });
+                                stack.push(Expr::PostFix(PostFix::WithFunctionCall {
+                                    first: Some(curr_expr_second_key),
+                                    argument_expr_idx: flattened.argument_expr_list_list.len() - 1,
+                                }));
+                                curr_expr = None;
+                            }
+                            _ => unreachable!(),
+                        }
                     } else {
                         let Some(curr_expr_inside) = curr_expr else {
                             unreachable!()
@@ -1259,23 +1608,18 @@ pub fn parse_expressions(
                                 unwrapped.priority()
                             );
                             let unwrapped = Some(flattened.expressions.len() - 1);
-                            macro_rules! set_to_unwrapped {
-                                ($($e: ident) *) => {
-                                    match e {
-                                        Expr::Unary(ref mut u) => {
-                                            u.first = unwrapped;
-                                        }
-                                        $(Expr::$e(ref mut i) => {
-                                            i.second = unwrapped;
-                                        })*
-                                        Expr::Conditional(ref mut c) => {
-                                            c.third = unwrapped;
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                };
+                            match &mut e {
+                                Expr::Unary(ref mut u) => {
+                                    u.first = unwrapped;
+                                }
+                                Expr::Binary { second, .. } => {
+                                    *second = unwrapped;
+                                }
+                                Expr::Conditional(c) => {
+                                    c.third = unwrapped;
+                                }
+                                _ => unreachable!(),
                             }
-                            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                             curr_expr = Some(e);
                         }
                     }
@@ -1298,89 +1642,103 @@ pub fn parse_expressions(
             | TokenType::KEYWORD_SIZEOF
             | TokenType::KEYWORD__ALIGNOF => {
                 left_expression = curr_expr;
-                macro_rules! left_expression_handle_in_unary_expression {
-                    ($($e: ident) *) => {
-                        match &left_expression {
-                            Some(Expr::Primary(_) | Expr::PostFix(_)) => {
-                                // if a '~' or '!' follow a primary expression, that is not allowed.
-                                match tokens[*index].r#type {
-                                    TokenType::PUNCT_TILDE | TokenType::PUNCT_NOT_BOOL => {
-                                        todo!("ERROR HERE")
-                                    }
-                                    _ => {}
-                                }
-                                curr_expr = Some(Expr::Additive(Additive {
-                                    op: match tokens[*index].r#type {
-                                        TokenType::PUNCT_PLUS => AdditiveOps::Add,
-                                        TokenType::PUNCT_MINUS => AdditiveOps::Sub,
-                                        _ => unreachable!("{:?}", tokens[*index]),
-                                    },
-                                    first: None,
-                                    second: None,
-                                }));
+                match &left_expression {
+                    Some(Expr::Primary(_) | Expr::PostFix(_)) => {
+                        // if a '~' or '!' follow a primary expression, that is not allowed.
+                        match tokens[*index].r#type {
+                            TokenType::PUNCT_TILDE | TokenType::PUNCT_NOT_BOOL => {
+                                todo!("ERROR HERE")
                             }
-                            None => {
-                                curr_expr = Some(Expr::Unary(Unary {
-                                    op: match tokens[*index].r#type {
-                                        TokenType::PUNCT_PLUS => UnaryOp::Add,
-                                        TokenType::PUNCT_MINUS => UnaryOp::Sub,
-                                        TokenType::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
-                                        TokenType::PUNCT_TILDE => UnaryOp::BitNOT,
-                                        TokenType::KEYWORD_SIZEOF => UnaryOp::Sizeof,
-                                        TokenType::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
-                                        _ => unreachable!(),
-                                    },
-                                    first: None,
-                                }));
-                            }
-                            Some(Expr::Unary(Unary { op: _, first })) => {
-                                if first.is_none() {
-                                    let Some(left_expression_unwrapped) = left_expression else { unreachable!() };
-                                    stack.push(left_expression_unwrapped);
-                                    left_expression = None;
-                                    curr_expr = Some(Expr::Unary(Unary {
-                                        op: match tokens[*index].r#type {
-                                            TokenType::PUNCT_PLUS => UnaryOp::Add,
-                                            TokenType::PUNCT_MINUS => UnaryOp::Sub,
-                                            TokenType::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
-                                            TokenType::PUNCT_TILDE => UnaryOp::BitNOT,
-                                            TokenType::KEYWORD_SIZEOF => UnaryOp::Sizeof,
-                                            TokenType::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
-                                            _ => unreachable!(),
-                                        },
-                                        first: None,
-                                    }));
-                                } else {
-                                    // if a '~' or '!' follow a unary expression, that is not allowed.
-                                    match tokens[*index].r#type {
-                                        TokenType::PUNCT_TILDE | TokenType::PUNCT_NOT_BOOL => {
-                                            todo!("ERROR HERE")
-                                        }
-                                        _ => {}
-                                    }
-                                    curr_expr = Some(Expr::Additive(Additive {
-                                        op: match tokens[*index].r#type {
-                                            TokenType::PUNCT_PLUS => AdditiveOps::Add,
-                                            TokenType::PUNCT_MINUS => AdditiveOps::Sub,
-                                            _ => unreachable!("{:?}", tokens[*index]),
-                                        },
-                                        first: None,
-                                        second: None,
-                                    }));
-                                }
-                            }
-                            $(Some(Expr::$e(i)) => {
-                                case_where_it_could_be_unary_or_additive!(
-                                    i,
-                                    curr_expr,
-                                    tokens[*index].r#type
-                                );
-                            })*
-                            _ => unreachable!(),
+                            _ => {}
                         }
-                    };
+                        curr_expr = Some(Expr::Binary {
+                            r#type: match tokens[*index].r#type {
+                                TokenType::PUNCT_PLUS => BinaryExprType::Add,
+                                TokenType::PUNCT_MINUS => BinaryExprType::Sub,
+                                _ => unreachable!("{:?}", tokens[*index]),
+                            },
+                            first: None,
+                            second: None,
+                        });
+                    }
+                    None => {
+                        curr_expr = Some(Expr::Unary(Unary {
+                            op: match tokens[*index].r#type {
+                                TokenType::PUNCT_PLUS => UnaryOp::Add,
+                                TokenType::PUNCT_MINUS => UnaryOp::Sub,
+                                TokenType::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
+                                TokenType::PUNCT_TILDE => UnaryOp::BitNOT,
+                                TokenType::KEYWORD_SIZEOF => UnaryOp::Sizeof,
+                                TokenType::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
+                                _ => unreachable!(),
+                            },
+                            first: None,
+                        }));
+                    }
+                    Some(Expr::Unary(Unary { op: _, first })) => {
+                        if first.is_none() {
+                            let Some(left_expression_unwrapped) = left_expression else {
+                                unreachable!()
+                            };
+                            stack.push(left_expression_unwrapped);
+                            left_expression = None;
+                            curr_expr = Some(Expr::Unary(Unary {
+                                op: match tokens[*index].r#type {
+                                    TokenType::PUNCT_PLUS => UnaryOp::Add,
+                                    TokenType::PUNCT_MINUS => UnaryOp::Sub,
+                                    TokenType::PUNCT_NOT_BOOL => UnaryOp::LogicalNOT,
+                                    TokenType::PUNCT_TILDE => UnaryOp::BitNOT,
+                                    TokenType::KEYWORD_SIZEOF => UnaryOp::Sizeof,
+                                    TokenType::KEYWORD__ALIGNOF => UnaryOp::AlignOf,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                            }));
+                        } else {
+                            // if a '~' or '!' follow a unary expression, that is not allowed.
+                            match tokens[*index].r#type {
+                                TokenType::PUNCT_TILDE | TokenType::PUNCT_NOT_BOOL => {
+                                    todo!("ERROR HERE")
+                                }
+                                _ => {}
+                            }
+                            curr_expr = Some(Expr::Binary {
+                                r#type: match tokens[*index].r#type {
+                                    TokenType::PUNCT_PLUS => BinaryExprType::Add,
+                                    TokenType::PUNCT_MINUS => BinaryExprType::Sub,
+                                    _ => unreachable!("{:?}", tokens[*index]),
+                                },
+                                first: None,
+                                second: None,
+                            });
+                        }
+                    }
+                    Some(Expr::Binary { second, .. }) => {
+                        if second.is_none() {
+                            curr_expr = Some(Expr::Unary(Unary {
+                                op: match tokens[*index].r#type {
+                                    TokenType::PUNCT_PLUS { .. } => UnaryOp::Add,
+                                    TokenType::PUNCT_MINUS { .. } => UnaryOp::Sub,
+                                    TokenType::PUNCT_NOT_BOOL { .. } => UnaryOp::LogicalNOT,
+                                    TokenType::PUNCT_TILDE { .. } => UnaryOp::BitNOT,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                            }));
+                        } else {
+                            curr_expr = Some(Expr::Binary {
+                                r#type: match tokens[*index].r#type {
+                                    TokenType::PUNCT_PLUS { .. } => BinaryExprType::Add,
+                                    TokenType::PUNCT_MINUS { .. } => BinaryExprType::Sub,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                                second: None,
+                            });
+                        }
+                    }
+                    _ => unreachable!(),
                 }
-                left_expression_handle_in_unary_expression!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
                 if let Some(Expr::Unary(u)) = &curr_expr {
                     if matches!(u.op, UnaryOp::AlignOf) {
                         if !matches!(
@@ -1417,70 +1775,58 @@ pub fn parse_expressions(
             //Multiplicative expressions with unary edge cases
             TokenType::PUNCT_MULT | TokenType::PUNCT_DIV | TokenType::PUNCT_MODULO => {
                 match curr_expr {
-                    Some(curr_expr_inside) => match curr_expr_inside {
-                        Expr::Conditional(_) => unreachable!(),
-                        _ => {
-                            macro_rules! check_if_second_is_some_or_none {
-                                ($($e:ident)*) => {
-                                    match curr_expr_inside {
-                                        Expr::Primary(_) | Expr::PostFix(_) => {
-                                            left_expression = curr_expr;
-                                            curr_expr = Some(Expr::Multiplicative(Multiplicative {
-                                                op: match tokens[*index].r#type {
-                                                    TokenType::PUNCT_MULT => MultiplicativeOps::Mult,
-                                                    TokenType::PUNCT_DIV => MultiplicativeOps::Div,
-                                                    TokenType::PUNCT_MODULO => MultiplicativeOps::Mod,
-                                                    _ => unreachable!(),
-                                                },
-                                                first: None,
-                                                second: None,
-                                            }));
-                                        }
-                                        $(Expr::$e(inside) => {
-                                            if inside.second.is_none() {
-                                                stack.push(curr_expr_inside);
-                                                curr_expr = Some(Expr::Unary(Unary {
-                                                    op: match tokens[*index].r#type {
-                                                        TokenType::PUNCT_MULT{..} => UnaryOp::Deref,
-                                                        _ => {
-                                                            todo!("ERROR HERE")
-                                                        }
-                                                    },
-                                                    first: None,
-                                                }));
-                                            } else {
-                                                left_expression = curr_expr;
-                                                curr_expr = Some(Expr::Multiplicative(Multiplicative {
-                                                    op: match tokens[*index].r#type {
-                                                        TokenType::PUNCT_MULT{..} => MultiplicativeOps::Mult,
-                                                        TokenType::PUNCT_DIV{..} => MultiplicativeOps::Div,
-                                                        TokenType::PUNCT_MODULO{..} => MultiplicativeOps::Mod,
-                                                        _ => unreachable!(),
-                                                    },
-                                                    first: None,
-                                                    second: None,
-                                                }));
-                                            }
-                                        })*
-                                        Expr::Cast(_) | Expr::Unary(_) => {
-                                            stack.push(curr_expr_inside);
-                                            curr_expr = Some(Expr::Unary(Unary {
-                                                op: match tokens[*index].r#type {
-                                                    TokenType::PUNCT_MULT{..} => UnaryOp::Deref,
-                                                    _ => {
-                                                        todo!("ERROR HERE")
-                                                    }
-                                                },
-                                                first: None,
-                                            }));
-                                        }
-                                        Expr::Conditional(_) => unreachable!()
+                    Some(Expr::Primary(_) | Expr::PostFix(_)) => {
+                        left_expression = curr_expr;
+                        curr_expr = Some(Expr::Binary {
+                            r#type: match tokens[*index].r#type {
+                                TokenType::PUNCT_MULT => BinaryExprType::Mult,
+                                TokenType::PUNCT_DIV => BinaryExprType::Div,
+                                TokenType::PUNCT_MODULO => BinaryExprType::Mod,
+                                _ => unreachable!(),
+                            },
+                            first: None,
+                            second: None,
+                        });
+                    }
+                    Some(Expr::Binary { second, .. }) => {
+                        if second.is_none() {
+                            stack.push(curr_expr.unwrap());
+                            curr_expr = Some(Expr::Unary(Unary {
+                                op: match tokens[*index].r#type {
+                                    TokenType::PUNCT_MULT { .. } => UnaryOp::Deref,
+                                    _ => {
+                                        todo!("ERROR HERE")
                                     }
-                                };
-                            }
-                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
+                                },
+                                first: None,
+                            }));
+                        } else {
+                            left_expression = curr_expr;
+                            curr_expr = Some(Expr::Binary {
+                                r#type: match tokens[*index].r#type {
+                                    TokenType::PUNCT_MULT { .. } => BinaryExprType::Mult,
+                                    TokenType::PUNCT_DIV { .. } => BinaryExprType::Div,
+                                    TokenType::PUNCT_MODULO { .. } => BinaryExprType::Mod,
+                                    _ => unreachable!(),
+                                },
+                                first: None,
+                                second: None,
+                            });
                         }
-                    },
+                    }
+                    Some(Expr::Cast(_) | Expr::Unary(_)) => {
+                        stack.push(curr_expr.unwrap());
+                        curr_expr = Some(Expr::Unary(Unary {
+                            op: match tokens[*index].r#type {
+                                TokenType::PUNCT_MULT { .. } => UnaryOp::Deref,
+                                _ => {
+                                    todo!("ERROR HERE")
+                                }
+                            },
+                            first: None,
+                        }));
+                    }
+                    Some(Expr::Conditional(_)) => unreachable!(),
                     None => {
                         curr_expr = Some(Expr::Unary(Unary {
                             op: match tokens[*index].r#type {
@@ -1518,15 +1864,15 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::BitShift(BitShift {
-                    op: match tokens[*index].r#type {
-                        TokenType::PUNCT_BITSHIFT_LEFT => BitShiftOp::Left,
-                        TokenType::PUNCT_BITSHIFT_RIGHT => BitShiftOp::Right,
+                curr_expr = Some(Expr::Binary {
+                    r#type: match tokens[*index].r#type {
+                        TokenType::PUNCT_BITSHIFT_LEFT => BinaryExprType::BitShiftLeft,
+                        TokenType::PUNCT_BITSHIFT_RIGHT => BinaryExprType::BitShiftRight,
                         _ => unreachable!(),
                     },
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1551,17 +1897,17 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::Relational(Relational {
-                    op: match tokens[*index].r#type {
-                        TokenType::PUNCT_LESS_THAN => RelationalOp::LessThan,
-                        TokenType::PUNCT_LESS_THAN_EQ => RelationalOp::LessThanEq,
-                        TokenType::PUNCT_GREATER_THAN => RelationalOp::GreaterThan,
-                        TokenType::PUNCT_GREATER_THAN_EQ => RelationalOp::GreaterThanEq,
+                curr_expr = Some(Expr::Binary {
+                    r#type: match tokens[*index].r#type {
+                        TokenType::PUNCT_LESS_THAN => BinaryExprType::LessThan,
+                        TokenType::PUNCT_LESS_THAN_EQ => BinaryExprType::LessThanEq,
+                        TokenType::PUNCT_GREATER_THAN => BinaryExprType::GreaterThan,
+                        TokenType::PUNCT_GREATER_THAN_EQ => BinaryExprType::GreaterThanEq,
                         _ => unreachable!(),
                     },
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1583,15 +1929,16 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::Equality(Equality {
-                    op: match tokens[*index].r#type {
-                        TokenType::PUNCT_EQ_BOOL => EqualityOp::Equal,
-                        TokenType::PUNCT_NOT_EQ_BOOL => EqualityOp::NotEqual,
+                let op = tokens[*index].r#type;
+                curr_expr = Some(Expr::Binary {
+                    r#type: match op {
+                        TokenType::PUNCT_EQ_BOOL => BinaryExprType::Eq,
+                        TokenType::PUNCT_NOT_EQ_BOOL => BinaryExprType::NotEq,
                         _ => unreachable!(),
                     },
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1611,46 +1958,38 @@ pub fn parse_expressions(
             TokenType::PUNCT_AND_BIT => {
                 match curr_expr {
                     Some(curr_expr_inside) => match curr_expr_inside {
-                        Expr::Conditional(_) => unreachable!(),
-                        _ => {
-                            macro_rules! check_if_second_is_some_or_none {
-                                ($($e:ident)*) => {
-                                    match curr_expr_inside {
-                                        Expr::Primary(_) | Expr::PostFix(_) => {
-                                            left_expression = curr_expr;
-                                            curr_expr = Some(Expr::BitAND(BitAND {
-                                                first: None,
-                                                second: None,
-                                            }));
-                                        }
-                                        $(Expr::$e(inside) => {
-                                            if inside.second.is_none() {
-                                                stack.push(curr_expr_inside);
-                                                curr_expr = Some(Expr::Unary(Unary {
-                                                    op: UnaryOp::Ampersand,
-                                                    first: None,
-                                                }));
-                                            } else {
-                                                left_expression = curr_expr;
-                                                curr_expr = Some(Expr::BitAND(BitAND {
-                                                    first: None,
-                                                    second: None,
-                                                }));
-                                            }
-                                        })*
-                                        Expr::Cast(_) | Expr::Unary(_) => {
-                                            stack.push(curr_expr_inside);
-                                            curr_expr = Some(Expr::Unary(Unary {
-                                                op: UnaryOp::Ampersand,
-                                                first: None,
-                                            }));
-                                        }
-                                        Expr::Conditional(_) => unreachable!()
-                                    }
-                                };
-                            }
-                            check_if_second_is_some_or_none!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
+                        Expr::Primary(_) | Expr::PostFix(_) => {
+                            left_expression = curr_expr;
+                            curr_expr = Some(Expr::Binary {
+                                r#type: BinaryExprType::BitAND,
+                                first: None,
+                                second: None,
+                            });
                         }
+                        Expr::Binary { second, .. } => {
+                            if second.is_none() {
+                                stack.push(curr_expr_inside);
+                                curr_expr = Some(Expr::Unary(Unary {
+                                    op: UnaryOp::Ampersand,
+                                    first: None,
+                                }));
+                            } else {
+                                left_expression = curr_expr;
+                                curr_expr = Some(Expr::Binary {
+                                    r#type: BinaryExprType::BitAND,
+                                    first: None,
+                                    second: None,
+                                });
+                            }
+                        }
+                        Expr::Cast(_) | Expr::Unary(_) => {
+                            stack.push(curr_expr_inside);
+                            curr_expr = Some(Expr::Unary(Unary {
+                                op: UnaryOp::Ampersand,
+                                first: None,
+                            }));
+                        }
+                        Expr::Conditional(_) => unreachable!(),
                     },
                     None => {
                         curr_expr = Some(Expr::Unary(Unary {
@@ -1684,10 +2023,11 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::BitXOR(BitXOR {
+                curr_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::BitXOR,
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1704,7 +2044,11 @@ pub fn parse_expressions(
                         ..
                     })
                 ) {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
             }
             //BitOR expressions
@@ -1713,10 +2057,11 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::BitOR(BitOR {
+                curr_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::BitOR,
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1733,7 +2078,11 @@ pub fn parse_expressions(
                         ..
                     })
                 ) {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
             }
             //LogicalAND expressions
@@ -1742,10 +2091,11 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::LogicalAND(LogicalAND {
+                curr_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::LogAND,
                     first: None,
                     second: None,
-                }));
+                });
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1762,7 +2112,11 @@ pub fn parse_expressions(
                         ..
                     })
                 ) {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
             }
             //LogicalOR expressions
@@ -1771,10 +2125,11 @@ pub fn parse_expressions(
                     todo!("ERROR HERE")
                 }
                 left_expression = curr_expr;
-                curr_expr = Some(Expr::LogicalOR(LogicalOR {
+                curr_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::LogOR,
                     first: None,
                     second: None,
-                }));
+                });
                 consume_whitespace(tokens, index);
                 if !matches!(
                     tokens.get(*index),
@@ -1792,7 +2147,11 @@ pub fn parse_expressions(
                         ..
                     })
                 ) {
-                    todo!("ERROR HERE")
+                    let Some(bytes) = tokens[*index].to_byte_vec(str_maps) else {
+                        unreachable!()
+                    };
+                    let msg = format!("Unexpected {}", String::from_utf8(bytes).unwrap());
+                    return Err(error(&msg, line, column));
                 }
             }
             //Conditional expressions
@@ -1801,8 +2160,8 @@ pub fn parse_expressions(
                     flattened.expressions.push(expr);
                     let expr_cond = Expr::Conditional(Conditional {
                         first: Some(flattened.expressions.len() - 1),
-                        second: None,
-                        third: None,
+                        second: parse_expressions(tokens, index, flattened, str_maps)?,
+                        third: todo!(),
                     });
                     stack.push(expr_cond);
                     curr_expr = None;
@@ -1821,25 +2180,21 @@ pub fn parse_expressions(
                     };
                     flattened.expressions.push(unwrapped);
                     let unwrapped = Some(flattened.expressions.len() - 1);
-                    macro_rules! set_to_unwrapped {
-                        ($($e: ident) *) => {
-                            match expr {
-                                Expr::Unary(ref mut u) => {
-                                    u.first = unwrapped;
-                                }
-                                $(Expr::$e(ref mut i) => {
-                                    i.second = unwrapped;
-                                })*
-                                Expr::Conditional(ref mut c) => {
-                                    c.second = unwrapped;
-                                    curr_expr = Some(expr);
-                                    break;
-                                }
-                                _ => unreachable!(),
-                            }
-                        };
+
+                    match &mut expr {
+                        Expr::Unary(ref mut u) => {
+                            u.first = unwrapped;
+                        }
+                        Expr::Binary { second, .. } => {
+                            *second = unwrapped;
+                        }
+                        Expr::Conditional(c) => {
+                            c.second = unwrapped;
+                            curr_expr = Some(expr);
+                            break;
+                        }
+                        _ => unreachable!(),
                     }
-                    set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR);
                     curr_expr = Some(expr);
                 }
                 if !matches!(curr_expr, Some(Expr::Conditional(_))) {
@@ -1900,7 +2255,6 @@ pub fn parse_expressions(
                     }
                 };
                     }
-            set_to_unwrapped!(Multiplicative Additive BitShift Relational Equality BitAND BitXOR BitOR LogicalAND LogicalOR Assignment Comma);
         }
         curr_expr = Some(expr);
     }
@@ -1917,7 +2271,7 @@ pub fn parse_expressions(
 pub fn eval_constant_expression_integer_when_preprocess(
     tokens: &[Token],
     index: &mut usize,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<i128, String> {
     if let Some(not_allowed_t) = tokens.iter().find(|t| {
         matches!(
@@ -1946,7 +2300,14 @@ pub fn eval_constant_expression_integer_when_preprocess(
                 | TokenType::PUNCT_R_SHIFT_BIT_ASSIGN
         )
     }) {
-        todo!("ERROR HERE")
+        let Some(bytes) = not_allowed_t.to_byte_vec(str_maps) else {
+            unreachable!()
+        };
+        let msg = format!("Cannot have {}", String::from_utf8(bytes).unwrap());
+        let Some(Location { line, column }) = not_allowed_t.location else {
+            unreachable!()
+        };
+        return Err(error(&msg, line, column));
     }
     // TODO: describe our algorithm in comments below
     // or we will forget how any of this shit works
@@ -1954,9 +2315,10 @@ pub fn eval_constant_expression_integer_when_preprocess(
     let curr_expr = parse_expressions(tokens, index, &mut flattened, str_maps)?;
     recursive_eval(&curr_expr, str_maps, flattened.expressions.as_slice())
 }
+
 fn recursive_eval(
     expr: &Expr,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
     expressions: &[Expr],
 ) -> Result<i128, String> {
     match expr {
@@ -1975,7 +2337,7 @@ fn recursive_eval(
                         }
                     ));
                     match t.r#type {
-                        TokenType::CONSTANT_DEC_INT { value_key, suffix } => {
+                        TokenType::CONSTANT_DEC_INT { suffix, value_key } => {
                             // "For the purposes of this token conversion and evaluation,
                             // all signed integer types and all unsigned integer types act as if they have the same representation
                             // as, respectively, the types intmax_t and uintmax_t defined in the header <stdint.h>."
@@ -2003,9 +2365,6 @@ fn recursive_eval(
                                 }
                             };
                             Ok(parsed_val)
-                        }
-                        TokenType::IDENT { .. } => {
-                            todo!("ERROR HERE")
                         }
                         _ => unreachable!(),
                     }
@@ -2042,64 +2401,42 @@ fn recursive_eval(
         Expr::Cast(_) => {
             todo!("ERROR HERE")
         }
-        Expr::Multiplicative(m) => {
-            let Some(first) = m.first else { unreachable!() };
-            let Some(second) = m.second else {
-                unreachable!()
-            };
-            match m.op {
-                MultiplicativeOps::Mult => {
-                    Ok(recursive_eval(&expressions[first], str_maps, expressions)?
-                        * recursive_eval(&expressions[second], str_maps, expressions)?)
-                }
-                MultiplicativeOps::Div | MultiplicativeOps::Mod => {
+        Expr::Binary {
+            r#type,
+            first,
+            second,
+        } => {
+            use BinaryExprType::*;
+            let first = first.expect("There should be an index");
+            let second = second.expect("There should be an index");
+            match r#type {
+                Mult => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    * recursive_eval(&expressions[second], str_maps, expressions)?),
+                Div | Mod => {
+                    let op = r#type;
                     let right = recursive_eval(&expressions[second], str_maps, expressions)?;
                     if right == 0 {
-                        todo!("ERROR HERE")
+                        todo!("Once we have expressions, the location of the source is lost, so how do I report location of the error");
                     }
-                    match m.op {
-                        MultiplicativeOps::Div => {
+                    match op {
+                        Div => {
                             Ok(recursive_eval(&expressions[first], str_maps, expressions)? / right)
                         }
-                        MultiplicativeOps::Mod => {
+                        Mod => {
                             Ok(recursive_eval(&expressions[first], str_maps, expressions)? % right)
                         }
                         _ => unreachable!(),
                     }
                 }
-            }
-        }
-        Expr::Additive(a) => {
-            let Some(left) = a.first else { unreachable!() };
-            let Some(right) = a.second else {
-                unreachable!()
-            };
-            match a.op {
-                AdditiveOps::Add => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
-                    + recursive_eval(&expressions[right], str_maps, expressions)?),
-                AdditiveOps::Sub => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
-                    - recursive_eval(&expressions[right], str_maps, expressions)?),
-            }
-        }
-        Expr::BitShift(bs) => {
-            let Some(left) = bs.first else { unreachable!() };
-            let Some(right) = bs.second else {
-                unreachable!()
-            };
-            match bs.op {
-                BitShiftOp::Left => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
-                    << recursive_eval(&expressions[right], str_maps, expressions)?),
-                BitShiftOp::Right => Ok(recursive_eval(&expressions[left], str_maps, expressions)?
-                    >> recursive_eval(&expressions[right], str_maps, expressions)?),
-            }
-        }
-        Expr::Relational(r) => {
-            let Some(first) = r.first else { unreachable!() };
-            let Some(second) = r.second else {
-                unreachable!()
-            };
-            match r.op {
-                RelationalOp::LessThan => Ok(
+                Add => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    + recursive_eval(&expressions[second], str_maps, expressions)?),
+                Sub => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    - recursive_eval(&expressions[second], str_maps, expressions)?),
+                BitShiftLeft => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    << recursive_eval(&expressions[second], str_maps, expressions)?),
+                BitShiftRight => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    >> recursive_eval(&expressions[second], str_maps, expressions)?),
+                LessThan => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         < recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2108,7 +2445,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-                RelationalOp::LessThanEq => Ok(
+                LessThanEq => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         <= recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2117,7 +2454,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-                RelationalOp::GreaterThan => Ok(
+                GreaterThan => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         > recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2126,7 +2463,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-                RelationalOp::GreaterThanEq => Ok(
+                GreaterThanEq => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         >= recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2135,15 +2472,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-            }
-        }
-        Expr::Equality(e) => {
-            let Some(first) = e.first else { unreachable!() };
-            let Some(second) = e.second else {
-                unreachable!()
-            };
-            match e.op {
-                EqualityOp::Equal => Ok(
+                Eq => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         == recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2152,7 +2481,7 @@ fn recursive_eval(
                         0
                     },
                 ),
-                EqualityOp::NotEqual => Ok(
+                NotEq => Ok(
                     if recursive_eval(&expressions[first], str_maps, expressions)?
                         != recursive_eval(&expressions[second], str_maps, expressions)?
                     {
@@ -2161,95 +2490,34 @@ fn recursive_eval(
                         0
                     },
                 ),
+                BitAND => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    & recursive_eval(&expressions[second], str_maps, expressions)?),
+                BitXOR => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    ^ recursive_eval(&expressions[second], str_maps, expressions)?),
+                BitOR => Ok(recursive_eval(&expressions[first], str_maps, expressions)?
+                    | recursive_eval(&expressions[second], str_maps, expressions)?),
+                LogAND => Ok(
+                    if recursive_eval(&expressions[first], str_maps, expressions)? != 0
+                        && recursive_eval(&expressions[second], str_maps, expressions)? != 0
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                LogOR => Ok(
+                    if recursive_eval(&expressions[first], str_maps, expressions)? != 0
+                        || recursive_eval(&expressions[second], str_maps, expressions)? != 0
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                Comma | Assignment => {
+                    Err("Comma or Assignment expressions arent allowed".to_string())
+                }
             }
-        }
-        Expr::BitAND(ba) => {
-            let Some(first) = ba.first else {
-                unreachable!()
-            };
-            let Some(second) = ba.second else {
-                unreachable!()
-            };
-            Ok(
-                if (recursive_eval(&expressions[first], str_maps, expressions)?
-                    & recursive_eval(&expressions[second], str_maps, expressions)?)
-                    != 0
-                {
-                    1
-                } else {
-                    0
-                },
-            )
-        }
-        Expr::BitXOR(bx) => {
-            let Some(first) = bx.first else {
-                unreachable!()
-            };
-            let Some(second) = bx.second else {
-                unreachable!()
-            };
-            Ok(
-                if (recursive_eval(&expressions[first], str_maps, expressions)?
-                    ^ recursive_eval(&expressions[second], str_maps, expressions)?)
-                    != 0
-                {
-                    1
-                } else {
-                    0
-                },
-            )
-        }
-        Expr::BitOR(bo) => {
-            let Some(first) = bo.first else {
-                unreachable!()
-            };
-            let Some(second) = bo.second else {
-                unreachable!()
-            };
-            Ok(
-                if (recursive_eval(&expressions[first], str_maps, expressions)?
-                    | recursive_eval(&expressions[second], str_maps, expressions)?)
-                    != 0
-                {
-                    1
-                } else {
-                    0
-                },
-            )
-        }
-        Expr::LogicalAND(la) => {
-            let Some(first) = la.first else {
-                unreachable!()
-            };
-            let Some(second) = la.second else {
-                unreachable!()
-            };
-            Ok(
-                if recursive_eval(&expressions[first], str_maps, expressions)? != 0
-                    && recursive_eval(&expressions[second], str_maps, expressions)? != 0
-                {
-                    1
-                } else {
-                    0
-                },
-            )
-        }
-        Expr::LogicalOR(lo) => {
-            let Some(first) = lo.first else {
-                unreachable!()
-            };
-            let Some(second) = lo.second else {
-                unreachable!()
-            };
-            Ok(
-                if recursive_eval(&expressions[first], str_maps, expressions)? != 0
-                    || recursive_eval(&expressions[second], str_maps, expressions)? != 0
-                {
-                    1
-                } else {
-                    0
-                },
-            )
         }
         Expr::Conditional(c) => {
             let Some(first) = c.first else { unreachable!() };

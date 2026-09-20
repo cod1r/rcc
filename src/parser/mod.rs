@@ -1,4 +1,3 @@
-use crate::lexer;
 pub mod abstract_syntax_tree;
 pub mod declarations;
 pub mod expressions;
@@ -15,6 +14,49 @@ pub fn consume_whitespace(tokens: &[Token], index: &mut usize) {
             ..
         })
     ) {
+        *index += 1;
+    }
+}
+
+pub fn expected_token(
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
+    idx: &mut usize,
+    token: TokenType,
+) -> Result<(), String> {
+    let dummy_token = Token {
+        r#type: token,
+        location: None,
+    };
+    let msg = format!(
+        "Expected '{}'",
+        match String::from_utf8(dummy_token.to_byte_vec(str_maps).unwrap()) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err("Could not convert token to string".to_string());
+            }
+        }
+    );
+    match tokens.get(*idx) {
+        Some(t) if t.r#type != token => {
+            let Token {
+                location: Some(Location { column, line }),
+                ..
+            } = t
+            else {
+                unreachable!()
+            };
+            return Err(error(&msg, *line, *column));
+        }
+        None => return Err(msg),
+        _ => {}
+    };
+    *idx += 1;
+    Ok(())
+}
+
+pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) -> Result<(), String> {
+    if matches!(tokens.get(*index), Some(Token { r#type: token, .. })) {
         *index += 1;
     }
 }
@@ -62,8 +104,8 @@ impl Flattened {
 pub enum ParserTypes {}
 
 pub fn parser(
-    tokens: &[lexer::Token],
-    str_maps: &mut lexer::ByteVecMaps,
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
 ) -> Result<external_definitions::TranslationUnit, String> {
     // TODO: we need to finish parsing statements or syntax that encapsulates a lot of things
     let mut flattened = Flattened::new();
