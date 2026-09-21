@@ -251,11 +251,11 @@ pub type InitializerIndex = usize;
 pub type DesignationIndex = usize;
 pub type InitializerListIndex = usize;
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub struct DesignationInitializer {
+pub struct InitializerList {
     designation: Option<DesignationIndex>,
-    initializer: Option<InitializerIndex>,
+    initializer: InitializerIndex,
+    next: Option<InitializerListIndex>,
 }
-pub type InitializerList = Vec<DesignationInitializer>;
 #[derive(Copy, Clone)]
 pub enum Initializer {
     AssignmentExpression(ExpressionIndex),
@@ -287,107 +287,107 @@ impl Declaration {
 pub fn is_declaration_token(t: Token) -> bool {
     match t {
         Token {
-            r#type: TokenType::KEYWORD_TYPEDEF,
+            r#type: TokenType::TYPEDEF,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_EXTERN,
+            r#type: TokenType::EXTERN,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_STATIC,
+            r#type: TokenType::STATIC,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__THREAD_LOCAL,
+            r#type: TokenType::_THREAD_LOCAL,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_AUTO,
+            r#type: TokenType::AUTO,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_REGISTER,
+            r#type: TokenType::REGISTER,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_VOID,
+            r#type: TokenType::VOID,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_CHAR,
+            r#type: TokenType::CHAR,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_SHORT,
+            r#type: TokenType::SHORT,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_INT,
+            r#type: TokenType::INT,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_LONG,
+            r#type: TokenType::LONG,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_FLOAT,
+            r#type: TokenType::FLOAT,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_DOUBLE,
+            r#type: TokenType::DOUBLE,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_SIGNED,
+            r#type: TokenType::SIGNED,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_UNSIGNED,
+            r#type: TokenType::UNSIGNED,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__BOOL,
+            r#type: TokenType::_BOOL,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__COMPLEX,
+            r#type: TokenType::_COMPLEX,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_STRUCT | TokenType::KEYWORD_UNION,
+            r#type: TokenType::STRUCT | TokenType::UNION,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_ENUM,
+            r#type: TokenType::ENUM,
             ..
         } => todo!(),
         Token {
-            r#type: TokenType::KEYWORD_CONST,
+            r#type: TokenType::CONST,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_RESTRICT,
+            r#type: TokenType::RESTRICT,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_VOLATILE,
+            r#type: TokenType::VOLATILE,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__ATOMIC,
+            r#type: TokenType::_ATOMIC,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD_INLINE,
+            r#type: TokenType::INLINE,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__NORETURN,
+            r#type: TokenType::_NORETURN,
             ..
         } => true,
         Token {
-            r#type: TokenType::KEYWORD__ALIGNAS,
+            r#type: TokenType::_ALIGNAS,
             ..
         } => true,
         _ => false,
@@ -405,7 +405,7 @@ pub fn parse_declarations(
     if !matches!(
         tokens.get(*index),
         Some(Token {
-            r#type: TokenType::PUNCT_SEMI_COLON,
+            r#type: TokenType::SEMI_COLON,
             ..
         })
     ) && tokens.get(*index).is_some()
@@ -415,7 +415,7 @@ pub fn parse_declarations(
             if !matches!(
                 tokens.get(*index),
                 Some(Token {
-                    r#type: TokenType::PUNCT_ASSIGNMENT,
+                    r#type: TokenType::ASSIGNMENT,
                     ..
                 })
             ) {
@@ -428,7 +428,7 @@ pub fn parse_declarations(
                     if matches!(
                         tokens.get(*index),
                         Some(Token {
-                            r#type: TokenType::PUNCT_COMMA | TokenType::PUNCT_SEMI_COLON,
+                            r#type: TokenType::COMMA | TokenType::SEMI_COLON,
                             ..
                         }) | None
                     ) {
@@ -438,14 +438,14 @@ pub fn parse_declarations(
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_COMMA,
+                        r#type: TokenType::COMMA,
                         ..
                     })
                 ) {
                     if !matches!(
                         tokens.get(*index),
                         Some(Token {
-                            r#type: TokenType::PUNCT_SEMI_COLON,
+                            r#type: TokenType::SEMI_COLON,
                             ..
                         })
                     ) {
@@ -465,7 +465,7 @@ pub fn parse_declarations(
             if matches!(
                 tokens.get(*index),
                 Some(Token {
-                    r#type: TokenType::PUNCT_SEMI_COLON,
+                    r#type: TokenType::SEMI_COLON,
                     ..
                 })
             ) {
@@ -487,14 +487,11 @@ pub fn parse_initializer(
     consume_whitespace(tokens, index);
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_CURLY,
+            r#type: TokenType::OPEN_CURLY,
             ..
         }) => {
             *index += 1;
             let il = parse_initializer_list(&tokens, index, flattened, str_maps)?;
-            if il.is_empty() {
-                return Err(format!("initializer list is empty"));
-            }
             flattened.initializer_lists.push(il);
             Ok(Initializer::InitializerList(
                 flattened.initializer_lists.len() - 1,
@@ -514,20 +511,21 @@ fn parse_designator(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps
 ) -> Result<Designator, String> {
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_SQR,
+            r#type: TokenType::OPEN_SQR,
             ..
         }) => {
             *index += 1;
             let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+            expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
             flattened.expressions.push(expr);
-            return Designator::WithConstantExpr(flattened.expressions.len() - 1);
+            return Ok(Designator::WithConstantExpr(flattened.expressions.len() - 1));
         }
         Some(Token {
-            r#type: TokenType::PUNCT_DOT,
+            r#type: TokenType::DOT,
             ..
         }) => {
             *index += 1;
@@ -540,12 +538,12 @@ fn parse_designator(
             else {
                 unreachable!()
             };
-            return Designator::WithIdentifier(*str_map_key);
+            return Ok(Designator::WithIdentifier(*str_map_key));
         }
         _ => {}
     }
     match tokens.get(*index) {
-        Some(Token { line, column, .. }) => {
+        Some(Token { location: Some(Location{line, column}), .. }) => {
             return Err(error("Unexpected =, expected . or [", *line, *column));
         }
         _ => {}
@@ -557,16 +555,17 @@ fn parse_designator_list(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps
 ) -> Result<Vec<Designator>, String> {
     let mut designators = Vec::new();
     while !matches!(
         tokens.get(*index),
         Some(Token {
-            r#type: TokenType::PUNCT_ASSIGNMENT,
+            r#type: TokenType::ASSIGNMENT,
             ..
         })
     ) {
-        designators.push(parse_designator(tokens, index, flattened)?);
+        designators.push(parse_designator(tokens, index, flattened, str_maps)?);
     }
     Ok(designators)
 }
@@ -575,22 +574,25 @@ fn parse_designation(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps
 ) -> Result<Designation, String> {
     let mut designation = Designation {
-        designator_list: parse_designator_list(tokens, index, flattened)?,
+        designator_list: parse_designator_list(tokens, index, flattened, str_maps)?,
     };
     consume_whitespace(tokens, index);
     Ok(designation)
 }
 
-fn parse_initializer_list(
+// one thing i don't like about this flattened structure keeping all of the data is that, i dont know if a certain structures are already pushed to flattened or not.
+// basically i have to look at the implementation to know...
+pub fn parse_initializer_list(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<InitializerList, String> {
     consume_whitespace(tokens, index);
-    let mut initializer_list = Vec::new();
+    let mut first_initializer_list = None;
     loop {
         if *index >= tokens.len() {
             break;
@@ -599,25 +601,38 @@ fn parse_initializer_list(
         if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_OPEN_SQR | TokenType::PUNCT_DOT,
+                r#type: TokenType::OPEN_SQR | TokenType::DOT,
                 ..
             })
         ) {
-            let designation_parsed = parse_designation(tokens, index, flattened)?;
+            let designation_parsed = parse_designation(tokens, index, flattened, str_maps)?;
             flattened.designations.push(designation_parsed);
             designation = Some(flattened.designations.len() - 1);
         }
         let init = parse_initializer(&tokens, index, flattened, str_maps)?;
         flattened.initializers.push(init);
-        let initializer_list = DesignationInitializer {
+        let designation_initializer = InitializerList {
             designation,
-            initializer: Some(flattened.initializers.len() - 1),
+            initializer: flattened.initializers.len() - 1,
+            next: None
         };
-        initializer_list.push(initializer_list);
+        if first_initializer_list.is_none() {
+            // i dont push to flattened.initializer_lists here bc once this function returns first_initializer_list, it'll be pushed to flattened by the caller.
+            first_initializer_list = Some(designation_initializer);
+        } else {
+            flattened.initializer_lists.push(designation_initializer);
+            if first_initializer_list.unwrap().next.is_none() {
+                let Some(il) = &mut first_initializer_list else { unreachable!() };
+                il.next = Some(flattened.initializer_lists.len() - 1);
+            } else {
+                let mut il = flattened.initializer_lists[flattened.initializer_lists.len() - 2];
+                il.next = Some(flattened.initializer_lists.len() - 1);
+            }
+        }
         if !matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_COMMA,
+                r#type: TokenType::COMMA,
                 ..
             })
         ) {
@@ -625,9 +640,9 @@ fn parse_initializer_list(
         }
         *index += 1;
     }
-    consume_token(tokens, index, TokenType::PUNCT_COMMA)?;
-    expected_token(tokens, index, TokenType::PUNCT_CLOSE_CURLY)?;
-    Ok(initializer_list)
+    consume_token(tokens, index, TokenType::COMMA)?;
+    expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
+    Ok(first_initializer_list.unwrap())
 }
 
 fn parse_pointer(tokens: &[lexer::Token], index: &mut usize) -> Option<Vec<Pointer>> {
@@ -635,7 +650,7 @@ fn parse_pointer(tokens: &[lexer::Token], index: &mut usize) -> Option<Vec<Point
     while matches!(
         tokens.get(*index),
         Some(Token {
-            r#type: TokenType::PUNCT_MULT,
+            r#type: TokenType::ASTERISK,
             ..
         })
     ) {
@@ -684,12 +699,12 @@ fn parse_direct_declarator(
             consume_whitespace(tokens, index);
         }
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         }) => {
             *index += 1;
             let inner_declarator = parse_declarator(&tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             direct_declarator.declarator = Some(Box::new(inner_declarator));
         }
         _ => {
@@ -701,21 +716,21 @@ fn parse_direct_declarator(
     }
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_SQR,
+            r#type: TokenType::OPEN_SQR,
             ..
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
             match tokens.get(*index) {
                 Some(Token {
-                    r#type: TokenType::PUNCT_MULT,
+                    r#type: TokenType::ASTERISK,
                     ..
                 }) => {
                     *index += 1;
                     direct_declarator.mult = true;
                 }
                 Some(Token {
-                    r#type: TokenType::KEYWORD_STATIC,
+                    r#type: TokenType::STATIC,
                     ..
                 }) => {
                     *index += 1;
@@ -726,7 +741,7 @@ fn parse_direct_declarator(
                     let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expr);
                     direct_declarator.assign_expr = Some(flattened.expressions.len() - 1);
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+                    expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                 }
                 _ => {
                     if let Some(type_qualifiers) = parse_type_qualifiers(tokens, index) {
@@ -736,7 +751,7 @@ fn parse_direct_declarator(
                     if matches!(
                         tokens.get(*index),
                         Some(Token {
-                            r#type: TokenType::KEYWORD_STATIC,
+                            r#type: TokenType::STATIC,
                             ..
                         })
                     ) {
@@ -752,17 +767,17 @@ fn parse_direct_declarator(
                     let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expr);
                     direct_declarator.assign_expr = Some(flattened.expressions.len() - 1);
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+                    expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                 }
             }
         }
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         }) => {
             *index += 1;
             let ptl = parse_parameter_type_list(&tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             direct_declarator.parameter_type_list = Some(ptl);
         }
         _ => {}
@@ -803,7 +818,7 @@ fn parse_struct_declarator(
     if matches!(
         tokens.get(*index),
         Some(Token {
-            r#type: TokenType::PUNCT_COLON,
+            r#type: TokenType::COLON,
             ..
         })
     ) {
@@ -818,7 +833,7 @@ fn parse_struct_declarator(
         if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_COLON,
+                r#type: TokenType::COLON,
                 ..
             })
         ) {
@@ -844,7 +859,7 @@ fn parse_struct_declaration(
     consume_whitespace(tokens, index);
     let specifier_qualifier_list = parse_specifiers_qualifiers(tokens, index, flattened, str_maps)?;
     struct_declaration.specifier_qualifier_list = specifier_qualifier_list;
-    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
     loop {
         let struct_declarator = parse_struct_declarator(&tokens, index, flattened, str_maps)?;
         struct_declaration
@@ -853,16 +868,16 @@ fn parse_struct_declaration(
         if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_SEMI_COLON,
+                r#type: TokenType::SEMI_COLON,
                 ..
             })
         ) {
             *index += 1;
             return Ok(struct_declaration);
         }
-        expected_token(tokens, str_maps, index, TokenType::PUNCT_COMMA)?;
+        expected_token(tokens, index, TokenType::COMMA, "Expected ','")?;
     }
-    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
 }
 
 fn parse_struct_union_specifier(
@@ -874,11 +889,11 @@ fn parse_struct_union_specifier(
     let mut struct_union_specifier = StructUnionSpecifier {
         struct_or_union: match tokens.get(*index) {
             Some(Token {
-                r#type: TokenType::KEYWORD_STRUCT,
+                r#type: TokenType::STRUCT,
                 ..
             }) => StructOrUnion::Struct,
             Some(Token {
-                r#type: TokenType::KEYWORD_UNION,
+                r#type: TokenType::UNION,
                 ..
             }) => StructOrUnion::Union,
             _ => unreachable!(),
@@ -899,7 +914,7 @@ fn parse_struct_union_specifier(
     if matches!(tokens.get(*index), None) {
         return Ok(struct_union_specifier);
     }
-    expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_CURLY)?;
+    expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
     while *index < tokens.len() {
         let struct_declaration = parse_struct_declaration(tokens, index, flattened, str_maps)?;
         struct_union_specifier
@@ -909,7 +924,7 @@ fn parse_struct_union_specifier(
         if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_CLOSE_CURLY,
+                r#type: TokenType::CLOSE_CURLY,
                 ..
             })
         ) {
@@ -950,7 +965,7 @@ fn parse_enumerator_specifier(
         *index += 1;
     }
     consume_whitespace(tokens, index);
-    expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_CURLY)?;
+    expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
     while *index < tokens.len() {
         match tokens[*index] {
             Token {
@@ -958,7 +973,7 @@ fn parse_enumerator_specifier(
                 ..
             } => {}
             Token {
-                r#type: TokenType::PUNCT_CLOSE_CURLY,
+                r#type: TokenType::CLOSE_CURLY,
                 ..
             } => break,
             Token {
@@ -968,7 +983,7 @@ fn parse_enumerator_specifier(
                 if matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_ASSIGNMENT,
+                        r#type: TokenType::ASSIGNMENT,
                         ..
                     })
                 ) {
@@ -986,19 +1001,19 @@ fn parse_enumerator_specifier(
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_CLOSE_CURLY,
+                        r#type: TokenType::CLOSE_CURLY,
                         ..
                     })
                 ) {
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_COMMA)?;
+                    expected_token(tokens, index, TokenType::COMMA, "Expected ','")?;
                 } else if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_COMMA,
+                        r#type: TokenType::COMMA,
                         ..
                     }),
                 ) {
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_CURLY)?;
+                    expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
                     break;
                 }
             }
@@ -1046,25 +1061,25 @@ pub fn parse_type_qualifiers(
                 ..
             } => {}
             Token {
-                r#type: TokenType::KEYWORD_CONST,
+                r#type: TokenType::CONST,
                 ..
             } => {
                 type_qualifiers.push(TypeQualifier::Const);
             }
             Token {
-                r#type: TokenType::KEYWORD_RESTRICT,
+                r#type: TokenType::RESTRICT,
                 ..
             } => {
                 type_qualifiers.push(TypeQualifier::Restrict);
             }
             Token {
-                r#type: TokenType::KEYWORD_VOLATILE,
+                r#type: TokenType::VOLATILE,
                 ..
             } => {
                 type_qualifiers.push(TypeQualifier::Volatile);
             }
             Token {
-                r#type: TokenType::KEYWORD__ATOMIC,
+                r#type: TokenType::_ATOMIC,
                 ..
             } => {
                 type_qualifiers.push(TypeQualifier::_Atomic);
@@ -1094,73 +1109,73 @@ pub fn parse_type_specifiers(
                 ..
             } => {}
             Token {
-                r#type: TokenType::KEYWORD_VOID,
+                r#type: TokenType::VOID,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Void);
             }
             Token {
-                r#type: TokenType::KEYWORD_CHAR,
+                r#type: TokenType::CHAR,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Char);
             }
             Token {
-                r#type: TokenType::KEYWORD_SHORT,
+                r#type: TokenType::SHORT,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Short);
             }
             Token {
-                r#type: TokenType::KEYWORD_INT,
+                r#type: TokenType::INT,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Int);
             }
             Token {
-                r#type: TokenType::KEYWORD_LONG,
+                r#type: TokenType::LONG,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Long);
             }
             Token {
-                r#type: TokenType::KEYWORD_FLOAT,
+                r#type: TokenType::FLOAT,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Float);
             }
             Token {
-                r#type: TokenType::KEYWORD_DOUBLE,
+                r#type: TokenType::DOUBLE,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Double);
             }
             Token {
-                r#type: TokenType::KEYWORD_SIGNED,
+                r#type: TokenType::SIGNED,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Signed);
             }
             Token {
-                r#type: TokenType::KEYWORD_UNSIGNED,
+                r#type: TokenType::UNSIGNED,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::Unsigned);
             }
             Token {
-                r#type: TokenType::KEYWORD__BOOL,
+                r#type: TokenType::_BOOL,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::_Bool);
             }
             Token {
-                r#type: TokenType::KEYWORD__COMPLEX,
+                r#type: TokenType::_COMPLEX,
                 ..
             } => {
                 type_specifiers.push(TypeSpecifier::_Complex);
             }
             Token {
-                r#type: TokenType::KEYWORD_STRUCT { .. } | TokenType::KEYWORD_UNION,
+                r#type: TokenType::STRUCT { .. } | TokenType::UNION,
                 ..
             } => {
                 let struct_union_specifier =
@@ -1169,11 +1184,11 @@ pub fn parse_type_specifiers(
                 continue;
             }
             Token {
-                r#type: TokenType::KEYWORD__ATOMIC,
+                r#type: TokenType::_ATOMIC,
                 ..
             } => todo!(),
             Token {
-                r#type: TokenType::KEYWORD_ENUM,
+                r#type: TokenType::ENUM,
                 ..
             } => {
                 let enum_specifier = parse_enumerator_specifier(tokens, index, str_maps)?;
@@ -1205,161 +1220,161 @@ pub fn parse_declaration_specifiers(
     while *index < tokens.len() {
         match tokens[*index] {
             Token {
-                r#type: TokenType::KEYWORD_TYPEDEF,
+                r#type: TokenType::TYPEDEF,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::TypeDef),
             Token {
-                r#type: TokenType::KEYWORD_EXTERN,
+                r#type: TokenType::EXTERN,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::Extern),
             Token {
-                r#type: TokenType::KEYWORD_STATIC,
+                r#type: TokenType::STATIC,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::Static),
             Token {
-                r#type: TokenType::KEYWORD__THREAD_LOCAL,
+                r#type: TokenType::_THREAD_LOCAL,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::ThreadLocal),
             Token {
-                r#type: TokenType::KEYWORD_AUTO,
+                r#type: TokenType::AUTO,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::Auto),
             Token {
-                r#type: TokenType::KEYWORD_REGISTER,
+                r#type: TokenType::REGISTER,
                 ..
             } => declaration_specifier
                 .storage_class_specifiers
                 .push(StorageClassSpecifier::Register),
             Token {
-                r#type: TokenType::KEYWORD_VOID,
+                r#type: TokenType::VOID,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Void),
             Token {
-                r#type: TokenType::KEYWORD_CHAR,
+                r#type: TokenType::CHAR,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Char),
             Token {
-                r#type: TokenType::KEYWORD_SHORT,
+                r#type: TokenType::SHORT,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Short),
             Token {
-                r#type: TokenType::KEYWORD_INT,
+                r#type: TokenType::INT,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Int),
             Token {
-                r#type: TokenType::KEYWORD_LONG,
+                r#type: TokenType::LONG,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Long),
             Token {
-                r#type: TokenType::KEYWORD_FLOAT,
+                r#type: TokenType::FLOAT,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Float),
             Token {
-                r#type: TokenType::KEYWORD_DOUBLE,
+                r#type: TokenType::DOUBLE,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Double),
             Token {
-                r#type: TokenType::KEYWORD_SIGNED,
+                r#type: TokenType::SIGNED,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Signed),
             Token {
-                r#type: TokenType::KEYWORD_UNSIGNED,
+                r#type: TokenType::UNSIGNED,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::Unsigned),
             Token {
-                r#type: TokenType::KEYWORD__BOOL,
+                r#type: TokenType::_BOOL,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::_Bool),
             Token {
-                r#type: TokenType::KEYWORD__COMPLEX,
+                r#type: TokenType::_COMPLEX,
                 ..
             } => declaration_specifier
                 .type_specifiers
                 .push(TypeSpecifier::_Complex),
             Token {
-                r#type: TokenType::KEYWORD_STRUCT { .. } | TokenType::KEYWORD_UNION,
+                r#type: TokenType::STRUCT { .. } | TokenType::UNION,
                 ..
             } => todo!(),
             Token {
-                r#type: TokenType::KEYWORD_ENUM,
+                r#type: TokenType::ENUM,
                 ..
             } => todo!(),
             Token {
-                r#type: TokenType::KEYWORD_CONST,
+                r#type: TokenType::CONST,
                 ..
             } => declaration_specifier
                 .type_qualifiers
                 .push(TypeQualifier::Const),
             Token {
-                r#type: TokenType::KEYWORD_RESTRICT,
+                r#type: TokenType::RESTRICT,
                 ..
             } => declaration_specifier
                 .type_qualifiers
                 .push(TypeQualifier::Restrict),
             Token {
-                r#type: TokenType::KEYWORD_VOLATILE,
+                r#type: TokenType::VOLATILE,
                 ..
             } => declaration_specifier
                 .type_qualifiers
                 .push(TypeQualifier::Volatile),
             Token {
-                r#type: TokenType::KEYWORD__ATOMIC,
+                r#type: TokenType::_ATOMIC,
                 ..
             } => {
                 consume_whitespace(tokens, index);
                 if let Some(Token {
-                    r#type: TokenType::PUNCT_OPEN_PAR,
+                    r#type: TokenType::OPEN_PAR,
                     ..
                 }) = tokens.get(*index)
                 {
                     let _type_name = parse_type_names(&tokens, index, flattened, str_maps)?;
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+                    expected_token(tokens, index, TokenType::CLOSE_PAR, "Expectedd ')'")?;
                 }
             }
             Token {
-                r#type: TokenType::KEYWORD_INLINE,
+                r#type: TokenType::INLINE,
                 ..
             } => declaration_specifier
                 .function_specifiers
                 .push(FunctionSpecifier::Inline),
             Token {
-                r#type: TokenType::KEYWORD__NORETURN,
+                r#type: TokenType::_NORETURN,
                 ..
             } => declaration_specifier
                 .function_specifiers
                 .push(FunctionSpecifier::_Noreturn),
             Token {
-                r#type: TokenType::KEYWORD__ALIGNAS,
+                r#type: TokenType::_ALIGNAS,
                 ..
             } => todo!(),
             _ => break,
@@ -1386,7 +1401,7 @@ pub fn parse_parameter_type_list(
             if matches!(
                 tokens.get(*index),
                 Some(Token {
-                    r#type: TokenType::PUNCT_MULT,
+                    r#type: TokenType::ASTERISK,
                     ..
                 })
             ) {
@@ -1399,11 +1414,11 @@ pub fn parse_parameter_type_list(
                     ..
                 }) => true,
                 Some(Token {
-                    r#type: TokenType::PUNCT_OPEN_PAR,
+                    r#type: TokenType::OPEN_PAR,
                     ..
                 }) => {
                     let mut has_ident = false;
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+                    expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
                     has_ident
                 }
                 _ => todo!("error herebrah"),
@@ -1429,7 +1444,7 @@ pub fn parse_parameter_type_list(
         if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_ELLIPSIS,
+                r#type: TokenType::ELLIPSIS,
                 ..
             })
         ) {
@@ -1460,34 +1475,34 @@ pub fn parse_direct_abstract_declarator(
     if matches!(
         tokens.get(*index),
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         })
     ) {
         *index += 1;
         consume_whitespace(tokens, index);
         let abstract_declarator = parse_abstract_declarator(&tokens, index, flattened, str_maps)?;
-        expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+        expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
         dad.abstract_declarator = Some(Box::new(abstract_declarator));
         return Ok(dad);
     }
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_SQR,
+            r#type: TokenType::OPEN_SQR,
             ..
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
             match tokens.get(*index) {
                 Some(Token {
-                    r#type: TokenType::PUNCT_MULT,
+                    r#type: TokenType::ASTERISK,
                     ..
                 }) => {
                     *index += 1;
                     dad.mult = true;
                 }
                 Some(Token {
-                    r#type: TokenType::KEYWORD_STATIC,
+                    r#type: TokenType::STATIC,
                     ..
                 }) => {
                     dad.is_static = true;
@@ -1499,7 +1514,7 @@ pub fn parse_direct_abstract_declarator(
                     flattened.expressions.push(expr);
                     dad.assign_expr = Some(flattened.expressions.len() - 1);
                     *index += 1;
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR);
+                    expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'");
                 }
                 _ => {
                     if let Some(type_qualifiers) = parse_type_qualifiers(tokens, index) {
@@ -1509,7 +1524,7 @@ pub fn parse_direct_abstract_declarator(
                     if matches!(
                         tokens.get(*index),
                         Some(Token {
-                            r#type: TokenType::KEYWORD_STATIC,
+                            r#type: TokenType::STATIC,
                             ..
                         })
                     ) {
@@ -1521,7 +1536,7 @@ pub fn parse_direct_abstract_declarator(
                         }
                         dad.is_static = true;
                         *index += 1;
-                        expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+                        expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                         let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                         flattened.expressions.push(expr);
                         dad.assign_expr = Some(flattened.expressions.len() - 1);
@@ -1530,19 +1545,19 @@ pub fn parse_direct_abstract_declarator(
                         let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                         flattened.expressions.push(expr);
                         dad.assign_expr = Some(flattened.expressions.len() - 1);
-                        expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_SQR)?;
+                        expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                     }
                 }
             }
         }
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         }) if dad.abstract_declarator.is_some() => {
             *index += 1;
             let ptl = parse_parameter_type_list(&tokens, index, flattened, str_maps)?;
             dad.parameter_type_list = Some(ptl);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
         }
         _ => {}
     }
@@ -1610,7 +1625,7 @@ mod tests {
                 while !matches!(
                     tokens.get(index),
                     Some(Token {
-                        r#type: TokenType::KEYWORD_ENUM,
+                        r#type: TokenType::ENUM,
                         ..
                     })
                 ) {
@@ -1649,7 +1664,7 @@ mod tests {
                 while !matches!(
                     tokens.get(index),
                     Some(Token {
-                        r#type: TokenType::KEYWORD_ENUM,
+                        r#type: TokenType::ENUM,
                         ..
                     })
                 ) {
@@ -1712,7 +1727,7 @@ mod tests {
                 unreachable!()
             };
             let expr = flattened.expressions[key];
-            assert!(matches!(expr, Expr::Primary(Some(PrimaryInner::Token(_)))));
+            assert!(matches!(expr, Expr::Primary(PrimaryType::Token(_))));
 
             let Some(des2_idx) = il2.designation else {
                 unreachable!()
@@ -1734,7 +1749,7 @@ mod tests {
                 unreachable!()
             };
             let expr = flattened.expressions[key];
-            assert!(matches!(expr, Expr::Primary(Some(PrimaryInner::Token(_)))));
+            assert!(matches!(expr, Expr::Primary(PrimaryType::Token(_))));
         }
         {
             let src = r#"{}"#.as_bytes();
@@ -1797,7 +1812,7 @@ mod tests {
             unreachable!()
         };
         assert!(matches!(flattened.expressions[expr_idx], Expr::Primary(_)));
-        let Expr::Primary(Some(PrimaryInner::Token(t))) = flattened.expressions[expr_idx] else {
+        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[expr_idx] else {
             unreachable!()
         };
         let TokenType::CONSTANT_DEC_INT { value_key, .. } = t else {
@@ -1809,10 +1824,10 @@ mod tests {
     #[test]
     fn parse_type_names_test_pointer_to_variable_length_int_array() -> Result<(), String> {
         let src = r#"int (*)[*]"#.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
-        let tokens = lexer::lexer(src, false, &mut str_maps)?;
-        let (_, type_name) = parse_type_names(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let tokens = lexer(src, false, &mut str_maps)?;
+        let type_name = parse_type_names(&tokens, 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(
             type_name.specifier_qualifier_list.type_specifiers.first(),
             Some(TypeSpecifier::Int)

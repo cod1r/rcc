@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::error::*;
 use crate::lexer::*;
-use crate::parser::expressions;
+use crate::parser::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -258,7 +258,7 @@ fn include_directive(
         }
         match tokens.get(include_index) {
             Some(Token {
-                r#type: TokenType::PUNCT_LESS_THAN,
+                r#type: TokenType::LESS_THAN,
                 ..
             }) => {
                 include_index += 1;
@@ -266,7 +266,7 @@ fn include_directive(
                 while !matches!(
                     tokens.get(punct_greater_than_index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_GREATER_THAN,
+                        r#type: TokenType::GREATER_THAN,
                         ..
                     })
                 ) && punct_greater_than_index < tokens.len()
@@ -276,7 +276,7 @@ fn include_directive(
                 if !matches!(
                     tokens.get(punct_greater_than_index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_GREATER_THAN,
+                        r#type: TokenType::GREATER_THAN,
                         ..
                     })
                 ) {
@@ -410,7 +410,7 @@ fn parse_defined_in_if_directive(
 ) -> Result<(), String> {
     let mut defined_index = index + 1;
     if let Some(Token {
-        r#type: TokenType::WHITESPACE | TokenType::PUNCT_OPEN_PAR,
+        r#type: TokenType::WHITESPACE | TokenType::OPEN_PAR,
         ..
     }) = tokens.get(defined_index)
     {
@@ -424,7 +424,7 @@ fn parse_defined_in_if_directive(
             defined_index += 1;
         }
         if let Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         }) = tokens.get(defined_index)
         {
@@ -466,14 +466,14 @@ fn parse_defined_in_if_directive(
             if matches!(
                 tokens.get(start),
                 Some(Token {
-                    r#type: TokenType::PUNCT_OPEN_PAR,
+                    r#type: TokenType::OPEN_PAR,
                     ..
                 })
             ) {
                 while !matches!(
                     tokens.get(defined_index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_CLOSE_PAR,
+                        r#type: TokenType::CLOSE_PAR,
                         ..
                     })
                 ) && defined_index < tokens.len()
@@ -506,7 +506,7 @@ fn if_directive(
     'outer: loop {
         match tokens.get(balance_index) {
             Some(Token {
-                r#type: TokenType::PUNCT_HASH,
+                r#type: TokenType::HASH,
                 ..
             }) => {
                 let punct_hash_index = balance_index;
@@ -968,7 +968,7 @@ fn define_directive(
     //-- means that a whitespace character means the start of the replacement list
     let mut define_needle_idx = *index + 1;
     if let Some(Token {
-        r#type: TokenType::PUNCT_OPEN_PAR,
+        r#type: TokenType::OPEN_PAR,
         ..
     }) = tokens.get(define_needle_idx)
     {
@@ -988,7 +988,7 @@ fn define_directive(
         while matches!(
             tokens.get(fn_like_macro_index),
             Some(Token {
-                r#type: TokenType::IDENT { .. } | TokenType::PUNCT_COMMA | TokenType::WHITESPACE,
+                r#type: TokenType::IDENT { .. } | TokenType::COMMA | TokenType::WHITESPACE,
                 ..
             })
         ) {
@@ -1018,7 +1018,7 @@ fn define_directive(
         if matches!(
             tokens.get(fn_like_macro_index),
             Some(Token {
-                r#type: TokenType::PUNCT_ELLIPSIS,
+                r#type: TokenType::ELLIPSIS,
                 ..
             })
         ) {
@@ -1038,7 +1038,7 @@ fn define_directive(
         if !matches!(
             tokens.get(fn_like_macro_index),
             Some(Token {
-                r#type: TokenType::PUNCT_CLOSE_PAR,
+                r#type: TokenType::CLOSE_PAR,
                 ..
             })
         ) {
@@ -1079,7 +1079,7 @@ fn define_directive(
                     if matches!(
                         dd.replacement_list.get(t_index),
                         Some(Token {
-                            r#type: TokenType::PUNCT_HASH,
+                            r#type: TokenType::HASH,
                             ..
                         })
                     ) && !matches!(
@@ -1122,13 +1122,13 @@ fn define_directive(
             if matches!(
                 dd.replacement_list.first(),
                 Some(Token {
-                    r#type: TokenType::PUNCT_HASH_HASH,
+                    r#type: TokenType::HASH_HASH,
                     ..
                 })
             ) || matches!(
                 dd.replacement_list.last(),
                 Some(Token {
-                    r#type: TokenType::PUNCT_HASH_HASH,
+                    r#type: TokenType::HASH_HASH,
                     ..
                 })
             ) {
@@ -1210,7 +1210,7 @@ fn hash_hash_deletion_and_concat_tokens(
     let mut hash_hash_process_index = 0;
     while hash_hash_process_index < replacement_list.len() {
         let token = replacement_list[hash_hash_process_index];
-        if matches!(token.r#type, TokenType::PUNCT_HASH_HASH)
+        if matches!(token.r#type, TokenType::HASH_HASH)
             && !hash_hash_from_args.contains(&hash_hash_process_index)
         {
             let mut left_index = hash_hash_process_index - 1;
@@ -1353,7 +1353,7 @@ fn parse_macro_and_replace(
                             && matches!(
                                 actual_replacement_list.get(token_index - 1),
                                 Some(Token {
-                                    r#type: TokenType::PUNCT_HASH,
+                                    r#type: TokenType::HASH,
                                     ..
                                 })
                             );
@@ -1361,7 +1361,7 @@ fn parse_macro_and_replace(
                             && matches!(
                                 actual_replacement_list.get(token_index - 2),
                                 Some(Token {
-                                    r#type: TokenType::PUNCT_HASH,
+                                    r#type: TokenType::HASH,
                                     ..
                                 })
                             )
@@ -1439,7 +1439,7 @@ fn parse_macro_and_replace(
                                     if matches!(
                                         t,
                                         Token {
-                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            r#type: TokenType::HASH_HASH,
                                             ..
                                         }
                                     ) {
@@ -1455,7 +1455,7 @@ fn parse_macro_and_replace(
                                     && matches!(
                                         actual_replacement_list.get(token_index - 2),
                                         Some(Token {
-                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            r#type: TokenType::HASH_HASH,
                                             ..
                                         })
                                     )
@@ -1470,14 +1470,14 @@ fn parse_macro_and_replace(
                                         && matches!(
                                             actual_replacement_list.get(token_index - 1),
                                             Some(Token {
-                                                r#type: TokenType::PUNCT_HASH_HASH,
+                                                r#type: TokenType::HASH_HASH,
                                                 ..
                                             })
                                         ))
                                     || matches!(
                                         actual_replacement_list.get(token_index + 1),
                                         Some(Token {
-                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            r#type: TokenType::HASH_HASH,
                                             ..
                                         })
                                     )
@@ -1490,7 +1490,7 @@ fn parse_macro_and_replace(
                                     ) && matches!(
                                         actual_replacement_list.get(token_index + 2),
                                         Some(Token {
-                                            r#type: TokenType::PUNCT_HASH_HASH,
+                                            r#type: TokenType::HASH_HASH,
                                             ..
                                         })
                                     ))
@@ -1644,7 +1644,7 @@ fn parse_function_macro(
     if !matches!(
         tokens.get(fn_macro_index),
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         })
     ) && !matches!(
@@ -1656,7 +1656,7 @@ fn parse_function_macro(
             },
         ),
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_PAR,
+            r#type: TokenType::OPEN_PAR,
             ..
         })
     ) {
@@ -1672,7 +1672,7 @@ fn parse_function_macro(
         unreachable!()
     };
     let open_par_index = fn_macro_index;
-    let mut parenth_stack = vec![(TokenType::PUNCT_OPEN_PAR, fn_macro_index)];
+    let mut parenth_stack = vec![(TokenType::OPEN_PAR, fn_macro_index)];
     fn_macro_index += 1;
     let mut comma_indices = Vec::<usize>::new();
     while !parenth_stack.is_empty()
@@ -1698,17 +1698,16 @@ fn parse_function_macro(
         };
         if let Some(t) = ot {
             match t.r#type {
-                TokenType::PUNCT_COMMA => {
+                TokenType::COMMA => {
                     if comma_indices.len() < parameters.len() {
                         comma_indices.push(fn_macro_index);
                     }
                 }
-                TokenType::PUNCT_OPEN_PAR => {
-                    parenth_stack.push((TokenType::PUNCT_OPEN_PAR, fn_macro_index));
+                TokenType::OPEN_PAR => {
+                    parenth_stack.push((TokenType::OPEN_PAR, fn_macro_index));
                 }
-                TokenType::PUNCT_CLOSE_PAR => {
-                    if let (TokenType::PUNCT_OPEN_PAR, par_index) =
-                        parenth_stack[parenth_stack.len() - 1]
+                TokenType::CLOSE_PAR => {
+                    if let (TokenType::OPEN_PAR, par_index) = parenth_stack[parenth_stack.len() - 1]
                     {
                         parenth_stack.pop();
                         if let Some(comma_index) = comma_indices.last() {
@@ -2033,11 +2032,11 @@ fn parse_control_line(
     }
     Ok(())
 }
-fn parse_endif_line() -> Result<(), String> {}
-fn parse_else_group() {}
-fn parse_elif_group() {}
-fn parse_elif_groups() {}
-fn parse_if_group() {}
+fn parse_endif_line() {todo!()}
+fn parse_else_group() {todo!()}
+fn parse_elif_group() {todo!()}
+fn parse_elif_groups() {todo!()}
+fn parse_if_group() {todo!()}
 fn parse_if_section(
     tokens: &mut Vec<Token>,
     index: &mut usize,
@@ -2054,7 +2053,8 @@ fn parse_if_section(
         b"ifndef" => {}
         _ => unreachable!(),
     }
-    parse_endif_line()
+    parse_endif_line();
+    Ok(())
 }
 fn parse_preprocessing_group_part() {}
 fn parse_preprocessing_group() {}
@@ -2098,7 +2098,7 @@ fn preprocessing_directives(
             TokenType::NEWLINE => {
                 preceded_only_by_whitespace_nothing_or_newline = true;
             }
-            TokenType::PUNCT_HASH
+            TokenType::HASH
                 if preceded_only_by_whitespace_nothing_or_newline
                     && matches!(
                         tokens.get(index + 1),
@@ -2348,12 +2348,12 @@ int main() {
                     pos_in_src: 1,
                     str_map_key: str_maps.add_byte_vec("main".as_bytes()),
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 2 },
+                TokenType::CLOSE_PAR { pos_in_src: 3 },
                 TokenType::WHITESPACE { pos_in_src: 4 },
-                TokenType::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                TokenType::OPEN_CURLY { pos_in_src: 5 },
                 TokenType::NEWLINE { pos_in_src: 6 },
-                TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
+                TokenType::CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -2384,12 +2384,12 @@ int main() {
                     pos_in_src: 1,
                     str_map_key: str_maps.add_byte_vec("main".as_bytes()),
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 2 },
+                TokenType::CLOSE_PAR { pos_in_src: 3 },
                 TokenType::WHITESPACE { pos_in_src: 4 },
-                TokenType::PUNCT_OPEN_CURLY { pos_in_src: 5 },
+                TokenType::OPEN_CURLY { pos_in_src: 5 },
                 TokenType::NEWLINE { pos_in_src: 6 },
-                TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 7 },
+                TokenType::CLOSE_CURLY { pos_in_src: 7 },
             ]
             .to_vec();
             assert_eq!(assert_tokens, tokens);
@@ -2423,19 +2423,19 @@ hi;
                 str_map_key: 3,
                 pos_in_src: 2,
             },
-            TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
-            TokenType::PUNCT_CLOSE_PAR { pos_in_src: 4 },
+            TokenType::OPEN_PAR { pos_in_src: 3 },
+            TokenType::CLOSE_PAR { pos_in_src: 4 },
             TokenType::WHITESPACE { pos_in_src: 5 },
-            TokenType::PUNCT_OPEN_CURLY { pos_in_src: 6 },
+            TokenType::OPEN_CURLY { pos_in_src: 6 },
             TokenType::NEWLINE { pos_in_src: 7 },
             TokenType::CONSTANT_DEC_INT {
                 value_key: 6,
                 suffix: None,
                 pos_in_src: 8,
             },
-            TokenType::PUNCT_SEMI_COLON { pos_in_src: 9 },
+            TokenType::SEMI_COLON { pos_in_src: 9 },
             TokenType::NEWLINE { pos_in_src: 10 },
-            TokenType::PUNCT_CLOSE_CURLY { pos_in_src: 11 },
+            TokenType::CLOSE_CURLY { pos_in_src: 11 },
         ];
         assert_eq!(assert_tokens, tokens);
         Ok(())
@@ -2489,7 +2489,7 @@ char p[] = join(x, y);"##;
             if let Some(
                 [TokenType::IDENT {
                     str_map_key: first, ..
-                }, TokenType::PUNCT_OPEN_PAR { .. }, TokenType::IDENT {
+                }, TokenType::OPEN_PAR { .. }, TokenType::IDENT {
                     str_map_key: second,
                     ..
                 }],
@@ -2574,11 +2574,11 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: None,
                 var_arg: false,
                 replacement_list: vec![
-                    TokenType::PUNCT_HASH { pos_in_src: 0 },
+                    TokenType::HASH { pos_in_src: 0 },
                     TokenType::WHITESPACE { pos_in_src: 1 },
-                    TokenType::PUNCT_HASH_HASH { pos_in_src: 2 },
+                    TokenType::HASH_HASH { pos_in_src: 2 },
                     TokenType::WHITESPACE { pos_in_src: 3 },
-                    TokenType::PUNCT_HASH { pos_in_src: 4 },
+                    TokenType::HASH { pos_in_src: 4 },
                 ]
             },
             *defines
@@ -2590,7 +2590,7 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
                 var_arg: false,
                 replacement_list: vec![
-                    TokenType::PUNCT_HASH { pos_in_src: 0 },
+                    TokenType::HASH { pos_in_src: 0 },
                     TokenType::WHITESPACE { pos_in_src: 1 },
                     TokenType::IDENT {
                         str_map_key: str_maps.add_byte_vec("a".as_bytes()),
@@ -2611,12 +2611,12 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                         pos_in_src: 0,
                         str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
                     },
-                    TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    TokenType::OPEN_PAR { pos_in_src: 1 },
                     TokenType::IDENT {
                         pos_in_src: 2,
                         str_map_key: str_maps.add_byte_vec("a".as_bytes())
                     },
-                    TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                    TokenType::CLOSE_PAR { pos_in_src: 3 },
                 ]
             },
             *defines
@@ -2635,7 +2635,7 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                         pos_in_src: 0,
                         str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
                     },
-                    TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                    TokenType::OPEN_PAR { pos_in_src: 1 },
                     TokenType::IDENT {
                         pos_in_src: 1,
                         str_map_key: str_maps.add_byte_vec("c".as_bytes())
@@ -2650,7 +2650,7 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                         pos_in_src: 5,
                         str_map_key: str_maps.add_byte_vec("d".as_bytes())
                     },
-                    TokenType::PUNCT_CLOSE_PAR { pos_in_src: 6 },
+                    TokenType::CLOSE_PAR { pos_in_src: 6 },
                 ]
             },
             *defines
@@ -2750,13 +2750,13 @@ HI((,),(,))"##
         )?;
         assert_eq!(
             vec![
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 0 },
-                TokenType::PUNCT_COMMA { pos_in_src: 1 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 2 },
-                TokenType::PUNCT_COMMA { pos_in_src: 3 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 4 },
-                TokenType::PUNCT_COMMA { pos_in_src: 5 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 6 },
+                TokenType::OPEN_PAR { pos_in_src: 0 },
+                TokenType::COMMA { pos_in_src: 1 },
+                TokenType::CLOSE_PAR { pos_in_src: 2 },
+                TokenType::COMMA { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 4 },
+                TokenType::COMMA { pos_in_src: 5 },
+                TokenType::CLOSE_PAR { pos_in_src: 6 },
             ],
             final_tokens
         );
@@ -2785,46 +2785,46 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                TokenType::OPEN_PAR { pos_in_src: 1 },
                 TokenType::IDENT {
                     pos_in_src: 2,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 3 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                TokenType::PUNCT_COMMA { pos_in_src: 5 },
+                TokenType::COMMA { pos_in_src: 5 },
                 TokenType::WHITESPACE { pos_in_src: 6 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("2".as_bytes()),
                     suffix: None,
                     pos_in_src: 7
                 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 8 },
-                TokenType::PUNCT_COMMA { pos_in_src: 9 },
+                TokenType::CLOSE_PAR { pos_in_src: 8 },
+                TokenType::COMMA { pos_in_src: 9 },
                 TokenType::WHITESPACE { pos_in_src: 10 },
                 TokenType::IDENT {
                     pos_in_src: 11,
                     str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 12 },
+                TokenType::OPEN_PAR { pos_in_src: 12 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix: None,
                     pos_in_src: 13
                 },
-                TokenType::PUNCT_COMMA { pos_in_src: 14 },
+                TokenType::COMMA { pos_in_src: 14 },
                 TokenType::WHITESPACE { pos_in_src: 15 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None,
                     pos_in_src: 16
                 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 17 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 18 },
+                TokenType::CLOSE_PAR { pos_in_src: 17 },
+                TokenType::CLOSE_PAR { pos_in_src: 18 },
             ],
             final_tokens
         );
@@ -2898,9 +2898,9 @@ HAHA(C,4)"##
         )?;
         assert_eq!(
             vec![
-                TokenType::PUNCT_COMMA { pos_in_src: 0 },
+                TokenType::COMMA { pos_in_src: 0 },
                 TokenType::WHITESPACE { pos_in_src: 1 },
-                TokenType::PUNCT_PLUS { pos_in_src: 2 },
+                TokenType::PLUS { pos_in_src: 2 },
                 TokenType::WHITESPACE { pos_in_src: 3 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
@@ -2938,18 +2938,18 @@ f(2)(9)"##
                     suffix: None,
                     pos_in_src: 0
                 },
-                TokenType::PUNCT_MULT { pos_in_src: 1 },
+                TokenType::MULT { pos_in_src: 1 },
                 TokenType::IDENT {
                     pos_in_src: 2,
                     str_map_key: str_maps.add_byte_vec("f".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 3 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("9".as_bytes()),
                     suffix: None,
                     pos_in_src: 4
                 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 5 },
+                TokenType::CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -2980,7 +2980,7 @@ INVOKE(FOO,BAR)"##
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("printf".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 1 },
+                TokenType::OPEN_PAR { pos_in_src: 1 },
                 TokenType::StringLiteral {
                     str_lit: StringLiteral {
                         prefix_key: None,
@@ -2996,7 +2996,7 @@ INVOKE(FOO,BAR)"##
                     },
                     pos_in_src: 4
                 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 5 },
+                TokenType::CLOSE_PAR { pos_in_src: 5 },
             ],
             final_tokens
         );
@@ -3032,7 +3032,7 @@ CHICKEN(1 2,3 4)"##
                     suffix: None,
                     pos_in_src: 2
                 },
-                TokenType::PUNCT_COMMA { pos_in_src: 3 },
+                TokenType::COMMA { pos_in_src: 3 },
                 TokenType::CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec("3".as_bytes()),
                     suffix: None,
@@ -3078,11 +3078,11 @@ PP(/,*)PP2(*,/)"##
         )?;
         assert_eq!(
             vec![
-                TokenType::PUNCT_DIV { pos_in_src: 0 },
-                TokenType::PUNCT_MULT { pos_in_src: 1 },
-                TokenType::PUNCT_MULT { pos_in_src: 2 },
+                TokenType::DIV { pos_in_src: 0 },
+                TokenType::MULT { pos_in_src: 1 },
+                TokenType::MULT { pos_in_src: 2 },
                 TokenType::WHITESPACE { pos_in_src: 3 },
-                TokenType::PUNCT_DIV { pos_in_src: 4 },
+                TokenType::DIV { pos_in_src: 4 },
             ],
             final_tokens
         );
@@ -3415,8 +3415,8 @@ COMMA PP"##;
                     str_map_key: str_maps.add_byte_vec("COMMA".as_bytes())
                 },
                 TokenType::WHITESPACE { pos_in_src: 1 },
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 2 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 3 },
+                TokenType::OPEN_PAR { pos_in_src: 2 },
+                TokenType::CLOSE_PAR { pos_in_src: 3 },
             ],
             tokens,
         );
@@ -3440,8 +3440,8 @@ GET_SECOND(COMMA PP,T)"##;
         )?;
         assert_eq!(
             vec![
-                TokenType::PUNCT_OPEN_PAR { pos_in_src: 0 },
-                TokenType::PUNCT_CLOSE_PAR { pos_in_src: 1 }
+                TokenType::OPEN_PAR { pos_in_src: 0 },
+                TokenType::CLOSE_PAR { pos_in_src: 1 }
             ],
             tokens,
         );
@@ -3470,8 +3470,8 @@ f(f))"##;
                     pos_in_src: 0,
                     str_map_key: str_maps.add_byte_vec("f".as_bytes())
                 },
-                TokenType::PUNCT_OPEN_PAR,
-                TokenType::PUNCT_CLOSE_PAR
+                TokenType::OPEN_PAR,
+                TokenType::CLOSE_PAR
             ],
             tokens,
         );

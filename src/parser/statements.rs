@@ -91,18 +91,18 @@ pub enum Statement {
 pub fn is_statement_token(t: TokenType) -> bool {
     match t {
         TokenType::IDENT { .. } => true,
-        TokenType::KEYWORD_CASE => true,
-        TokenType::KEYWORD_DEFAULT => true,
-        TokenType::PUNCT_OPEN_CURLY => true,
-        TokenType::KEYWORD_IF => true,
-        TokenType::KEYWORD_SWITCH => true,
-        TokenType::KEYWORD_WHILE => true,
-        TokenType::KEYWORD_DO => true,
-        TokenType::KEYWORD_FOR => true,
-        TokenType::KEYWORD_GOTO => true,
-        TokenType::KEYWORD_CONTINUE => true,
-        TokenType::KEYWORD_BREAK => true,
-        TokenType::KEYWORD_RETURN => true,
+        TokenType::CASE => true,
+        TokenType::DEFAULT => true,
+        TokenType::OPEN_CURLY => true,
+        TokenType::IF => true,
+        TokenType::SWITCH => true,
+        TokenType::WHILE => true,
+        TokenType::DO => true,
+        TokenType::FOR => true,
+        TokenType::GOTO => true,
+        TokenType::CONTINUE => true,
+        TokenType::BREAK => true,
+        TokenType::RETURN => true,
         _ => false,
     }
 }
@@ -114,7 +114,7 @@ pub fn parse_statement(
 ) -> Result<Statement, String> {
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::IDENT { .. } | TokenType::KEYWORD_CASE | TokenType::KEYWORD_DEFAULT,
+            r#type: TokenType::IDENT { .. } | TokenType::CASE | TokenType::DEFAULT,
             ..
         }) => {
             let labeled = parse_labeled_statement(tokens, index, flattened, str_maps)?;
@@ -122,7 +122,7 @@ pub fn parse_statement(
             Ok(Statement::Label(flattened.label_statements.len() - 1))
         }
         Some(Token {
-            r#type: TokenType::PUNCT_OPEN_CURLY,
+            r#type: TokenType::OPEN_CURLY,
             ..
         }) => {
             let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
@@ -130,7 +130,7 @@ pub fn parse_statement(
             Ok(Statement::Compound(flattened.compound_statements.len() - 1))
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_IF | TokenType::KEYWORD_SWITCH,
+            r#type: TokenType::IF | TokenType::SWITCH,
             ..
         }) => {
             let selection = parse_selection_statement(tokens, index, flattened, str_maps)?;
@@ -140,8 +140,7 @@ pub fn parse_statement(
             ))
         }
         Some(Token {
-            r#type:
-                TokenType::KEYWORD_WHILE | TokenType::KEYWORD_DO { .. } | TokenType::KEYWORD_FOR { .. },
+            r#type: TokenType::WHILE | TokenType::DO { .. } | TokenType::FOR { .. },
             ..
         }) => {
             let iteration = parse_iteration_statement(tokens, index, flattened, str_maps)?;
@@ -151,11 +150,7 @@ pub fn parse_statement(
             ))
         }
         Some(Token {
-            r#type:
-                TokenType::KEYWORD_GOTO
-                | TokenType::KEYWORD_CONTINUE
-                | TokenType::KEYWORD_BREAK
-                | TokenType::KEYWORD_RETURN,
+            r#type: TokenType::GOTO | TokenType::CONTINUE | TokenType::BREAK | TokenType::RETURN,
             ..
         }) => {
             let jump = parse_jump_statement(tokens, index, flattened, str_maps)?;
@@ -204,7 +199,7 @@ pub fn parse_labeled_statement(
         TokenType::IDENT { str_map_key, .. } => {
             *index += 1;
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
+            expected_token(tokens, index, TokenType::COLON, "Expected ':'")?;
             let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(statement);
             Ok(Label::Identifier {
@@ -212,9 +207,9 @@ pub fn parse_labeled_statement(
                 statement: flattened.statements.len() - 1,
             })
         }
-        TokenType::KEYWORD_CASE => {
+        TokenType::CASE => {
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
+            expected_token(tokens, index, TokenType::COLON, "Expected ':'")?;
             // TODO: this is a constant expression so I might need to eval it
             // to make sure the constant expression restraints are applied
             let expression = parse_expressions(tokens, index, flattened, str_maps)?;
@@ -227,9 +222,9 @@ pub fn parse_labeled_statement(
                 statement: flattened.statements.len() - 1,
             })
         }
-        TokenType::KEYWORD_DEFAULT => {
+        TokenType::DEFAULT => {
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_COLON)?;
+            expected_token(tokens, index, TokenType::COLON, "Expected ':'")?;
             let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(statement);
             Ok(Label::Default(flattened.statements.len() - 1))
@@ -262,7 +257,7 @@ pub fn parse_compound_statement(
                 compound
                     .block_item_list
                     .push(BlockItem::Declaration(flattened.declarations.len() - 1));
-            } else if matches!(token.r#type, TokenType::PUNCT_CLOSE_CURLY) {
+            } else if matches!(token.r#type, TokenType::CLOSE_CURLY) {
                 break;
             } else {
                 unreachable!("What the fuck bro: {:?}", token);
@@ -270,7 +265,7 @@ pub fn parse_compound_statement(
         }
         consume_whitespace(tokens, index);
     }
-    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_CURLY)?;
+    expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
     Ok(compound)
 }
 
@@ -282,13 +277,13 @@ pub fn parse_selection_statement(
 ) -> Result<Selection, String> {
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::KEYWORD_IF,
+            r#type: TokenType::IF,
             ..
         }) => {
             *index += 1;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expression = parse_expressions(tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             flattened.expressions.push(expression);
             consume_whitespace(tokens, index);
             let stmt = parse_statement(tokens, index, flattened, str_maps)?;
@@ -298,7 +293,7 @@ pub fn parse_selection_statement(
             if matches!(
                 tokens.get(*index),
                 Some(Token {
-                    r#type: TokenType::KEYWORD_ELSE,
+                    r#type: TokenType::ELSE,
                     ..
                 })
             ) {
@@ -319,12 +314,12 @@ pub fn parse_selection_statement(
             }
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_SWITCH,
+            r#type: TokenType::SWITCH,
             ..
         }) => {
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             flattened.expressions.push(expression);
             consume_whitespace(tokens, index);
             let stmt = parse_statement(tokens, index, flattened, str_maps)?;
@@ -348,14 +343,14 @@ pub fn parse_iteration_statement(
 ) -> Result<Iteration, String> {
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::KEYWORD_WHILE,
+            r#type: TokenType::WHILE,
             ..
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expr = parse_expressions(tokens, index, flattened, str_maps)?;
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             let expression = parse_expressions(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
             consume_whitespace(tokens, index);
@@ -367,7 +362,7 @@ pub fn parse_iteration_statement(
             })
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_DO,
+            r#type: TokenType::DO,
             ..
         }) => {
             *index += 1;
@@ -375,25 +370,25 @@ pub fn parse_iteration_statement(
             let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::KEYWORD_WHILE);
+            expected_token(tokens, index, TokenType::WHILE, "Expected 'while'");
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR);
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('");
             let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Iteration::DoWhile {
                 while_expression: flattened.expressions.len() - 1,
                 statement_index: flattened.statements.len() - 1,
             })
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_FOR,
+            r#type: TokenType::FOR,
             ..
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_PAR)?;
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let Some(t) = tokens.get(*index) else {
                 return Err("Unexpected end of tokens".to_string());
             };
@@ -409,7 +404,7 @@ pub fn parse_iteration_statement(
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        r#type: TokenType::SEMI_COLON,
                         ..
                     })
                 ) {
@@ -448,12 +443,12 @@ pub fn parse_iteration_statement(
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        r#type: TokenType::SEMI_COLON,
                         ..
                     })
                 ) {
                     let expression = parse_expressions(tokens, index, flattened, str_maps)?;
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
                         first_expr_index, ..
@@ -463,15 +458,15 @@ pub fn parse_iteration_statement(
                     };
                     *first_expr_index = Some(flattened.expressions.len() - 1);
                 }
-                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_SEMI_COLON,
+                        r#type: TokenType::SEMI_COLON,
                         ..
                     })
                 ) {
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                     let expression = parse_expressions(tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
@@ -482,11 +477,11 @@ pub fn parse_iteration_statement(
                     };
                     *second_expr_index = Some(flattened.expressions.len() - 1);
                 }
-                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
-                        r#type: TokenType::PUNCT_CLOSE_PAR,
+                        r#type: TokenType::CLOSE_PAR,
                         ..
                     })
                 ) {
@@ -499,7 +494,7 @@ pub fn parse_iteration_statement(
                         unreachable!()
                     };
                     *third_expr_index = Some(flattened.expressions.len() - 1);
-                    expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_PAR)?;
+                    expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
                 }
                 let Iteration::ForThreeExpr {
                     statement_index, ..
@@ -526,7 +521,7 @@ pub fn parse_jump_statement(
 ) -> Result<Jump, String> {
     match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::KEYWORD_GOTO,
+            r#type: TokenType::GOTO,
             ..
         }) => {
             *index += 1;
@@ -540,27 +535,27 @@ pub fn parse_jump_statement(
                 unreachable!()
             };
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON);
+            expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Jump::Goto(*str_map_key))
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_CONTINUE,
+            r#type: TokenType::CONTINUE,
             ..
         }) => {
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Jump::Continue)
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_BREAK,
+            r#type: TokenType::BREAK,
             ..
         }) => {
             consume_whitespace(tokens, index);
-            expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+            expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Jump::Break)
         }
         Some(Token {
-            r#type: TokenType::KEYWORD_RETURN,
+            r#type: TokenType::RETURN,
             ..
         }) => {
             consume_whitespace(tokens, index);
@@ -568,12 +563,12 @@ pub fn parse_jump_statement(
             if !matches!(
                 tokens.get(*index),
                 Some(Token {
-                    r#type: TokenType::PUNCT_SEMI_COLON,
+                    r#type: TokenType::SEMI_COLON,
                     ..
                 })
             ) {
                 let expr = parse_expressions(tokens, index, flattened, str_maps)?;
-                expected_token(tokens, str_maps, index, TokenType::PUNCT_SEMI_COLON)?;
+                expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                 flattened.expressions.push(expr);
                 r = Jump::Return(Some(flattened.expressions.len() - 1));
             }
@@ -600,7 +595,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (stmt, _) = parse_compound_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let stmt = parse_compound_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             let Compound { block_item_list } = stmt;
             assert!(matches!(
                 block_item_list.get(0),
@@ -616,7 +611,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (label, _) = parse_labeled_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let label = parse_labeled_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(label, Label::Case { .. }));
             let Label::Case {
                 const_expr,
@@ -649,8 +644,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (selection, _) =
-                parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let selection =
+                parse_selection_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(selection, Selection::If { .. }));
             let Selection::If {
                 expression_index,
@@ -683,8 +678,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (selection, _) =
-                parse_selection_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let selection =
+                parse_selection_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(selection, Selection::Switch { .. }));
             let Selection::Switch {
                 expression_index,
@@ -719,8 +714,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (iteration, _) =
-                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let iteration =
+                parse_iteration_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::While { .. }));
         }
         {
@@ -730,8 +725,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (iteration, _) =
-                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let iteration =
+                parse_iteration_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::DoWhile { .. }));
         }
         {
@@ -739,8 +734,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (iteration, _) =
-                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let iteration =
+                parse_iteration_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::DoWhile { .. }));
         }
         {
@@ -750,8 +745,8 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (iteration, _) =
-                parse_iteration_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let iteration =
+                parse_iteration_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(iteration, Iteration::ForThreeExpr { .. }));
         }
         Ok(())
@@ -763,7 +758,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let jump = parse_jump_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Goto(_)));
         }
         {
@@ -771,7 +766,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let jump = parse_jump_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Continue));
         }
         {
@@ -779,7 +774,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let jump = parse_jump_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Break));
         }
         {
@@ -787,7 +782,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (jump, _) = parse_jump_statement(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let jump = parse_jump_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(jump, Jump::Return(_)));
         }
         Ok(())

@@ -1,19 +1,13 @@
-use crate::lexer;
-use crate::lexer::Token;
-use crate::lexer::TokenType;
-use crate::parser;
-use crate::parser::consume_whitespace;
-use crate::parser::declarations::parse_declaration_specifiers;
-use crate::parser::declarations::parse_declarations;
-use crate::parser::declarations::parse_declarator;
-use crate::parser::statements::expected_token;
-use crate::parser::statements::parse_compound_statement;
+use crate::lexer::*;
+use crate::parser::declarations::*;
+use crate::parser::statements::*;
+use crate::parser::*;
 pub type TranslationUnit = Vec<ExternalDeclaration>;
 pub fn parse_translation_units(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<TranslationUnit, String> {
     let mut translation_units = Vec::new();
     while *index < tokens.len() {
@@ -25,18 +19,18 @@ pub fn parse_translation_units(
 }
 pub enum ExternalDeclaration {
     FunctionDef {
-        declaration_specifier: parser::declarations::DeclarationSpecifier,
-        declarator: parser::declarations::Declarator,
-        declaration_list: Option<Vec<parser::declarations::Declaration>>,
-        compound_statement: parser::statements::Compound,
+        declaration_specifier: DeclarationSpecifier,
+        declarator: Declarator,
+        declaration_list: Option<Vec<Declaration>>,
+        compound_statement: Compound,
     },
-    Declaration(parser::declarations::Declaration),
+    Declaration(Declaration),
 }
 pub fn parse_external_declarations(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
-    flattened: &mut parser::Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<ExternalDeclaration, String> {
     let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
@@ -45,11 +39,11 @@ pub fn parse_external_declarations(
     let Some(t) = tokens.get(*index) else {
         return Err("Unexpected end of tokens".to_string());
     };
-    if parser::declarations::is_declaration_token(*t)
+    if is_declaration_token(*t)
         || matches!(
             *t,
             Token {
-                r#type: TokenType::PUNCT_OPEN_CURLY,
+                r#type: TokenType::OPEN_CURLY,
                 ..
             }
         )
@@ -58,7 +52,7 @@ pub fn parse_external_declarations(
         while !matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::PUNCT_OPEN_CURLY,
+                r#type: TokenType::OPEN_CURLY,
                 ..
             }) | None
         ) {
@@ -66,9 +60,9 @@ pub fn parse_external_declarations(
             declaration_list.push(declaration);
             consume_whitespace(tokens, index);
         }
-        expected_token(tokens, str_maps, index, TokenType::PUNCT_OPEN_CURLY)?;
+        expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
         let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
-        expected_token(tokens, str_maps, index, TokenType::PUNCT_CLOSE_CURLY)?;
+        expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
         Ok(ExternalDeclaration::FunctionDef {
             declaration_specifier,
             declarator,
@@ -98,8 +92,8 @@ mod tests {
             let mut flattened = parser::Flattened::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (external_declaration, _) =
-                parse_external_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let external_declaration =
+                parse_external_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 external_declaration,
                 ExternalDeclaration::FunctionDef { .. }
@@ -141,8 +135,8 @@ mod tests {
             let mut flattened = parser::Flattened::new();
             let mut str_maps = lexer::ByteVecMaps::new();
             let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (external_declaration, _) =
-                parse_external_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let external_declaration =
+                parse_external_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 external_declaration,
                 ExternalDeclaration::Declaration(_)
