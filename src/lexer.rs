@@ -1904,7 +1904,7 @@ mod tests {
         lexer, match_character_constant, match_floating_constant, match_identifier,
         match_string_literal, ByteVecMaps, ConstantChar, StringLiteral, Token,
     };
-    use crate::lexer;
+    use crate::lexer::*;
 
     #[test]
     fn chain_lex_test_constant_float_variable() -> Result<(), String> {
@@ -1913,25 +1913,21 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                lexer::TokenType::CONST { pos_in_src: 0 },
-                lexer::TokenType::WHITESPACE { pos_in_src: 6 },
-                lexer::TokenType::FLOAT { pos_in_src: 6 },
-                lexer::TokenType::WHITESPACE { pos_in_src: 12 },
-                lexer::TokenType::IDENT {
-                    str_map_key: 0,
-                    pos_in_src: 13
-                },
-                lexer::TokenType::WHITESPACE { pos_in_src: 14 },
-                lexer::TokenType::ASSIGNMENT { pos_in_src: 15 },
-                lexer::TokenType::WHITESPACE { pos_in_src: 16 },
-                lexer::TokenType::CONSTANT_DEC_FLOAT {
+                TokenType::CONST,
+                TokenType::WHITESPACE,
+                TokenType::FLOAT,
+                TokenType::WHITESPACE,
+                TokenType::IDENT { str_map_key: 0 },
+                TokenType::WHITESPACE,
+                TokenType::ASSIGNMENT,
+                TokenType::WHITESPACE,
+                TokenType::CONSTANT_DEC_FLOAT {
                     value_key: 1,
                     exp_part_key: None,
                     suffix: None,
-                    pos_in_src: 19
                 }
             ],
-            tokens
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -1943,22 +1939,20 @@ mod tests {
         let tokens = lexer(s, false, &mut str_maps)?;
         assert_eq!(
             vec![
-                TokenType::INT { pos_in_src: 0 },
-                TokenType::WHITESPACE { pos_in_src: 1 },
+                TokenType::INT,
+                TokenType::WHITESPACE,
                 TokenType::IDENT {
                     str_map_key: str_maps.add_byte_vec("\\UAAAA_URMOM".as_bytes()),
-                    pos_in_src: 2
                 },
-                TokenType::WHITESPACE { pos_in_src: 3 },
-                TokenType::ASSIGNMENT { pos_in_src: 4 },
-                TokenType::WHITESPACE { pos_in_src: 5 },
+                TokenType::WHITESPACE,
+                TokenType::ASSIGNMENT,
+                TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
                     suffix: None,
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    pos_in_src: 6
                 }
             ],
-            tokens
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -1973,9 +1967,8 @@ mod tests {
                     prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
                     sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
                 },
-                pos_in_src: 0
             }],
-            tokens
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -1992,31 +1985,28 @@ mod tests {
                         prefix: Some(b'u'),
                         sequence_key: str_maps.add_byte_vec("hehe".as_bytes())
                     },
-                    pos_in_src: 0
                 },
-                TokenType::SEMI_COLON { pos_in_src: 1 },
+                TokenType::SEMI_COLON,
                 TokenType::StringLiteral {
                     str_lit: StringLiteral {
                         prefix_key: Some(str_maps.add_byte_vec("u8".as_bytes())),
                         sequence_key: str_maps.add_byte_vec("hi".as_bytes()),
                     },
-                    pos_in_src: 2
                 }
             ],
-            tokens
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
     #[test]
     fn test_match_identifier_universal_character_name_within() -> Result<(), String> {
         let src = r#"foo\u1234bar"#.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let token = match_identifier(src, &mut 0, &mut str_maps)?;
         assert_eq!(
             token,
-            Some(lexer::TokenType::IDENT {
+            Some(TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("foo\\u1234bar".as_bytes()),
-                pos_in_src: 0
             })
         );
         Ok(())
@@ -2033,7 +2023,6 @@ mod tests {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
-                pos_in_src: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -2056,7 +2045,6 @@ mod tests {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
-                pos_in_src: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -2157,7 +2145,6 @@ mod tests {
                 value_key,
                 binary_exp_part_key,
                 suffix: _,
-                pos_in_src: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let binary_exp_part = str_maps.key_to_byte_vec.get(*binary_exp_part_key).unwrap();
@@ -2179,7 +2166,6 @@ mod tests {
                 value_key,
                 exp_part_key,
                 suffix: _,
-                pos_in_src: _,
             }) => {
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
                 let exp_part = str_maps.key_to_byte_vec.get(exp_part_key.unwrap()).unwrap();
@@ -2202,9 +2188,8 @@ mod tests {
                 value_key,
                 exp_part_key,
                 suffix,
-                pos_in_src: _,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                let Some(Suffix::Float { float_type, key }) = suffix else {
                     unreachable!()
                 };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
@@ -2230,9 +2215,8 @@ mod tests {
                 value_key,
                 binary_exp_part_key,
                 suffix,
-                pos_in_src: _,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                let Some(Suffix::Float { float_type, key }) = suffix else {
                     unreachable!()
                 };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
@@ -2258,9 +2242,8 @@ mod tests {
                 value_key,
                 binary_exp_part_key,
                 suffix,
-                pos_in_src: _,
             }) => {
-                let Some(lexer::Suffix::Float { float_type, key }) = suffix else {
+                let Some(Suffix::Float { float_type, key }) = suffix else {
                     unreachable!()
                 };
                 let value = str_maps.key_to_byte_vec.get(*value_key).unwrap();
@@ -2290,7 +2273,6 @@ mod tests {
                         prefix: _,
                         sequence_key,
                     },
-                pos_in_src: _,
             } => {
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
             }
@@ -2314,7 +2296,6 @@ mod tests {
                         prefix,
                         sequence_key,
                     },
-                pos_in_src: _,
             } => {
                 assert_eq!(*prefix, Some(b'L'));
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
@@ -2339,7 +2320,6 @@ mod tests {
                         prefix,
                         sequence_key,
                     },
-                pos_in_src: _,
             } => {
                 assert_eq!(*prefix, Some(b'u'));
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
@@ -2364,7 +2344,6 @@ mod tests {
                         prefix,
                         sequence_key,
                     },
-                pos_in_src: _,
             } => {
                 assert_eq!(*prefix, Some(b'U'));
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
@@ -2389,7 +2368,6 @@ mod tests {
                         prefix_key,
                         sequence_key,
                     },
-                pos_in_src: 0,
             } => {
                 assert_eq!(
                     str_maps.key_to_byte_vec.get(prefix_key.unwrap()).unwrap(),
@@ -2417,7 +2395,6 @@ mod tests {
                         prefix_key,
                         sequence_key,
                     },
-                pos_in_src: 0,
             } => {
                 assert!(prefix_key.is_none());
                 assert_eq!(str_maps.key_to_byte_vec[*sequence_key], b"hi");
@@ -2442,7 +2419,6 @@ mod tests {
                         prefix_key,
                         sequence_key,
                     },
-                pos_in_src: 0,
             } => {
                 assert!(prefix_key.is_none());
                 assert_eq!(
@@ -2462,45 +2438,44 @@ mod tests {
 
         let tokens = lexer(&s_bytes.to_vec(), false, &mut str_maps)?;
         let tokens_assert = vec![
-            TokenType::INT { pos_in_src: 0 },
-            TokenType::WHITESPACE { pos_in_src: 1 },
+            TokenType::INT,
+            TokenType::WHITESPACE,
             TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("main".as_bytes()),
-                pos_in_src: 2,
             },
-            TokenType::OPEN_PAR { pos_in_src: 3 },
-            TokenType::CLOSE_PAR { pos_in_src: 4 },
-            TokenType::WHITESPACE { pos_in_src: 6 },
-            TokenType::OPEN_CURLY { pos_in_src: 7 },
-            TokenType::NEWLINE { pos_in_src: 8 },
-            TokenType::INT { pos_in_src: 10 },
-            TokenType::WHITESPACE { pos_in_src: 11 },
+            TokenType::OPEN_PAR,
+            TokenType::CLOSE_PAR,
+            TokenType::WHITESPACE,
+            TokenType::OPEN_CURLY,
+            TokenType::NEWLINE,
+            TokenType::INT,
+            TokenType::WHITESPACE,
             TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("hi".as_bytes()),
-                pos_in_src: 12,
             },
-            TokenType::WHITESPACE { pos_in_src: 13 },
-            TokenType::ASSIGNMENT { pos_in_src: 14 },
-            TokenType::WHITESPACE { pos_in_src: 15 },
+            TokenType::WHITESPACE,
+            TokenType::ASSIGNMENT,
+            TokenType::WHITESPACE,
             TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix: None,
-                pos_in_src: 16,
             },
-            TokenType::SEMI_COLON { pos_in_src: 17 },
-            TokenType::NEWLINE { pos_in_src: 18 },
-            TokenType::RETURN { pos_in_src: 19 },
-            TokenType::WHITESPACE { pos_in_src: 20 },
+            TokenType::SEMI_COLON,
+            TokenType::NEWLINE,
+            TokenType::RETURN,
+            TokenType::WHITESPACE,
             TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("0".as_bytes()),
                 suffix: None,
-                pos_in_src: 21,
             },
-            TokenType::SEMI_COLON { pos_in_src: 22 },
-            TokenType::NEWLINE { pos_in_src: 23 },
-            TokenType::CLOSE_CURLY { pos_in_src: 24 },
+            TokenType::SEMI_COLON,
+            TokenType::NEWLINE,
+            TokenType::CLOSE_CURLY,
         ];
-        assert_eq!(tokens, tokens_assert);
+        assert_eq!(
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+            tokens_assert
+        );
         Ok(())
     }
     #[test]
@@ -2520,40 +2495,38 @@ mod tests {
         str_maps.add_byte_vec("main".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
-            TokenType::HASH { pos_in_src: 0 },
+            TokenType::HASH,
             TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("include".as_bytes()),
-                pos_in_src: 1,
             },
-            TokenType::WHITESPACE { pos_in_src: 2 },
-            TokenType::LESS_THAN { pos_in_src: 3 },
+            TokenType::WHITESPACE,
+            TokenType::LESS_THAN,
             TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("stdio".as_bytes()),
-                pos_in_src: 4,
             },
-            TokenType::DOT { pos_in_src: 5 },
+            TokenType::DOT,
             TokenType::IDENT {
                 str_map_key: str_maps.add_byte_vec("h".as_bytes()),
-                pos_in_src: 6,
             },
-            TokenType::GREATER_THAN { pos_in_src: 7 },
-            TokenType::NEWLINE { pos_in_src: 8 },
+            TokenType::GREATER_THAN,
+            TokenType::NEWLINE,
             TokenType::IDENT {
-                pos_in_src: 9,
                 str_map_key: str_maps.add_byte_vec("int".as_bytes()),
             },
-            TokenType::WHITESPACE { pos_in_src: 10 },
+            TokenType::WHITESPACE,
             TokenType::IDENT {
-                pos_in_src: 11,
                 str_map_key: str_maps.add_byte_vec("main".as_bytes()),
             },
-            TokenType::OPEN_PAR { pos_in_src: 12 },
-            TokenType::CLOSE_PAR { pos_in_src: 13 },
-            TokenType::WHITESPACE { pos_in_src: 14 },
-            TokenType::OPEN_CURLY { pos_in_src: 15 },
-            TokenType::CLOSE_CURLY { pos_in_src: 16 },
+            TokenType::OPEN_PAR,
+            TokenType::CLOSE_PAR,
+            TokenType::WHITESPACE,
+            TokenType::OPEN_CURLY,
+            TokenType::CLOSE_CURLY,
         ];
-        assert_eq!(tokens, tokens_assert);
+        assert_eq!(
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+            tokens_assert
+        );
         Ok(())
     }
     #[test]
@@ -2565,51 +2538,47 @@ mod tests {
         str_maps.add_byte_vec("endif".as_bytes());
         let tokens = lexer(&s_bytes.to_vec(), true, &mut str_maps)?;
         let tokens_assert = vec![
-            TokenType::HASH { pos_in_src: 0 },
+            TokenType::HASH,
             TokenType::IDENT {
-                pos_in_src: 1,
                 str_map_key: str_maps.add_byte_vec("if".as_bytes()),
             },
-            TokenType::WHITESPACE { pos_in_src: 2 },
+            TokenType::WHITESPACE,
             TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
                 suffix: None,
-                pos_in_src: 3,
             },
-            TokenType::WHITESPACE { pos_in_src: 4 },
-            TokenType::PLUS { pos_in_src: 5 },
-            TokenType::WHITESPACE { pos_in_src: 6 },
+            TokenType::WHITESPACE,
+            TokenType::PLUS,
+            TokenType::WHITESPACE,
             TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("1".as_bytes()),
                 suffix: None,
-                pos_in_src: 7,
             },
-            TokenType::NEWLINE { pos_in_src: 8 },
-            TokenType::HASH { pos_in_src: 9 },
+            TokenType::NEWLINE,
+            TokenType::HASH,
             TokenType::IDENT {
-                pos_in_src: 10,
                 str_map_key: str_maps.add_byte_vec("define".as_bytes()),
             },
-            TokenType::WHITESPACE { pos_in_src: 11 },
+            TokenType::WHITESPACE,
             TokenType::IDENT {
-                pos_in_src: 12,
                 str_map_key: str_maps.add_byte_vec("CHICKEN".as_bytes()),
             },
-            TokenType::WHITESPACE { pos_in_src: 13 },
+            TokenType::WHITESPACE,
             TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("5".as_bytes()),
                 suffix: None,
-                pos_in_src: 14,
             },
-            TokenType::NEWLINE { pos_in_src: 15 },
-            TokenType::HASH { pos_in_src: 16 },
+            TokenType::NEWLINE,
+            TokenType::HASH,
             TokenType::IDENT {
-                pos_in_src: 17,
                 str_map_key: str_maps.add_byte_vec("endif".as_bytes()),
             },
-            TokenType::NEWLINE { pos_in_src: 18 },
+            TokenType::NEWLINE,
         ];
-        assert_eq!(tokens, tokens_assert);
+        assert_eq!(
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+            tokens_assert
+        );
         Ok(())
     }
 }

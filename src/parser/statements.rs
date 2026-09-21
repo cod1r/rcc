@@ -587,7 +587,8 @@ mod tests {
         parse_labeled_statement, parse_selection_statement, parse_statement, BlockItem, Compound,
         Iteration, Jump, Label, Selection, Statement,
     };
-    use crate::{lexer, parser};
+    use crate::lexer::*;
+    use crate::parser::*;
     #[test]
     fn parse_compound_statement_test() -> Result<(), String> {
         {

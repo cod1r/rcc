@@ -3,9 +3,9 @@ pub mod declarations;
 pub mod expressions;
 pub mod external_definitions;
 pub mod statements;
+use crate::error::*;
 use crate::lexer::*;
 use crate::parser::declarations::*;
-use crate::error::*;
 type ParserTypeIndex = usize;
 
 pub fn consume_whitespace(tokens: &[Token], index: &mut usize) {

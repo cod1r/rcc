@@ -31,7 +31,7 @@ pub enum UnaryType {
         op: TokenType,
         first: ExpressionIndex,
     },
-    SizeOfTypeName(TypeNameIndex),
+    SizeOf(TypeNameIndex),
     AlignOf(TypeNameIndex),
 }
 
@@ -102,7 +102,7 @@ pub struct Conditional {
 }
 
 #[derive(Copy, Clone)]
-enum PrimaryType {
+pub enum PrimaryType {
     Token(Token),
     Expr(ExpressionIndex),
 }
@@ -138,7 +138,7 @@ impl Expr {
                 LogOR => u8::MAX - 13,
                 Assignment => u8::MAX - 15,
                 Comma => u8::MAX - 16,
-                _ => unreachable!()
+                _ => unreachable!(),
             },
             Expr::Conditional(_) => u8::MAX - 14,
             Expr::Unary(_) => u8::MAX - 2,
@@ -238,12 +238,23 @@ macro_rules! assignment_ops {
 }
 
 fn parse_primary_expression(tokens: &[Token], index: &mut usize) -> Result<Expr, String> {
-    if !matches!(tokens.get(*index), Some(Token{r#type: primary_tokens!(), .. })) {
+    if !matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: primary_tokens!(),
+            ..
+        })
+    ) {
         match tokens.get(*index) {
-            Some(Token { location: Some(Location{line, column}), .. }) => {
+            Some(Token {
+                location: Some(Location { line, column }),
+                ..
+            }) => {
                 return Err(error("Expected primary token", *line, *column));
             }
-            Some(Token { location: None, .. }) => unreachable!("Inserted tokens from preprocessing should at least have the line number"),
+            Some(Token { location: None, .. }) => unreachable!(
+                "Inserted tokens from preprocessing should at least have the line number"
+            ),
             None => {
                 return Err("Expected primary token".to_string());
             }
@@ -310,10 +321,13 @@ fn parse_postfix_expression(
                 }));
             } else {
                 // postfix argument expression list expression
-                let arg_expr_list = parse_argument_expression_list(tokens, index, flattened, str_maps)?;
+                let arg_expr_list =
+                    parse_argument_expression_list(tokens, index, flattened, str_maps)?;
                 consume_whitespace(tokens, index);
                 expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'");
-                let Some(p) = last_postfix_expression else { unreachable!() };
+                let Some(p) = last_postfix_expression else {
+                    unreachable!()
+                };
                 flattened.expressions.push(p);
                 let first = flattened.expressions.len() - 1;
                 flattened.expressions.push(arg_expr_list);
@@ -328,8 +342,7 @@ fn parse_postfix_expression(
             t @ Token {
                 r#type:
                     TokenType::INCREMENT | TokenType::DECREMENT | TokenType::ARROW | TokenType::DOT,
-                location: Some(Location {line,
-                column })
+                location: Some(Location { line, column }),
             },
         ) => {
             *index += 1;
@@ -382,7 +395,7 @@ fn parse_unary_expression(
                 }) => {
                     let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
                     flattened.type_names.push(type_name);
-                    Ok(Expr::Unary(UnaryType::SizeOfTypeName(
+                    Ok(Expr::Unary(UnaryType::SizeOf(
                         flattened.type_names.len() - 1,
                     )))
                 }
@@ -398,19 +411,20 @@ fn parse_unary_expression(
         }
         Some(Token {
             r#type: TokenType::_ALIGNOF,
-            .. }) => {
+            ..
+        }) => {
             *index += 1;
             consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             consume_whitespace(tokens, index);
             let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
             flattened.type_names.push(type_name);
-            Ok(Expr::Unary(UnaryType::AlignOf(flattened.type_names.len() - 1)))
+            Ok(Expr::Unary(UnaryType::AlignOf(
+                flattened.type_names.len() - 1,
+            )))
         }
-        None => {
-            return Err("Expected unary op or postfix expr".to_string())
-        }
-        _ => parse_postfix_expression(tokens, index, flattened, str_maps, None)
+        None => return Err("Expected unary op or postfix expr".to_string()),
+        _ => parse_postfix_expression(tokens, index, flattened, str_maps, None),
     }
 }
 
@@ -866,7 +880,7 @@ pub fn parse_assignment_expression(
                         TokenType::AND_BIT_ASSIGN => BinaryExprType::BitAND,
                         TokenType::XOR_BIT_ASSIGN => BinaryExprType::BitXOR,
                         TokenType::OR_BIT_ASSIGN => BinaryExprType::BitOR,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     },
                     first,
                     second,
@@ -1042,7 +1056,9 @@ fn recursive_eval(
             todo!("ERROR HERE")
         }
         Expr::Unary(u) => {
-            let UnaryType::Expr { op, first } = u else { unreachable!() };
+            let UnaryType::Expr { op, first } = u else {
+                unreachable!()
+            };
             let first = *first;
             let op = *op;
             match op {
@@ -1204,6 +1220,7 @@ fn recursive_eval(
 mod tests {
     use crate::lexer::*;
     use crate::parser::*;
+    use crate::parser::expressions::*;
 
     #[test]
     fn eval_expression_temp() -> Result<(), String> {
@@ -1211,40 +1228,24 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         println!("{:?}", tokens);
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps);
-        match res {
-            Err(_) => {}
-            Ok(_) => return Err(String::from("empty expression not caught")),
-        }
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
         Ok(())
     }
 
-    #[test]
-    fn eval_expression_test_empty() -> Result<(), String> {
-        let src = r##""##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps);
-        match res {
-            Err(_) => {}
-            Ok(_) => return Err(String::from("empty expression not caught")),
-        }
-        Ok(())
-    }
     #[test]
     fn eval_expression_test_primary() -> Result<(), String> {
         {
             let src = r##"((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
             assert_eq!(res != 0, true, "((((1))))");
         }
         {
             let src = r##"(((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut str_maps);
+            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -1254,7 +1255,7 @@ mod tests {
             let src = r##"0 - (1 + 1)"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
             assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         Ok(())
@@ -1264,17 +1265,12 @@ mod tests {
         let src = r##"!1"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, false, "!1");
-        let src = r##"~~~~0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false, "~~~~0");
         let src = r##"--------------1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps);
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
         assert!(
             res.is_err(),
             "'--' operator not caught in cpp constant expression"
@@ -1282,150 +1278,50 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn eval_expression_test_equality() -> Result<(), String> {
-        let src = r##"1 == 1"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 != 1"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
-        let src = r##"1 != !1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 != 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        Ok(())
-    }
-    #[test]
-    fn eval_expression_test_bit_and() -> Result<(), String> {
-        let src = r##"1 & 0 == 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 & 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
-        let src = r##"1 & !0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 & 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 == 0 & 1 == 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
-        Ok(())
-    }
-    #[test]
-    fn eval_expression_test_bit_xor() -> Result<(), String> {
-        let src = r##"1 ^ 0 == 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false, "1 ^ 0 == 0");
-        let src = r##"(1 ^ !0) == 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true, "(1 ^ !0) == 0");
-        Ok(())
-    }
-    #[test]
-    fn eval_expression_test_bit_or() -> Result<(), String> {
-        let src = r##"1 | 0 == 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"1 | !0 == 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true, "1 | !0 == 0");
-        Ok(())
-    }
-    #[test]
-    fn eval_expression_test_logical_and() -> Result<(), String> {
-        let src = r##"1 && 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"0 && 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
-        let src = r##"1 && !1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
-        Ok(())
-    }
-    #[test]
     fn eval_expression_test_logical_or() -> Result<(), String> {
         let src = r##"1 || 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 1"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 || 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_conditional() -> Result<(), String> {
         let src = r##"1 ? 1 : 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, false);
         let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, true);
         let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
-        let tokens = lexer::lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, 0, &mut str_maps)?;
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
         assert_eq!(res != 0, false);
         Ok(())
     }
@@ -1435,7 +1331,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
         let mut flattened = Flattened::new();
-        let cast_expr = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let cast_expr = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(cast_expr, Expr::Cast(_)));
         let Expr::Cast(c) = cast_expr else {
             unreachable!()
@@ -1470,7 +1366,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
         let mut flattened = Flattened::new();
-        let add = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(
             add,
             Expr::Binary {
@@ -1478,11 +1374,10 @@ mod tests {
                 ..
             }
         ));
-        let first_idx = a.first else { unreachable!() };
-        let second_idx = a.second else { unreachable!() };
-        assert!(matches!(flattened.expressions[first_idx], Expr::Primary(_)));
-        assert!(matches!(flattened.expressions[second_idx], Expr::Cast(_)));
-        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first_idx] else {
+        let Expr::Binary { first, second, .. } = add else { unreachable!() };
+        assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
+        assert!(matches!(flattened.expressions[second], Expr::Cast(_)));
+        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first] else {
             unreachable!()
         };
         assert!(matches!(
@@ -1500,10 +1395,10 @@ mod tests {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
-        let Expr::Cast(c) = flattened.expressions[second_idx] else {
+        let Expr::Cast(c) = flattened.expressions[second] else {
             unreachable!()
         };
-        let Some(c_idx) = c.cast_expr else {
+        let c_idx = c.cast_expr else {
             unreachable!()
         };
         assert!(matches!(flattened.expressions[c_idx], Expr::Primary(_)));
@@ -1525,8 +1420,7 @@ mod tests {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
-        assert!(c.type_name.is_some());
-        let Some(type_name_index) = c.type_name else {
+        let type_name_index = c.type_name else {
             unreachable!()
         };
         assert!(flattened.type_names.get(type_name_index).is_some());
@@ -1544,8 +1438,8 @@ mod tests {
         let src = r#"1 + !(int)1"#.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
-        let mut flattened = parser::Flattened::new();
-        let add = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let mut flattened = Flattened::new();
+        let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(
             add,
             Expr::Binary {
@@ -1553,11 +1447,9 @@ mod tests {
                 ..
             }
         ));
-        let Some(first_idx) = add.first else {
-            unreachable!()
-        };
-        assert!(matches!(flattened.expressions[first_idx], Expr::Primary(_)));
-        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first_idx] else {
+        let Expr::Binary { first, second, .. } = add else { unreachable!() };
+        assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
+        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first] else {
             unreachable!()
         };
         assert!(matches!(
@@ -1575,28 +1467,25 @@ mod tests {
             unreachable!()
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
-        let second_idx = add.second else {
+        assert!(matches!(flattened.expressions[second], Expr::Unary(_)));
+        let Expr::Unary(UnaryType::Expr{op,first}) = flattened.expressions[second] else {
             unreachable!()
         };
-        assert!(matches!(flattened.expressions[second_idx], Expr::Unary(_)));
-        let Expr::Unary(u) = flattened.expressions[second_idx] else {
-            unreachable!()
-        };
-        assert!(matches!(u.op, expressions::UnaryOp::LogicalNOT));
-        let cast_idx = u.first else { unreachable!() };
+        assert!(matches!(op, TokenType::NOT_BOOL));
+        let cast_idx = first;
         assert!(matches!(
             flattened.expressions[cast_idx],
-            expressions::Expr::Cast(_)
+            Expr::Cast(_)
         ));
         let Expr::Cast(c) = flattened.expressions[cast_idx] else {
             unreachable!()
         };
-        let p_idx = c.cast_expr else { unreachable!() };
+        let p_idx = c.cast_expr;
         assert!(matches!(flattened.expressions[p_idx], Expr::Primary(_)));
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[p_idx] else {
             unreachable!()
         };
-        assert!(matches!(t, TokenType::CONSTANT_DEC_INT { .. }));
+        assert!(matches!(t, Token{ r#type: TokenType::CONSTANT_DEC_INT { .. }, .. }));
         let Token {
             r#type: TokenType::CONSTANT_DEC_INT { value_key, suffix },
             ..
@@ -1611,10 +1500,10 @@ mod tests {
     fn parse_expressions_test_postfix() -> Result<(), String> {
         {
             let src = r#"hi-- + 1"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let add = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 add,
                 Expr::Binary {
@@ -1623,9 +1512,9 @@ mod tests {
                 }
             ));
 
-            let left_idx = add.first else { unreachable!() };
-            assert!(matches!(flattened.expressions[left_idx], Expr::PostFix(_)));
-            let Expr::PostFix(p) = flattened.expressions[left_idx] else {
+            let Expr::Binary { first, .. } = add else { unreachable!() };
+            assert!(matches!(flattened.expressions[first], Expr::PostFix(_)));
+            let Expr::PostFix(p) = flattened.expressions[first] else {
                 unreachable!()
             };
             assert!(matches!(p, PostFix::WithIncrementDecrement { .. }));
@@ -1635,8 +1524,8 @@ mod tests {
             assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
             assert!(matches!(op, TokenType::DECREMENT));
 
-            let right_idx = a.second else { unreachable!() };
-            assert!(matches!(flattened.expressions[right_idx], Expr::Primary(_)));
+            let Expr::Binary { second, .. } = add else { unreachable!() };
+            assert!(matches!(flattened.expressions[second], Expr::Primary(_)));
         }
         Ok(())
     }
@@ -1647,20 +1536,20 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let add = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(add, Expr::Additive(_)),);
-            let first_idx = a.first else { unreachable!() };
-            assert!(matches!(flattened.expressions[first_idx], Expr::Unary(_)));
+            let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(add, Expr::Binary { r#type: BinaryExprType::Add, .. }));
+            let Expr::Binary { first, .. } = add else { unreachable!() };
+            assert!(matches!(flattened.expressions[first], Expr::Unary(_)));
         }
         {
             let src = r#"!hi-- + -1"#.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let add = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(add, Expr::Binary { r#type: BinaryExprType:Add, .. }));
-            let first_idx = add.first else { unreachable!() };
-            assert!(matches!(flattened.expressions[first_idx], Expr::Unary(_)));
+            let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(add, Expr::Binary { r#type: BinaryExprType::Add, .. }));
+            let Expr::Binary { first, .. } = add else { unreachable!() };
+            assert!(matches!(flattened.expressions[first], Expr::Unary(_)));
         }
         Ok(())
     }
@@ -1671,7 +1560,7 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let post = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let post = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 post,
                 Expr::PostFix(PostFix::WithPointerToMember { .. })
@@ -1683,10 +1572,10 @@ mod tests {
     fn parse_expressions_postfix_subscript() -> Result<(), String> {
         {
             let src = r#"hi[hi2]"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let post_subscript = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let post_subscript = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 post_subscript,
                 Expr::PostFix(PostFix::WithSubscript { .. })
@@ -1701,7 +1590,7 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let assign = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let assign = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 assign,
                 Expr::Binary {
@@ -1709,11 +1598,10 @@ mod tests {
                     ..
                 }
             ));
-            let first_idx = a.first else { unreachable!() };
-            assert!(matches!(flattened.expressions[first_idx], Expr::Primary(_)));
-            let second_idx = a.second else { unreachable!() };
+            let Expr::Binary { first, second, .. } = assign else { unreachable!() };
+            assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
             assert!(matches!(
-                flattened.expressions[second_idx],
+                flattened.expressions[second],
                 Expr::Primary(_)
             ));
         }
@@ -1726,7 +1614,7 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let assign = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps);
+            let assign = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps);
             assert!(assign.is_err());
         }
         Ok(())
@@ -1734,236 +1622,107 @@ mod tests {
     #[test]
     fn parse_expressions_unary_increment_decrement() -> Result<(), String> {
         {
-            let src = r#"++variable"#.as_bytes();
+            let src = r#"--variable"#.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let unary_increment = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_increment, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_increment else {
+            let unary_decrement = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_decrement, Expr::Unary(UnaryType::Expr { .. })));
+            let Expr::Unary(UnaryType::Expr { op, first }) = unary_decrement else {
                 unreachable!()
             };
-            assert!(matches!(u.op, TokenType::INCREMENT));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
-            let src = r#"--variable"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = Flattened::new();
-            let unary_decrement = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_decrement, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_decrement else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::DECREMENT));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+            assert!(matches!(op, TokenType::DECREMENT));
+            assert!(flattened.expressions.len() > first);
         }
         Ok(())
     }
     #[test]
     fn parse_expressions_unary_ops_test() -> Result<(), String> {
         {
-            let src = r#"*hi"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = Flattened::new();
-            let unary_deref = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_deref, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_deref else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::ASTERISK));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
-            let src = r#"&hi"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = Flattened::new();
-            let unary_amper = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_amper, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_amper else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::AMPERSAND));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
-            let src = r#"+hi"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let unary_plus = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_plus, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_plus else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::PLUS));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
-            let src = r#"-hi"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let unary_minus = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_minus, Expr::Unary(_)));
-            let parser::expressions::Expr::Unary(u) = unary_minus else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::MINUS));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
-            let src = r#"~hi"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = Flattened::new();
-            let unary_tilde = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_tilde, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_tilde else {
-                unreachable!()
-            };
-            assert!(matches!(u.op, TokenType::TILDE));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
-        }
-        {
             let src = r#"!hi"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let unary_not = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_not, Expr::Unary(_)));
-            let Expr::Unary(u) = unary_not else {
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let unary_not = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_not, Expr::Unary(UnaryType::Expr { .. })));
+            let Expr::Unary(UnaryType::Expr { op, first }) = unary_not else {
                 unreachable!()
             };
-            assert!(matches!(u.op, TokenType::NOT_BOOL));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+            assert!(matches!(op, TokenType::NOT_BOOL));
+            assert!(flattened.expressions.len() > first);
         }
         {
             let src = r#"sizeof hi"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let unary_sizeof = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_sizeof, Expr::Unary(_)));
-            let parser::expressions::Expr::Unary(u) = unary_sizeof else {
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let unary_sizeof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOf(_))));
+            let Expr::Unary(UnaryType::SizeOf(type_name_idx)) = unary_sizeof else {
                 unreachable!()
             };
-            assert!(matches!(u.op, TokenType::SIZEOF));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+            assert!(flattened.type_names.len() > type_name_idx);
         }
         {
             let src = r#"_Alignof (hi)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let unary_alignof = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_alignof, parser::expressions::Expr::Unary(_)));
-            let Expr::Unary(u) = unary_alignof else {
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let unary_alignof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_alignof, Expr::Unary(_)));
+            let Expr::Unary(UnaryType::AlignOf(type_name_idx)) = unary_alignof else {
                 unreachable!()
             };
-            assert!(matches!(u.op, TokenType::_ALIGNOF));
-            assert!(u.first.is_some() && flattened.expressions.len() > u.first.unwrap());
+            assert!(flattened.type_names.get(type_name_idx).is_some());
         }
         Ok(())
     }
     #[test]
     fn parse_expressions_comma_operator() -> Result<(), String> {
         {
-            let src = r#"(1, 5)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let primary_comma = parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(
-                primary_comma,
-                parser::expressions::Expr::Primary(_)
-            ));
-            let Expr::Primary(PrimaryType::Expr(c)) = primary_comma else {
-                unreachable!()
-            };
-            assert!(matches!(
-                flattened.expressions[c],
-                parser::expressions::Expr::Comma(_)
-            ));
-            let parser::expressions::Expr::Comma(c) = flattened.expressions[c] else {
-                unreachable!()
-            };
-            assert!(c.first.is_some());
-            assert!(c.second.is_some());
-            let Some(first) = c.first else { unreachable!() };
-            let Some(second) = c.second else {
-                unreachable!()
-            };
-            assert!(first < flattened.expressions.len());
-            assert!(second < flattened.expressions.len());
-            assert!(matches!(
-                flattened.expressions[first],
-                parser::expressions::Expr::Primary(_)
-            ));
-            assert!(matches!(
-                flattened.expressions[second],
-                parser::expressions::Expr::Primary(_)
-            ));
-        }
-        {
             let src = r#"(1, 3, 5)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
             let primary_comma_nested =
-                parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+                parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 primary_comma_nested,
-                parser::expressions::Expr::Primary(_)
+                Expr::Primary(_)
             ));
-            let parser::expressions::Expr::Primary(Some(parser::expressions::PrimaryInner::Expr(
+            let Expr::Primary(PrimaryType::Expr(
                 c,
-            ))) = primary_comma_nested
+            )) = primary_comma_nested
             else {
                 unreachable!()
             };
             assert!(matches!(
                 flattened.expressions[c],
-                parser::expressions::Expr::Comma(_)
+                Expr::Binary { r#type: BinaryExprType::Comma, .. }
             ));
-            let parser::expressions::Expr::Comma(c) = flattened.expressions[c] else {
-                unreachable!()
-            };
-            assert!(c.first.is_some());
-            assert!(c.second.is_some());
-            let Some(first) = c.first else { unreachable!() };
-            let Some(second) = c.second else {
+            let Expr::Binary { r#type: BinaryExprType::Comma, first, second } = flattened.expressions[c] else {
                 unreachable!()
             };
             assert!(first < flattened.expressions.len());
             assert!(second < flattened.expressions.len());
             assert!(matches!(
                 flattened.expressions[first],
-                parser::expressions::Expr::Comma(_)
+                Expr::Binary { r#type: BinaryExprType::Comma, .. }
             ));
             assert!(matches!(
                 flattened.expressions[second],
-                parser::expressions::Expr::Primary(Some(_))
+                Expr::Primary(_)
             ));
-            let parser::expressions::Expr::Comma(c) = flattened.expressions[first] else {
-                unreachable!()
-            };
-            assert!(c.first.is_some());
-            assert!(c.second.is_some());
-            let Some(first) = c.first else { unreachable!() };
-            let Some(second) = c.second else {
+            let Expr::Binary { r#type: BinaryExprType::Comma, first, second } = flattened.expressions[first] else {
                 unreachable!()
             };
             assert!(matches!(
                 flattened.expressions[first],
-                parser::expressions::Expr::Primary(Some(_))
+                Expr::Primary(_)
             ));
             assert!(matches!(
                 flattened.expressions[second],
-                parser::expressions::Expr::Primary(Some(_))
+                Expr::Primary(_)
             ));
         }
         Ok(())
@@ -1972,19 +1731,19 @@ mod tests {
     fn parse_expressions_argument_expression_test() -> Result<(), String> {
         {
             let src = r#"hi(1, 3, 5)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
             let postfix_arg_expr_list =
-                parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+                parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 postfix_arg_expr_list,
-                parser::expressions::Expr::PostFix(
-                    parser::expressions::PostFix::WithFunctionCall { .. }
+                Expr::PostFix(
+                    PostFix::WithFunctionCall { .. }
                 )
             ));
-            let parser::expressions::Expr::PostFix(
-                parser::expressions::PostFix::WithFunctionCall {
+            let Expr::PostFix(
+                PostFix::WithFunctionCall {
                     argument_expr_idx,
                     first,
                 },
@@ -1992,28 +1751,27 @@ mod tests {
             else {
                 unreachable!()
             };
-            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
-            assert!(flattened.expressions.len() > first.unwrap());
+            assert!(flattened.expressions.len() > first);
             assert!(matches!(
-                flattened.expressions[first.unwrap()],
-                parser::expressions::Expr::Primary(_)
+                flattened.expressions[first],
+                Expr::Primary(_)
             ));
         }
         {
             let src = r#"me->hi(1, 3, 5)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
             let postfix_arg_expr_list =
-                parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
+                parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 postfix_arg_expr_list,
-                parser::expressions::Expr::PostFix(
-                    parser::expressions::PostFix::WithFunctionCall { .. }
+                Expr::PostFix(
+                    PostFix::WithFunctionCall { .. }
                 )
             ));
-            let parser::expressions::Expr::PostFix(
-                parser::expressions::PostFix::WithFunctionCall {
+            let Expr::PostFix(
+                PostFix::WithFunctionCall {
                     argument_expr_idx,
                     first,
                 },
@@ -2021,54 +1779,11 @@ mod tests {
             else {
                 unreachable!()
             };
-            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
-            assert!(flattened.expressions.len() > first.unwrap());
+            assert!(flattened.expressions.len() > first);
             assert!(matches!(
-                flattened.expressions[first.unwrap()],
-                parser::expressions::Expr::PostFix(
-                    parser::expressions::PostFix::WithPointerToMember { .. }
-                )
-            ));
-        }
-        {
-            let src = r#"me->hi.meow(1, 3, 5)"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(&src.to_vec(), false, &mut str_maps)?;
-            let mut flattened = parser::Flattened::new();
-            let postfix_arg_expr_list =
-                parse_expressions(&tokens, 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(
-                postfix_arg_expr_list,
-                parser::expressions::Expr::PostFix(
-                    parser::expressions::PostFix::WithFunctionCall { .. }
-                )
-            ));
-            let parser::expressions::Expr::PostFix(
-                parser::expressions::PostFix::WithFunctionCall {
-                    argument_expr_idx,
-                    first,
-                },
-            ) = postfix_arg_expr_list
-            else {
-                unreachable!()
-            };
-            assert!(flattened.argument_expr_list_list[argument_expr_idx].len() == 3);
-            assert!(flattened.expressions.len() > first.unwrap());
-            assert!(matches!(
-                flattened.expressions[first.unwrap()],
-                parser::expressions::Expr::PostFix(parser::expressions::PostFix::WithMember { .. })
-            ));
-            let parser::expressions::Expr::PostFix(parser::expressions::PostFix::WithMember {
-                first,
-                member_ident_key,
-            }) = flattened.expressions[first.unwrap()]
-            else {
-                unreachable!()
-            };
-            assert!(matches!(
-                flattened.expressions[first.unwrap()],
-                parser::expressions::Expr::PostFix(
-                    parser::expressions::PostFix::WithPointerToMember { .. }
+                flattened.expressions[first],
+                Expr::PostFix(
+                    PostFix::WithPointerToMember { .. }
                 )
             ));
         }

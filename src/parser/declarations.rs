@@ -511,7 +511,7 @@ fn parse_designator(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut ByteVecMaps
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Designator, String> {
     match tokens.get(*index) {
         Some(Token {
@@ -522,7 +522,9 @@ fn parse_designator(
             let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
             expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
             flattened.expressions.push(expr);
-            return Ok(Designator::WithConstantExpr(flattened.expressions.len() - 1));
+            return Ok(Designator::WithConstantExpr(
+                flattened.expressions.len() - 1,
+            ));
         }
         Some(Token {
             r#type: TokenType::DOT,
@@ -543,7 +545,10 @@ fn parse_designator(
         _ => {}
     }
     match tokens.get(*index) {
-        Some(Token { location: Some(Location{line, column}), .. }) => {
+        Some(Token {
+            location: Some(Location { line, column }),
+            ..
+        }) => {
             return Err(error("Unexpected =, expected . or [", *line, *column));
         }
         _ => {}
@@ -555,7 +560,7 @@ fn parse_designator_list(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut ByteVecMaps
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Designator>, String> {
     let mut designators = Vec::new();
     while !matches!(
@@ -574,7 +579,7 @@ fn parse_designation(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut ByteVecMaps
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Designation, String> {
     let mut designation = Designation {
         designator_list: parse_designator_list(tokens, index, flattened, str_maps)?,
@@ -614,7 +619,7 @@ pub fn parse_initializer_list(
         let designation_initializer = InitializerList {
             designation,
             initializer: flattened.initializers.len() - 1,
-            next: None
+            next: None,
         };
         if first_initializer_list.is_none() {
             // i dont push to flattened.initializer_lists here bc once this function returns first_initializer_list, it'll be pushed to flattened by the caller.
@@ -622,7 +627,9 @@ pub fn parse_initializer_list(
         } else {
             flattened.initializer_lists.push(designation_initializer);
             if first_initializer_list.unwrap().next.is_none() {
-                let Some(il) = &mut first_initializer_list else { unreachable!() };
+                let Some(il) = &mut first_initializer_list else {
+                    unreachable!()
+                };
                 il.next = Some(flattened.initializer_lists.len() - 1);
             } else {
                 let mut il = flattened.initializer_lists[flattened.initializer_lists.len() - 2];
@@ -1565,10 +1572,10 @@ pub fn parse_direct_abstract_declarator(
 }
 
 pub fn parse_abstract_declarator(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<AbstractDeclarator, String> {
     let mut ad = AbstractDeclarator {
         pointer: Vec::new(),
@@ -1583,10 +1590,10 @@ pub fn parse_abstract_declarator(
 }
 
 pub fn parse_type_names(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<TypeName, String> {
     let mut type_name = TypeName::new();
     let specifier_qualifier_list = parse_specifiers_qualifiers(tokens, index, flattened, str_maps)?;
@@ -1607,7 +1614,9 @@ mod tests {
         DirectAbstractDeclarator, DirectDeclarator, Enumerator, InitDeclarator, Initializer,
         InitializerList, TypeQualifier, TypeSpecifier,
     };
-    use crate::{lexer, parser};
+    use crate::lexer::*;
+    use crate::parser::*;
+    use crate::parser::expressions::*;
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
         {
@@ -1618,9 +1627,9 @@ mod tests {
         }
 "#
             .as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let start_index = {
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let mut start_index = {
                 let mut index = 0;
                 while !matches!(
                     tokens.get(index),
@@ -1633,8 +1642,8 @@ mod tests {
                 }
                 index + 1
             };
-            let (_, enum_specifier) =
-                parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
+            let enum_specifier =
+                parse_enumerator_specifier(tokens.as_slice(), &mut start_index, &mut str_maps)?;
             assert_eq!(
                 enum_specifier.identifier,
                 Some(str_maps.add_byte_vec("HI".as_bytes()))
@@ -1657,9 +1666,9 @@ mod tests {
         }
 "#
             .as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let start_index = {
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let mut start_index = {
                 let mut index = 0;
                 while !matches!(
                     tokens.get(index),
@@ -1672,8 +1681,8 @@ mod tests {
                 }
                 index + 1
             };
-            let (_, enum_specifier) =
-                parse_enumerator_specifier(tokens.as_slice(), start_index, &mut str_maps)?;
+            let enum_specifier =
+                parse_enumerator_specifier(tokens.as_slice(), &mut start_index, &mut str_maps)?;
             assert_eq!(
                 enum_specifier.identifier,
                 Some(str_maps.add_byte_vec("HI".as_bytes()))
@@ -1697,16 +1706,16 @@ mod tests {
     fn parse_initializer_test() -> Result<(), String> {
         {
             let src = r#"{ .hi = 4, .hi2 = 4 }"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let i = parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             let Initializer::InitializerList(ili) = i else {
                 unreachable!()
             };
             let il = flattened.initializer_lists[ili].clone();
-            let il1 = il[0];
-            let il2 = il[1];
+            let il1 = flattened.initializer_lists[il.next.unwrap()];
+            let il2 = flattened.initializer_lists[il1.next.unwrap()];
             let Some(des1_idx) = il1.designation else {
                 unreachable!()
             };
@@ -1719,7 +1728,7 @@ mod tests {
                 },
                 des1
             );
-            let Some(ini1_idx) = il1.initializer else {
+            let ini1_idx = il1.initializer else {
                 unreachable!()
             };
             let ini1 = flattened.initializers[ini1_idx].clone();
@@ -1741,7 +1750,7 @@ mod tests {
                 },
                 des2
             );
-            let Some(ini2_idx) = il2.initializer else {
+            let ini2_idx = il2.initializer else {
                 unreachable!()
             };
             let ini2 = flattened.initializers[ini2_idx].clone();
@@ -1753,34 +1762,34 @@ mod tests {
         }
         {
             let src = r#"{}"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            assert!(parse_initializer(&tokens, 0, &mut flattened, &mut str_maps).is_err());
+            let tokens = lexer(src, false, &mut str_maps)?;
+            assert!(parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps).is_err());
         }
         {
             let src = r#"{ {[100] = 5}, 8, .baz = "" }"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let i = parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         }
         {
             let src = r#"{ 8, 8, .baz = "" }"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, i) = parse_initializer(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let i = parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         }
         Ok(())
     }
     #[test]
     fn parse_type_names_test_pointer_to_int_array_size_3() -> Result<(), String> {
         let src = r#"int (*)[3]"#.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
-        let tokens = lexer::lexer(src, false, &mut str_maps)?;
-        let (_, type_name) = parse_type_names(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let tokens = lexer(src, false, &mut str_maps)?;
+        let type_name = parse_type_names(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(
             type_name.specifier_qualifier_list.type_specifiers.first(),
             Some(TypeSpecifier::Int)
@@ -1815,7 +1824,7 @@ mod tests {
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[expr_idx] else {
             unreachable!()
         };
-        let TokenType::CONSTANT_DEC_INT { value_key, .. } = t else {
+        let TokenType::CONSTANT_DEC_INT { value_key, .. } = t.r#type else {
             unreachable!()
         };
         assert_eq!(value_key, str_maps.add_byte_vec(b"3"));
@@ -1827,7 +1836,7 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
         let tokens = lexer(src, false, &mut str_maps)?;
-        let type_name = parse_type_names(&tokens, 0, &mut flattened, &mut str_maps)?;
+        let type_name = parse_type_names(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(matches!(
             type_name.specifier_qualifier_list.type_specifiers.first(),
             Some(TypeSpecifier::Int)
@@ -1861,10 +1870,10 @@ mod tests {
     fn parse_declarators_test_simple() -> Result<(), String> {
         {
             let src = r#"* hi"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, dec) = parse_declarator(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let dec = parse_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(dec, Declarator { .. }));
             let Declarator {
                 pointer,
@@ -1885,10 +1894,10 @@ mod tests {
     #[test]
     fn parse_parameter_type_list_test() -> Result<(), String> {
         let src = r#"int hi, int hi2, int hi3;"#.as_bytes();
-        let mut str_maps = lexer::ByteVecMaps::new();
+        let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
-        let tokens = lexer::lexer(src, false, &mut str_maps)?;
-        let ptl = parse_parameter_type_list(&tokens, &mut flattened, &mut str_maps)?;
+        let tokens = lexer(src, false, &mut str_maps)?;
+        let ptl = parse_parameter_type_list(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
         assert!(ptl.parameter_declarations.len() == 3);
         Ok(())
     }
@@ -1896,11 +1905,11 @@ mod tests {
     fn parse_struct_declarator_test() -> Result<(), String> {
         {
             let src = r#"hi : 4"#.as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, struct_declarator) =
-                parse_struct_declarator(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let struct_declarator =
+                parse_struct_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 struct_declarator.declarator,
                 Some(Declarator {
@@ -1930,11 +1939,11 @@ mod tests {
 int : 4;
 };"#
             .as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, struct_union_specifier) =
-                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let struct_union_specifier =
+                parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(struct_union_specifier.struct_declaration_list.len() == 1);
             assert!(
                 struct_union_specifier.struct_declaration_list[0]
@@ -1954,11 +1963,11 @@ int : 4;
 int hi;
 };"#
             .as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, struct_union_specifier) =
-                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let struct_union_specifier =
+                parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(struct_union_specifier.struct_declaration_list.len() == 1);
             assert!(
                 struct_union_specifier.struct_declaration_list[0]
@@ -1983,11 +1992,11 @@ int hi;
 int hi;
 };"#
             .as_bytes();
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src, false, &mut str_maps)?;
-            let (_, struct_union_specifier) =
-                parse_struct_union_specifier(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src, false, &mut str_maps)?;
+            let struct_union_specifier =
+                parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(struct_union_specifier.struct_declaration_list.len() == 1);
             assert!(
                 struct_union_specifier.identifier.unwrap()
@@ -2017,10 +2026,10 @@ int hi;
     fn parse_declarations_test() -> Result<(), String> {
         {
             let src = r#"int hi = 4;"#;
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (declaration, _) = parse_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
+            let declaration = parse_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             let Declaration {
                 declaration_specifiers,
                 init_declarator_list,
@@ -2051,10 +2060,10 @@ int hi;
         {
             // gnarly
             let src = r#"void (*(*f[])())();"#;
-            let mut str_maps = lexer::ByteVecMaps::new();
+            let mut str_maps = ByteVecMaps::new();
             let mut flattened = Flattened::new();
-            let tokens = lexer::lexer(src.as_bytes(), false, &mut str_maps)?;
-            let (declaration, _) = parse_declarations(&tokens, 0, &mut flattened, &mut str_maps)?;
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
+            let declaration = parse_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             let Declaration {
                 declaration_specifiers,
                 init_declarator_list,
