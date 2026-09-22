@@ -393,11 +393,21 @@ pub fn is_declaration_token(t: Token) -> bool {
         _ => false,
     }
 }
+
+pub fn parse_init_declarator_list(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+) -> () {
+    todo!()
+}
+
 pub fn parse_declarations(
     tokens: &[lexer::Token],
     index: &mut usize,
     flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<Declaration, String> {
     let mut declaration = Declaration::new();
     let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
@@ -412,6 +422,7 @@ pub fn parse_declarations(
     {
         loop {
             let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
             if !matches!(
                 tokens.get(*index),
                 Some(Token {
@@ -423,18 +434,6 @@ pub fn parse_declarations(
                     .init_declarator_list
                     .push(InitDeclarator::Declarator(declarator));
             } else {
-                loop {
-                    *index += 1;
-                    if matches!(
-                        tokens.get(*index),
-                        Some(Token {
-                            r#type: TokenType::COMMA | TokenType::SEMI_COLON,
-                            ..
-                        }) | None
-                    ) {
-                        break;
-                    }
-                }
                 if !matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -1386,6 +1385,7 @@ pub fn parse_declaration_specifiers(
             } => todo!(),
             _ => break,
         }
+        *index += 1;
     }
     Ok(declaration_specifier)
 }
@@ -1615,8 +1615,8 @@ mod tests {
         InitializerList, TypeQualifier, TypeSpecifier,
     };
     use crate::lexer::*;
-    use crate::parser::*;
     use crate::parser::expressions::*;
+    use crate::parser::*;
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
         {

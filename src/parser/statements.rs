@@ -125,6 +125,8 @@ pub fn parse_statement(
             r#type: TokenType::OPEN_CURLY,
             ..
         }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
             flattened.compound_statements.push(compound);
             Ok(Statement::Compound(flattened.compound_statements.len() - 1))
@@ -133,6 +135,8 @@ pub fn parse_statement(
             r#type: TokenType::IF | TokenType::SWITCH,
             ..
         }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             let selection = parse_selection_statement(tokens, index, flattened, str_maps)?;
             flattened.selection_statements.push(selection);
             Ok(Statement::Selection(
@@ -143,6 +147,8 @@ pub fn parse_statement(
             r#type: TokenType::WHILE | TokenType::DO { .. } | TokenType::FOR { .. },
             ..
         }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             let iteration = parse_iteration_statement(tokens, index, flattened, str_maps)?;
             flattened.iteration_statements.push(iteration);
             Ok(Statement::Iteration(
@@ -153,6 +159,8 @@ pub fn parse_statement(
             r#type: TokenType::GOTO | TokenType::CONTINUE | TokenType::BREAK | TokenType::RETURN,
             ..
         }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             let jump = parse_jump_statement(tokens, index, flattened, str_maps)?;
             flattened.jump_statements.push(jump);
             Ok(Statement::Jump(flattened.jump_statements.len() - 1))
@@ -160,33 +168,6 @@ pub fn parse_statement(
         None => unreachable!(),
         _ => todo!("parse expression-statement: {:?}", tokens[*index]),
     }
-}
-
-pub fn expected_identifier(
-    tokens: &[Token],
-    str_maps: &mut ByteVecMaps,
-    idx: &mut usize,
-) -> Result<(), String> {
-    match tokens.get(*idx) {
-        Some(t) if !matches!(t.r#type, TokenType::IDENT { .. }) => {
-            let Token {
-                location: Some(Location { column, line }),
-                ..
-            } = t
-            else {
-                unreachable!()
-            };
-            let msg = format!("Expected an identifier",);
-            return Err(error(&msg, *line, *column));
-        }
-        None => {
-            let msg = format!("Expected an identifier",);
-            return Err(msg);
-        }
-        _ => {}
-    };
-    *idx += 1;
-    Ok(())
 }
 
 pub fn parse_labeled_statement(
@@ -239,11 +220,11 @@ pub fn parse_compound_statement(
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Compound, String> {
-    consume_whitespace(tokens, index);
     let mut compound = Compound {
         block_item_list: Vec::new(),
     };
     while *index < tokens.len() {
+        consume_whitespace(tokens, index);
         if let Some(token) = tokens.get(*index) {
             if is_statement_token(token.r#type) {
                 let statement = parse_statement(&tokens, index, flattened, str_maps)?;
@@ -596,7 +577,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let stmt = parse_compound_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            let stmt = parse_compound_statement(&tokens, &mut 1, &mut flattened, &mut str_maps)?;
             let Compound { block_item_list } = stmt;
             assert!(matches!(
                 block_item_list.get(0),

@@ -51,6 +51,33 @@ pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) -> R
     Ok(())
 }
 
+pub fn expected_identifier(
+    tokens: &[Token],
+    str_maps: &mut ByteVecMaps,
+    idx: &mut usize,
+) -> Result<(), String> {
+    match tokens.get(*idx) {
+        Some(t) if !matches!(t.r#type, TokenType::IDENT { .. }) => {
+            let Token {
+                location: Some(Location { column, line }),
+                ..
+            } = t
+            else {
+                unreachable!()
+            };
+            let msg = format!("Expected an identifier",);
+            return Err(error(&msg, *line, *column));
+        }
+        None => {
+            let msg = format!("Expected an identifier",);
+            return Err(msg);
+        }
+        _ => {}
+    };
+    *idx += 1;
+    Ok(())
+}
+
 // Some structures don't need to be in here
 // because those types don't get cloned often
 pub struct Flattened {

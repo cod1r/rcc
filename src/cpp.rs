@@ -2286,13 +2286,13 @@ pub fn cpp(
 mod tests {
 
     use crate::lexer::*;
-    use crate::parser::*;
     use crate::parser::expressions::*;
+    use crate::parser::*;
     use std::collections::HashMap;
 
     use super::{
-        process_comments, cpp, define_directive, expand_macro, if_directive, parse_defined_in_if_directive,
-        preprocessing_directives, Define,
+        cpp, define_directive, expand_macro, if_directive, parse_defined_in_if_directive,
+        preprocessing_directives, process_comments, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -2365,7 +2365,10 @@ int main() {
                 TokenType::CLOSE_CURLY,
             ]
             .to_vec();
-            assert_eq!(assert_tokens, tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>());
+            assert_eq!(
+                assert_tokens,
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            );
         }
         {
             let src = r##"#define FILE "hi.h"
@@ -2399,7 +2402,10 @@ int main() {
                 TokenType::CLOSE_CURLY,
             ]
             .to_vec();
-            assert_eq!(assert_tokens, tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>());
+            assert_eq!(
+                assert_tokens,
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            );
         }
         Ok(())
     }
@@ -2437,7 +2443,10 @@ hi;
             TokenType::NEWLINE,
             TokenType::CLOSE_CURLY,
         ];
-        assert_eq!(assert_tokens, tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>());
+        assert_eq!(
+            assert_tokens,
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+        );
         Ok(())
     }
     #[test]
@@ -2594,7 +2603,13 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                     TokenType::HASH_HASH,
                     TokenType::WHITESPACE,
                     TokenType::HASH,
-                ].iter().map(|t| Token{ r#type: *t, location: None}).collect::<Vec<Token>>()
+                ]
+                .iter()
+                .map(|t| Token {
+                    r#type: *t,
+                    location: None
+                })
+                .collect::<Vec<Token>>()
             },
             *defines
                 .get(&str_maps.add_byte_vec("hash_hash".as_bytes()))
@@ -2610,7 +2625,13 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                     TokenType::IDENT {
                         str_map_key: str_maps.add_byte_vec("a".as_bytes()),
                     },
-                ].iter().map(|t| Token{ r#type: *t, location: None}).collect::<Vec<Token>>()
+                ]
+                .iter()
+                .map(|t| Token {
+                    r#type: *t,
+                    location: None
+                })
+                .collect::<Vec<Token>>()
             },
             *defines
                 .get(&str_maps.add_byte_vec("mkstr".as_bytes()))
@@ -2629,7 +2650,13 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                         str_map_key: str_maps.add_byte_vec("a".as_bytes())
                     },
                     TokenType::CLOSE_PAR,
-                ].iter().map(|t| Token{ r#type: *t, location: None}).collect::<Vec<Token>>()
+                ]
+                .iter()
+                .map(|t| Token {
+                    r#type: *t,
+                    location: None
+                })
+                .collect::<Vec<Token>>()
             },
             *defines
                 .get(&str_maps.add_byte_vec("in_between".as_bytes()))
@@ -2659,7 +2686,13 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
                         str_map_key: str_maps.add_byte_vec("d".as_bytes())
                     },
                     TokenType::CLOSE_PAR,
-                ].iter().map(|t| Token{ r#type: *t, location: None}).collect::<Vec<Token>>()
+                ]
+                .iter()
+                .map(|t| Token {
+                    r#type: *t,
+                    location: None
+                })
+                .collect::<Vec<Token>>()
             },
             *defines
                 .get(&str_maps.add_byte_vec("join".as_bytes()))
@@ -2692,7 +2725,10 @@ A"##
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix: None,
             }],
-            final_tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            final_tokens
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2733,7 +2769,10 @@ A"##
                     suffix: None,
                 }
             ],
-            final_tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            final_tokens
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2830,7 +2869,10 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                 TokenType::CLOSE_PAR,
                 TokenType::CLOSE_PAR,
             ],
-            final_tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            final_tokens
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2874,7 +2916,10 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                     suffix: None,
                 },
             ],
-            final_tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            final_tokens
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2909,7 +2954,10 @@ HAHA(C,4)"##
                     suffix: None,
                 },
             ],
-            final_tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+            final_tokens
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -3156,7 +3204,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed for 1 inner test"
             );
         }
@@ -3202,7 +3253,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed for 3 inner test"
             );
         }
@@ -3248,7 +3302,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed for 5 inner test"
             );
         }
@@ -3272,7 +3329,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed 6"
             );
         }
@@ -3302,7 +3362,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed 7"
             );
         }
@@ -3332,7 +3395,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed 8"
             );
         }
@@ -3361,7 +3427,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed 9"
             );
         }
@@ -3391,7 +3460,10 @@ PP(/,*)PP2(*,/)"##
                     },
                     TokenType::NEWLINE,
                 ],
-                tokens[0..2].iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+                tokens[0..2]
+                    .iter()
+                    .map(|t| t.r#type)
+                    .collect::<Vec<TokenType>>(),
                 "failed 10"
             );
         }
@@ -3440,7 +3512,10 @@ GET_SECOND(COMMA PP,T)"##;
             &mut defines,
             &mut str_maps,
         )?;
-        assert_eq!(vec![TokenType::OPEN_PAR, TokenType::CLOSE_PAR], tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>());
+        assert_eq!(
+            vec![TokenType::OPEN_PAR, TokenType::CLOSE_PAR],
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
+        );
         Ok(())
     }
     #[test]

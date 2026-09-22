@@ -25,23 +25,24 @@ pub enum Type {
 
 pub type ExpressionIndex = usize;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum UnaryType {
     Expr {
         op: TokenType,
         first: ExpressionIndex,
     },
-    SizeOf(TypeNameIndex),
+    SizeOfTypeName(TypeNameIndex),
+    SizeOfUnaryExpr(ExpressionIndex),
     AlignOf(TypeNameIndex),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Cast {
     type_name: TypeNameIndex,
     cast_expr: ExpressionIndex,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PostFix {
     WithSubscript {
         first: ExpressionIndex,
@@ -69,7 +70,7 @@ pub enum PostFix {
     },
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 enum BinaryExprType {
     Comma,
     Assignment,
@@ -94,20 +95,20 @@ enum BinaryExprType {
     ArgExprList,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Conditional {
     pub first: ExpressionIndex,
     pub second: ExpressionIndex,
     pub third: ExpressionIndex,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum PrimaryType {
     Token(Token),
     Expr(ExpressionIndex),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum Expr {
     Binary {
         r#type: BinaryExprType,
@@ -119,34 +120,6 @@ pub enum Expr {
     Cast(Cast),
     PostFix(PostFix),
     Primary(PrimaryType),
-}
-
-impl Expr {
-    pub fn priority(&self) -> u8 {
-        use BinaryExprType::*;
-        match self {
-            Expr::Binary { r#type, .. } => match r#type {
-                Mult | Div | Mod => u8::MAX - 4,
-                Add | Sub => u8::MAX - 5,
-                BitShiftLeft | BitShiftRight => u8::MAX - 6,
-                LessThan | GreaterThan | LessThanEq | GreaterThanEq => u8::MAX - 7,
-                NotEq | Eq => u8::MAX - 8,
-                BitAND => u8::MAX - 9,
-                BitXOR => u8::MAX - 10,
-                BitOR => u8::MAX - 11,
-                LogAND => u8::MAX - 12,
-                LogOR => u8::MAX - 13,
-                Assignment => u8::MAX - 15,
-                Comma => u8::MAX - 16,
-                _ => unreachable!(),
-            },
-            Expr::Conditional(_) => u8::MAX - 14,
-            Expr::Unary(_) => u8::MAX - 2,
-            Expr::PostFix(_) => u8::MAX - 1,
-            Expr::Primary(_) => u8::MAX,
-            Expr::Cast(_) => u8::MAX - 3,
-        }
-    }
 }
 
 macro_rules! expression_operators {
@@ -218,6 +191,8 @@ macro_rules! unary_ops {
             | TokenType::MINUS
             | TokenType::TILDE
             | TokenType::NOT_BOOL
+            | TokenType::INCREMENT
+            | TokenType::DECREMENT
     };
 }
 
@@ -237,7 +212,43 @@ macro_rules! assignment_ops {
     };
 }
 
-fn parse_primary_expression(tokens: &[Token], index: &mut usize) -> Result<Expr, String> {
+macro_rules! postfix_ops {
+    () => {
+TokenType::OPEN_SQR
+                            | TokenType::OPEN_PAR
+                            | TokenType::DOT
+                            | TokenType::ARROW
+                            | TokenType::INCREMENT
+                            | TokenType::DECREMENT
+    }
+}
+
+fn parse_primary_expression(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Expr, String> {
+    if matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::OPEN_PAR,
+            ..
+        })
+    ) {
+        *index += 1;
+        consume_whitespace(tokens, index);
+
+        let expr = parse_expressions(tokens, index, flattened, str_maps)?;
+
+        consume_whitespace(tokens, index);
+        expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
+
+        flattened.expressions.push(expr);
+        return Ok(Expr::Primary(PrimaryType::Expr(
+            flattened.expressions.len() - 1,
+        )));
+    }
     if !matches!(
         tokens.get(*index),
         Some(Token {
@@ -260,7 +271,9 @@ fn parse_primary_expression(tokens: &[Token], index: &mut usize) -> Result<Expr,
             }
         }
     }
-    Ok(Expr::Primary(PrimaryType::Token(tokens[*index])))
+    let t = tokens[*index];
+    *index += 1;
+    Ok(Expr::Primary(PrimaryType::Token(t)))
 }
 
 fn parse_argument_expression_list(
@@ -271,24 +284,48 @@ fn parse_argument_expression_list(
 ) -> Result<Expr, String> {
     let assignment_expr = parse_assignment_expression(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
-    match tokens.get(*index) {
-        Some(Token {
-            r#type: TokenType::COMMA,
-            ..
-        }) => {
-            *index += 1;
-            let second_operand = parse_assignment_expression(tokens, index, flattened, str_maps)?;
-            flattened.expressions.push(assignment_expr);
-            let first = flattened.expressions.len() - 1;
-            flattened.expressions.push(second_operand);
-            let second = flattened.expressions.len() - 1;
-            Ok(Expr::Binary {
-                r#type: BinaryExprType::ArgExprList,
-                first,
-                second,
-            })
+
+    let mut comma_expr = None;
+    loop {
+        // Because I parse left to right, and because the comma operator comes after the expression,
+        // I have to loop until there isn't another comma token.
+        match tokens.get(*index) {
+            Some(
+                t @ Token {
+                    r#type: TokenType::COMMA,
+                    ..
+                },
+            ) => {
+                *index += 1;
+                consume_whitespace(tokens, index);
+                let second_operand =
+                    parse_assignment_expression(tokens, index, flattened, str_maps)?;
+                flattened.expressions.push(if comma_expr.is_none() {
+                    assignment_expr
+                } else {
+                    comma_expr.unwrap()
+                });
+                let first = flattened.expressions.len() - 1;
+                flattened.expressions.push(second_operand);
+                let second = flattened.expressions.len() - 1;
+                comma_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::ArgExprList,
+                    first,
+                    second,
+                })
+            }
+            _ => return Ok(assignment_expr),
         }
-        _ => Ok(assignment_expr),
+        consume_whitespace(tokens, index);
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::COMMA,
+                ..
+            })
+        ) {
+            break Ok(comma_expr.expect("This should have something"));
+        }
     }
 }
 
@@ -301,10 +338,36 @@ fn parse_postfix_expression(
 ) -> Result<Expr, String> {
     match tokens.get(*index) {
         Some(Token {
+            r#type: TokenType::OPEN_SQR,
+            location: Some(Location { line, column }),
+        }) => {
+            *index += 1;
+            if last_postfix_expression.is_none() {
+                return Err(error("Expected expression before", *line, *column));
+            }
+            flattened.expressions.push(last_postfix_expression.unwrap());
+            let first = flattened.expressions.len() - 1;
+            consume_whitespace(tokens, index);
+            let subscript = parse_expressions(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(subscript);
+            let subscript_idx = flattened.expressions.len() - 1;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
+            return Ok(Expr::PostFix(PostFix::WithSubscript {
+                first,
+                subscript: subscript_idx,
+            }));
+        }
+        Some(Token {
             r#type: TokenType::OPEN_PAR,
             ..
         }) => {
+            let idx_of_open_par = *index;
             *index += 1;
+            if check_if_not_declaration_token(tokens, index) && last_postfix_expression.is_none() {
+                *index = idx_of_open_par;
+                return parse_primary_expression(tokens, index, flattened, str_maps);
+            }
             if last_postfix_expression.is_none() {
                 // typename and initializer postfix expression
                 let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
@@ -340,8 +403,7 @@ fn parse_postfix_expression(
         }
         Some(
             t @ Token {
-                r#type:
-                    TokenType::INCREMENT | TokenType::DECREMENT | TokenType::ARROW | TokenType::DOT,
+                r#type: TokenType::INCREMENT | TokenType::DECREMENT,
                 location: Some(Location { line, column }),
             },
         ) => {
@@ -356,9 +418,39 @@ fn parse_postfix_expression(
                 first: flattened.expressions.len() - 1,
             }));
         }
-        _ => {
-            todo!()
+        Some(
+            t @ Token {
+                r#type: TokenType::ARROW | TokenType::DOT,
+                location: Some(Location { line, column }),
+            },
+        ) => {
+            *index += 1;
+            if last_postfix_expression.is_none() {
+                return Err(error("Expected expression before", *line, *column));
+            }
+            consume_whitespace(tokens, index);
+            expected_identifier(tokens, str_maps, index)?;
+            let Token {
+                r#type: TokenType::IDENT { str_map_key },
+                ..
+            } = tokens[*index - 1]
+            else {
+                unreachable!()
+            };
+            flattened.expressions.push(last_postfix_expression.unwrap());
+            return Ok(Expr::PostFix(match t.r#type {
+                TokenType::ARROW => PostFix::WithPointerToMember {
+                    first: flattened.expressions.len() - 1,
+                    member_ident_key: str_map_key,
+                },
+                TokenType::DOT => PostFix::WithMember {
+                    first: flattened.expressions.len() - 1,
+                    member_ident_key: str_map_key,
+                },
+                _ => unreachable!(),
+            }));
         }
+        _ => parse_primary_expression(tokens, index, flattened, str_maps),
     }
 }
 
@@ -375,8 +467,21 @@ fn parse_unary_expression(
                 ..
             },
         ) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             let cast_expr = parse_cast_expression(tokens, index, flattened, str_maps)?;
-            flattened.expressions.push(cast_expr);
+            consume_whitespace(tokens, index);
+
+            // I need to check for a postfix operator after because postfix operators have a higher precedence than unary ops.
+            // If I don't then the postfix op gets ignored because of the left to right parsing...
+            if matches!(tokens.get(*index), Some(Token{r#type:postfix_ops!(), .. })) {
+                let postfix_expr = parse_postfix_expression(tokens, index, flattened, str_maps, Some(cast_expr))?;
+                flattened.expressions.push(postfix_expr);
+            } else {
+                // need this branch because parse_postfix_expression pushes the passed in expression to the flattened structure as well.
+                flattened.expressions.push(cast_expr);
+            }
+
             Ok(Expr::Unary(UnaryType::Expr {
                 op: t.r#type,
                 first: flattened.expressions.len() - 1,
@@ -393,19 +498,22 @@ fn parse_unary_expression(
                     r#type: TokenType::OPEN_PAR,
                     ..
                 }) => {
+                    *index += 1;
+                    consume_whitespace(tokens, index);
                     let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
                     flattened.type_names.push(type_name);
-                    Ok(Expr::Unary(UnaryType::SizeOf(
+                    Ok(Expr::Unary(UnaryType::SizeOfTypeName(
                         flattened.type_names.len() - 1,
                     )))
                 }
                 _ => {
+                    // I don't increment index here because that token is part of the unary expr
+                    consume_whitespace(tokens, index);
                     let unary_expr = parse_unary_expression(tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(unary_expr);
-                    Ok(Expr::Unary(UnaryType::Expr {
-                        op: TokenType::SIZEOF,
-                        first: flattened.expressions.len() - 1,
-                    }))
+                    Ok(Expr::Unary(UnaryType::SizeOfUnaryExpr (
+                        flattened.expressions.len() - 1,
+                    )))
                 }
             }
         }
@@ -424,8 +532,42 @@ fn parse_unary_expression(
             )))
         }
         None => return Err("Expected unary op or postfix expr".to_string()),
-        _ => parse_postfix_expression(tokens, index, flattened, str_maps, None),
+        _ => {
+            // Due to the nature of how I parse from left to right, and how postfix expressions are by nature,
+            // it's quite tricky to know if something is a postfix expression until the parsing gets past the primary expression.
+            // Therefore, I will keep track of the primary expression in the caller and pass it back into parse_postfix_expression function to
+            // get the proper postfix expression.
+            let mut postfix_expr_temp = None;
+            loop {
+                let postfix_expr = parse_postfix_expression(
+                    tokens,
+                    index,
+                    flattened,
+                    str_maps,
+                    postfix_expr_temp,
+                )?;
+                consume_whitespace(tokens, index);
+                if !matches!(
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: postfix_ops!(),
+                        ..
+                    })
+                ) {
+                    break Ok(postfix_expr);
+                }
+                assert!(matches!(postfix_expr, Expr::Primary(_) | Expr::PostFix(_)));
+                postfix_expr_temp = Some(postfix_expr);
+            }
+        }
     }
+}
+
+fn check_if_not_declaration_token(tokens: &[Token], index: &usize) -> bool {
+    // At this point, I don't know if this will be a primary expression or a cast expression, so I
+    // have to check if it's a declaration token, (ex: `int`). If not, then it is a primary expression so
+    // I reset the index back to the location of the '('.
+    tokens.get(*index).is_some() && !is_declaration_token(tokens[*index])
 }
 
 fn parse_cast_expression(
@@ -439,8 +581,15 @@ fn parse_cast_expression(
             r#type: TokenType::OPEN_PAR,
             ..
         }) => {
+            let open_par_idx = *index;
             *index += 1;
             consume_whitespace(tokens, index);
+
+            if check_if_not_declaration_token(tokens, index) {
+                *index = open_par_idx;
+                return parse_unary_expression(tokens, index, flattened, str_maps);
+            }
+
             let type_name = parse_type_names(tokens, index, flattened, str_maps)?;
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             consume_whitespace(tokens, index);
@@ -472,6 +621,7 @@ fn parse_multiplicative_expression(
             },
         ) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let second_operand = parse_cast_expression(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(cast_expr);
             let first = flattened.expressions.len() - 1;
@@ -509,6 +659,7 @@ fn parse_additive_expression(
             },
         ) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let second_operand =
                 parse_multiplicative_expression(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(mult_expr);
@@ -623,6 +774,7 @@ fn parse_equality_expression(
             },
         ) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let second_operand = parse_relational_expression(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(relational_expr);
             let first = flattened.expressions.len() - 1;
@@ -782,6 +934,7 @@ fn parse_logical_OR_expression(
             },
         ) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let second_operand = parse_logical_AND_expression(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(logical_and_expr);
             let first = flattened.expressions.len() - 1;
@@ -847,46 +1000,55 @@ pub fn parse_assignment_expression(
     str_maps: &mut ByteVecMaps,
 ) -> Result<Expr, String> {
     let conditional = parse_conditional_expression(tokens, index, flattened, str_maps)?;
-    if matches!(
-        conditional,
-        Expr::Unary(_) | Expr::PostFix(_) | Expr::Primary(_)
-    ) {
+    if *index < tokens.len() {
         consume_whitespace(tokens, index);
         match tokens.get(*index) {
             Some(
                 t @ Token {
                     r#type: assignment_ops!(),
-                    ..
+                    location: Some(Location{line,column})
                 },
             ) => {
+                if !matches!(
+                    conditional,
+                    Expr::Unary(_) | Expr::PostFix(_) | Expr::Primary(_)
+                ) {
+                    return Err(error("Expected unary expression before assignment", *line, *column));
+                }
                 *index += 1;
+                consume_whitespace(tokens, index);
+
+                flattened.expressions.push(conditional);
+                let first = flattened.expressions.len() - 1;
+
                 // this basically attempts to transform `var += 1` to `var = var + 1`
                 let assignment_expr =
                     parse_assignment_expression(tokens, index, flattened, str_maps)?;
-                flattened.expressions.push(conditional);
-                let first = flattened.expressions.len() - 1;
                 flattened.expressions.push(assignment_expr);
-                let second = flattened.expressions.len() - 1;
-                let transformed = Expr::Binary {
-                    r#type: match t.r#type {
-                        TokenType::ASSIGNMENT => BinaryExprType::Assignment,
-                        TokenType::MODULO_ASSIGN => BinaryExprType::Mod,
-                        TokenType::DIV_ASSIGN => BinaryExprType::Div,
-                        TokenType::MULT_ASSIGN => BinaryExprType::Mult,
-                        TokenType::ADD_ASSIGN => BinaryExprType::Add,
-                        TokenType::SUB_ASSIGN => BinaryExprType::Sub,
-                        TokenType::L_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftLeft,
-                        TokenType::R_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftRight,
-                        TokenType::AND_BIT_ASSIGN => BinaryExprType::BitAND,
-                        TokenType::XOR_BIT_ASSIGN => BinaryExprType::BitXOR,
-                        TokenType::OR_BIT_ASSIGN => BinaryExprType::BitOR,
-                        _ => unreachable!(),
-                    },
-                    first,
-                    second,
-                };
-                flattened.expressions.push(transformed);
-                let second = flattened.expressions.len() - 1;
+                let mut second = flattened.expressions.len() - 1;
+
+                if t.r#type != TokenType::ASSIGNMENT {
+                    let transformed = Expr::Binary {
+                        r#type: match t.r#type {
+                            TokenType::MODULO_ASSIGN => BinaryExprType::Mod,
+                            TokenType::DIV_ASSIGN => BinaryExprType::Div,
+                            TokenType::MULT_ASSIGN => BinaryExprType::Mult,
+                            TokenType::ADD_ASSIGN => BinaryExprType::Add,
+                            TokenType::SUB_ASSIGN => BinaryExprType::Sub,
+                            TokenType::L_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftLeft,
+                            TokenType::R_SHIFT_BIT_ASSIGN => BinaryExprType::BitShiftRight,
+                            TokenType::AND_BIT_ASSIGN => BinaryExprType::BitAND,
+                            TokenType::XOR_BIT_ASSIGN => BinaryExprType::BitXOR,
+                            TokenType::OR_BIT_ASSIGN => BinaryExprType::BitOR,
+                            _ => unreachable!(),
+                        },
+                        first,
+                        second,
+                    };
+                    flattened.expressions.push(transformed);
+                    second = flattened.expressions.len() - 1;
+                }
+
                 return Ok(Expr::Binary {
                     r#type: BinaryExprType::Assignment,
                     first,
@@ -896,7 +1058,7 @@ pub fn parse_assignment_expression(
             Some(Token {
                 location: Some(Location { line, column }),
                 ..
-            }) => return Err(error("Expected assignment operator", *line, *column)),
+            }) => return Ok(conditional),
             _ => return Err("Expected assignment operator".to_string()),
         }
     }
@@ -911,26 +1073,48 @@ pub fn parse_comma_expression(
 ) -> Result<Expr, String> {
     let assignment_expr = parse_assignment_expression(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
-    match tokens.get(*index) {
-        Some(
-            t @ Token {
+
+    let mut comma_expr = None;
+    loop {
+        // Because I parse left to right, and because the comma operator comes after the expression,
+        // I have to loop until there isn't another comma token.
+        match tokens.get(*index) {
+            Some(
+                t @ Token {
+                    r#type: TokenType::COMMA,
+                    ..
+                },
+            ) => {
+                *index += 1;
+                consume_whitespace(tokens, index);
+                let second_operand =
+                    parse_assignment_expression(tokens, index, flattened, str_maps)?;
+                flattened.expressions.push(if comma_expr.is_none() {
+                    assignment_expr
+                } else {
+                    comma_expr.unwrap()
+                });
+                let first = flattened.expressions.len() - 1;
+                flattened.expressions.push(second_operand);
+                let second = flattened.expressions.len() - 1;
+                comma_expr = Some(Expr::Binary {
+                    r#type: BinaryExprType::Comma,
+                    first,
+                    second,
+                })
+            }
+            _ => return Ok(assignment_expr),
+        }
+        consume_whitespace(tokens, index);
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
                 r#type: TokenType::COMMA,
                 ..
-            },
-        ) => {
-            *index += 1;
-            let second_operand = parse_assignment_expression(tokens, index, flattened, str_maps)?;
-            flattened.expressions.push(assignment_expr);
-            let first = flattened.expressions.len() - 1;
-            flattened.expressions.push(second_operand);
-            let second = flattened.expressions.len() - 1;
-            Ok(Expr::Binary {
-                r#type: BinaryExprType::Comma,
-                first,
-                second,
             })
+        ) {
+            break Ok(comma_expr.expect("This should have something"));
         }
-        _ => Ok(assignment_expr),
     }
 }
 
@@ -940,7 +1124,7 @@ pub fn parse_expressions(
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Expr, String> {
-    parse_assignment_expression(tokens, index, flattened, str_maps)
+    parse_comma_expression(tokens, index, flattened, str_maps)
 }
 
 //Notes:
@@ -1219,16 +1403,16 @@ fn recursive_eval(
 #[cfg(test)]
 mod tests {
     use crate::lexer::*;
-    use crate::parser::*;
     use crate::parser::expressions::*;
+    use crate::parser::*;
 
     #[test]
     fn eval_expression_temp() -> Result<(), String> {
-        let src = r##"0.4 * 0.4"##.as_bytes();
+        let src = r##"1 + 2 * 4"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        println!("{:?}", tokens);
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+        assert!(res == Ok(9));
         Ok(())
     }
 
@@ -1238,14 +1422,16 @@ mod tests {
             let src = r##"((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+            let res =
+                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
             assert_eq!(res != 0, true, "((((1))))");
         }
         {
             let src = r##"(((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+            let res =
+                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -1255,7 +1441,8 @@ mod tests {
             let src = r##"0 - (1 + 1)"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+            let res =
+                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
             assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         Ok(())
@@ -1266,11 +1453,15 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, false, "!1");
+        assert_eq!(res == 0, true, "!1");
         let src = r##"--------------1"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+        match res {
+            Err(ref e) => println!("{}", e),
+            Ok(_) => {}
+        }
         assert!(
             res.is_err(),
             "'--' operator not caught in cpp constant expression"
@@ -1302,27 +1493,27 @@ mod tests {
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
+        assert!(res != 0);
         let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
+        assert!(res == 0);
         let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
+        assert!(res == 1);
         let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
+        assert!(res == 4);
         let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
+        assert!(res == 0);
         Ok(())
     }
     #[test]
@@ -1374,7 +1565,9 @@ mod tests {
                 ..
             }
         ));
-        let Expr::Binary { first, second, .. } = add else { unreachable!() };
+        let Expr::Binary { first, second, .. } = add else {
+            unreachable!()
+        };
         assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
         assert!(matches!(flattened.expressions[second], Expr::Cast(_)));
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first] else {
@@ -1398,9 +1591,7 @@ mod tests {
         let Expr::Cast(c) = flattened.expressions[second] else {
             unreachable!()
         };
-        let c_idx = c.cast_expr else {
-            unreachable!()
-        };
+        let c_idx = c.cast_expr else { unreachable!() };
         assert!(matches!(flattened.expressions[c_idx], Expr::Primary(_)));
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[c_idx] else {
             unreachable!()
@@ -1447,7 +1638,9 @@ mod tests {
                 ..
             }
         ));
-        let Expr::Binary { first, second, .. } = add else { unreachable!() };
+        let Expr::Binary { first, second, .. } = add else {
+            unreachable!()
+        };
         assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[first] else {
             unreachable!()
@@ -1468,15 +1661,12 @@ mod tests {
         };
         assert!(str_maps.key_to_byte_vec[value_key] == *b"1");
         assert!(matches!(flattened.expressions[second], Expr::Unary(_)));
-        let Expr::Unary(UnaryType::Expr{op,first}) = flattened.expressions[second] else {
+        let Expr::Unary(UnaryType::Expr { op, first }) = flattened.expressions[second] else {
             unreachable!()
         };
         assert!(matches!(op, TokenType::NOT_BOOL));
         let cast_idx = first;
-        assert!(matches!(
-            flattened.expressions[cast_idx],
-            Expr::Cast(_)
-        ));
+        assert!(matches!(flattened.expressions[cast_idx], Expr::Cast(_)));
         let Expr::Cast(c) = flattened.expressions[cast_idx] else {
             unreachable!()
         };
@@ -1485,7 +1675,13 @@ mod tests {
         let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[p_idx] else {
             unreachable!()
         };
-        assert!(matches!(t, Token{ r#type: TokenType::CONSTANT_DEC_INT { .. }, .. }));
+        assert!(matches!(
+            t,
+            Token {
+                r#type: TokenType::CONSTANT_DEC_INT { .. },
+                ..
+            }
+        ));
         let Token {
             r#type: TokenType::CONSTANT_DEC_INT { value_key, suffix },
             ..
@@ -1512,7 +1708,9 @@ mod tests {
                 }
             ));
 
-            let Expr::Binary { first, .. } = add else { unreachable!() };
+            let Expr::Binary { first, .. } = add else {
+                unreachable!()
+            };
             assert!(matches!(flattened.expressions[first], Expr::PostFix(_)));
             let Expr::PostFix(p) = flattened.expressions[first] else {
                 unreachable!()
@@ -1524,7 +1722,9 @@ mod tests {
             assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
             assert!(matches!(op, TokenType::DECREMENT));
 
-            let Expr::Binary { second, .. } = add else { unreachable!() };
+            let Expr::Binary { second, .. } = add else {
+                unreachable!()
+            };
             assert!(matches!(flattened.expressions[second], Expr::Primary(_)));
         }
         Ok(())
@@ -1537,9 +1737,18 @@ mod tests {
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
             let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(add, Expr::Binary { r#type: BinaryExprType::Add, .. }));
-            let Expr::Binary { first, .. } = add else { unreachable!() };
+            assert!(matches!(
+                add,
+                Expr::Binary {
+                    r#type: BinaryExprType::Add,
+                    ..
+                }
+            ));
+            let Expr::Binary { first, second,.. } = add else {
+                unreachable!()
+            };
             assert!(matches!(flattened.expressions[first], Expr::Unary(_)));
+            assert!(matches!(flattened.expressions[second], Expr::Unary(_)));
         }
         {
             let src = r#"!hi-- + -1"#.as_bytes();
@@ -1547,9 +1756,18 @@ mod tests {
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
             let add = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(add, Expr::Binary { r#type: BinaryExprType::Add, .. }));
-            let Expr::Binary { first, .. } = add else { unreachable!() };
+            assert!(matches!(
+                add,
+                Expr::Binary {
+                    r#type: BinaryExprType::Add,
+                    ..
+                }
+            ));
+            let Expr::Binary { first, second, .. } = add else {
+                unreachable!()
+            };
             assert!(matches!(flattened.expressions[first], Expr::Unary(_)));
+            assert!(matches!(flattened.expressions[second], Expr::Unary(_)));
         }
         Ok(())
     }
@@ -1598,12 +1816,11 @@ mod tests {
                     ..
                 }
             ));
-            let Expr::Binary { first, second, .. } = assign else { unreachable!() };
+            let Expr::Binary { first, second, .. } = assign else {
+                unreachable!()
+            };
             assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
-            assert!(matches!(
-                flattened.expressions[second],
-                Expr::Primary(_)
-            ));
+            assert!(matches!(flattened.expressions[second], Expr::Primary(_)));
         }
         Ok(())
     }
@@ -1626,8 +1843,12 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
-            let unary_decrement = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_decrement, Expr::Unary(UnaryType::Expr { .. })));
+            let unary_decrement =
+                parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(
+                unary_decrement,
+                Expr::Unary(UnaryType::Expr { .. })
+            ));
             let Expr::Unary(UnaryType::Expr { op, first }) = unary_decrement else {
                 unreachable!()
             };
@@ -1657,11 +1878,23 @@ mod tests {
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
             let unary_sizeof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOf(_))));
-            let Expr::Unary(UnaryType::SizeOf(type_name_idx)) = unary_sizeof else {
+            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOfUnaryExpr(_))));
+            let Expr::Unary(UnaryType::SizeOfUnaryExpr(expr_idx)) = unary_sizeof else {
                 unreachable!()
             };
-            assert!(flattened.type_names.len() > type_name_idx);
+            assert!(matches!(flattened.expressions[expr_idx], Expr::Primary(_)));
+        }
+        {
+            let src = r#"sizeof(int)"#.as_bytes();
+            let mut str_maps = ByteVecMaps::new();
+            let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let unary_sizeof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOfTypeName(_))));
+            let Expr::Unary(UnaryType::SizeOfTypeName(type_name_idx)) = unary_sizeof else {
+                unreachable!()
+            };
+            assert!(matches!(flattened.type_names[type_name_idx], TypeName { .. }));
         }
         {
             let src = r#"_Alignof (hi)"#.as_bytes();
@@ -1686,44 +1919,43 @@ mod tests {
             let mut flattened = Flattened::new();
             let primary_comma_nested =
                 parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(
-                primary_comma_nested,
-                Expr::Primary(_)
-            ));
-            let Expr::Primary(PrimaryType::Expr(
-                c,
-            )) = primary_comma_nested
-            else {
+            assert!(matches!(primary_comma_nested, Expr::Primary(_)));
+            let Expr::Primary(PrimaryType::Expr(c)) = primary_comma_nested else {
                 unreachable!()
             };
             assert!(matches!(
                 flattened.expressions[c],
-                Expr::Binary { r#type: BinaryExprType::Comma, .. }
+                Expr::Binary {
+                    r#type: BinaryExprType::Comma,
+                    ..
+                }
             ));
-            let Expr::Binary { r#type: BinaryExprType::Comma, first, second } = flattened.expressions[c] else {
-                unreachable!()
-            };
-            assert!(first < flattened.expressions.len());
-            assert!(second < flattened.expressions.len());
-            assert!(matches!(
-                flattened.expressions[first],
-                Expr::Binary { r#type: BinaryExprType::Comma, .. }
-            ));
-            assert!(matches!(
-                flattened.expressions[second],
-                Expr::Primary(_)
-            ));
-            let Expr::Binary { r#type: BinaryExprType::Comma, first, second } = flattened.expressions[first] else {
+            let Expr::Binary {
+                r#type: BinaryExprType::Comma,
+                first,
+                second,
+            } = flattened.expressions[c]
+            else {
                 unreachable!()
             };
             assert!(matches!(
                 flattened.expressions[first],
-                Expr::Primary(_)
+                Expr::Binary {
+                    r#type: BinaryExprType::Comma,
+                    ..
+                }
             ));
-            assert!(matches!(
-                flattened.expressions[second],
-                Expr::Primary(_)
-            ));
+            assert!(matches!(flattened.expressions[second], Expr::Primary(_)));
+            let Expr::Binary {
+                r#type: BinaryExprType::Comma,
+                first,
+                second,
+            } = flattened.expressions[first]
+            else {
+                unreachable!()
+            };
+            assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
+            assert!(matches!(flattened.expressions[second], Expr::Primary(_)));
         }
         Ok(())
     }
@@ -1738,24 +1970,16 @@ mod tests {
                 parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 postfix_arg_expr_list,
-                Expr::PostFix(
-                    PostFix::WithFunctionCall { .. }
-                )
+                Expr::PostFix(PostFix::WithFunctionCall { .. })
             ));
-            let Expr::PostFix(
-                PostFix::WithFunctionCall {
-                    argument_expr_idx,
-                    first,
-                },
-            ) = postfix_arg_expr_list
+            let Expr::PostFix(PostFix::WithFunctionCall {
+                argument_expr_idx,
+                first,
+            }) = postfix_arg_expr_list
             else {
                 unreachable!()
             };
-            assert!(flattened.expressions.len() > first);
-            assert!(matches!(
-                flattened.expressions[first],
-                Expr::Primary(_)
-            ));
+            assert!(matches!(flattened.expressions[first], Expr::Primary(_)));
         }
         {
             let src = r#"me->hi(1, 3, 5)"#.as_bytes();
@@ -1766,25 +1990,18 @@ mod tests {
                 parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 postfix_arg_expr_list,
-                Expr::PostFix(
-                    PostFix::WithFunctionCall { .. }
-                )
+                Expr::PostFix(PostFix::WithFunctionCall { .. })
             ));
-            let Expr::PostFix(
-                PostFix::WithFunctionCall {
-                    argument_expr_idx,
-                    first,
-                },
-            ) = postfix_arg_expr_list
+            let Expr::PostFix(PostFix::WithFunctionCall {
+                argument_expr_idx,
+                first,
+            }) = postfix_arg_expr_list
             else {
                 unreachable!()
             };
-            assert!(flattened.expressions.len() > first);
             assert!(matches!(
                 flattened.expressions[first],
-                Expr::PostFix(
-                    PostFix::WithPointerToMember { .. }
-                )
+                Expr::PostFix(PostFix::WithPointerToMember { .. })
             ));
         }
         Ok(())
