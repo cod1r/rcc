@@ -1357,6 +1357,7 @@ pub fn parse_declaration_specifiers(
                 r#type: TokenType::_ATOMIC,
                 ..
             } => {
+                *index += 1;
                 consume_whitespace(tokens, index);
                 if let Some(Token {
                     r#type: TokenType::OPEN_PAR,

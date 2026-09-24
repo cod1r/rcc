@@ -546,7 +546,6 @@ pub struct Location {
     pub line: usize,
 }
 
-#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Token {
     pub r#type: TokenType,

@@ -214,13 +214,13 @@ macro_rules! assignment_ops {
 
 macro_rules! postfix_ops {
     () => {
-TokenType::OPEN_SQR
-                            | TokenType::OPEN_PAR
-                            | TokenType::DOT
-                            | TokenType::ARROW
-                            | TokenType::INCREMENT
-                            | TokenType::DECREMENT
-    }
+        TokenType::OPEN_SQR
+            | TokenType::OPEN_PAR
+            | TokenType::DOT
+            | TokenType::ARROW
+            | TokenType::INCREMENT
+            | TokenType::DECREMENT
+    };
 }
 
 fn parse_primary_expression(
@@ -474,8 +474,15 @@ fn parse_unary_expression(
 
             // I need to check for a postfix operator after because postfix operators have a higher precedence than unary ops.
             // If I don't then the postfix op gets ignored because of the left to right parsing...
-            if matches!(tokens.get(*index), Some(Token{r#type:postfix_ops!(), .. })) {
-                let postfix_expr = parse_postfix_expression(tokens, index, flattened, str_maps, Some(cast_expr))?;
+            if matches!(
+                tokens.get(*index),
+                Some(Token {
+                    r#type: postfix_ops!(),
+                    ..
+                })
+            ) {
+                let postfix_expr =
+                    parse_postfix_expression(tokens, index, flattened, str_maps, Some(cast_expr))?;
                 flattened.expressions.push(postfix_expr);
             } else {
                 // need this branch because parse_postfix_expression pushes the passed in expression to the flattened structure as well.
@@ -511,7 +518,7 @@ fn parse_unary_expression(
                     consume_whitespace(tokens, index);
                     let unary_expr = parse_unary_expression(tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(unary_expr);
-                    Ok(Expr::Unary(UnaryType::SizeOfUnaryExpr (
+                    Ok(Expr::Unary(UnaryType::SizeOfUnaryExpr(
                         flattened.expressions.len() - 1,
                     )))
                 }
@@ -1006,14 +1013,18 @@ pub fn parse_assignment_expression(
             Some(
                 t @ Token {
                     r#type: assignment_ops!(),
-                    location: Some(Location{line,column})
+                    location: Some(Location { line, column }),
                 },
             ) => {
                 if !matches!(
                     conditional,
                     Expr::Unary(_) | Expr::PostFix(_) | Expr::Primary(_)
                 ) {
-                    return Err(error("Expected unary expression before assignment", *line, *column));
+                    return Err(error(
+                        "Expected unary expression before assignment",
+                        *line,
+                        *column,
+                    ));
                 }
                 *index += 1;
                 consume_whitespace(tokens, index);
@@ -1179,7 +1190,7 @@ pub fn eval_constant_expression_integer_when_preprocess(
     // TODO: describe our algorithm in comments below
     // or we will forget how any of this shit works
     let mut flattened = Flattened::new();
-    let curr_expr = parse_expressions(tokens, index, &mut flattened, str_maps)?;
+    let curr_expr = parse_conditional_expression(tokens, index, &mut flattened, str_maps)?;
     recursive_eval(&curr_expr, str_maps, flattened.expressions.as_slice())
 }
 
@@ -1744,7 +1755,7 @@ mod tests {
                     ..
                 }
             ));
-            let Expr::Binary { first, second,.. } = add else {
+            let Expr::Binary { first, second, .. } = add else {
                 unreachable!()
             };
             assert!(matches!(flattened.expressions[first], Expr::Unary(_)));
@@ -1878,7 +1889,10 @@ mod tests {
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
             let unary_sizeof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOfUnaryExpr(_))));
+            assert!(matches!(
+                unary_sizeof,
+                Expr::Unary(UnaryType::SizeOfUnaryExpr(_))
+            ));
             let Expr::Unary(UnaryType::SizeOfUnaryExpr(expr_idx)) = unary_sizeof else {
                 unreachable!()
             };
@@ -1890,11 +1904,17 @@ mod tests {
             let tokens = lexer(&src.to_vec(), false, &mut str_maps)?;
             let mut flattened = Flattened::new();
             let unary_sizeof = parse_expressions(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(unary_sizeof, Expr::Unary(UnaryType::SizeOfTypeName(_))));
+            assert!(matches!(
+                unary_sizeof,
+                Expr::Unary(UnaryType::SizeOfTypeName(_))
+            ));
             let Expr::Unary(UnaryType::SizeOfTypeName(type_name_idx)) = unary_sizeof else {
                 unreachable!()
             };
-            assert!(matches!(flattened.type_names[type_name_idx], TypeName { .. }));
+            assert!(matches!(
+                flattened.type_names[type_name_idx],
+                TypeName { .. }
+            ));
         }
         {
             let src = r#"_Alignof (hi)"#.as_bytes();

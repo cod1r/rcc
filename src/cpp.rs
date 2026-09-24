@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::error::*;
 use crate::lexer::*;
 use crate::parser::*;
+use crate::parser::expressions::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -178,7 +179,6 @@ fn include_directive(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
-    final_tokens: &mut Vec<Token>,
 ) -> Result<(), String> {
     let mut newline_index = *index;
     while !matches!(
@@ -373,7 +373,6 @@ fn include_directive(
                         defines,
                         str_maps,
                     )?;
-                    final_tokens.extend_from_slice(&tokens_from_file);
                     return Ok(());
                 }
                 Err(_) => {
@@ -388,7 +387,6 @@ fn include_directive(
                     Ok(file_contents) => {
                         let tokens_from_file =
                             cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
-                        final_tokens.extend_from_slice(&tokens_from_file);
                         return Ok(());
                     }
                     Err(_) => {
@@ -917,37 +915,72 @@ fn if_directive(
     Ok(())
 }
 
+fn parse_identifier_list(
+    tokens: &[Token],
+    index: &mut usize,
+    str_maps: &ByteVecMaps,
+) -> Result<Vec<usize>, String> {
+    let mut identifier_keys = Vec::new();
+    loop {
+        consume_specifically_spaces(tokens, index);
+        if let Some(Token {
+            r#type: TokenType::IDENT { str_map_key },
+            location: Some(Location { line, column }),
+        }) = tokens.get(*index)
+        {
+            *index += 1;
+            let arg = &str_maps.key_to_byte_vec[*str_map_key];
+            if identifier_keys.contains(str_map_key) {
+                // A parameter identifier in a function-like macro shall be uniquely declared within its scope.
+                return Err(error("duplicate parameter name", *line, *column));
+            }
+            if *arg == *b"__VA_ARGS__" {
+                return Err(error(
+                    "__VA_ARGS__ cannot be used as a parameter name",
+                    *line,
+                    *column,
+                ));
+            }
+            identifier_keys.push(*str_map_key);
+        } else {
+            if let Some(Token {
+                location: Some(Location { line, column }),
+                ..
+            }) = tokens.get(*index)
+            {
+                return Err(error("Expected identifier token", *line, *column));
+            }
+            return Err("Expected identifier token".to_string());
+        }
+        consume_specifically_spaces(tokens, index);
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::COMMA,
+                ..
+            })
+        ) {
+            break Ok(identifier_keys);
+        }
+        *index += 1;
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::ELLIPSIS,
+                ..
+            })
+        ) {
+            break Ok(identifier_keys);
+        }
+    }
+}
+
 fn define_directive(
     tokens: &[Token],
     index: &mut usize,
     defines: &mut HashMap<usize, Define>,
-    str_maps: &mut ByteVecMaps,
+    str_maps: &ByteVecMaps,
 ) -> Result<(), String> {
-    todo!("REWRITE THIS");
-    while !matches!(
-        tokens.get(*index),
-        Some(Token {
-            r#type: TokenType::NEWLINE,
-            ..
-        })
-    ) {
-        match &tokens[*index].r#type {
-            TokenType::WHITESPACE => {}
-            TokenType::IDENT {
-                str_map_key: id_key,
-                ..
-            } => {
-                let id = &str_maps.key_to_byte_vec[*id_key];
-                if *id != *b"define" {
-                    break;
-                }
-            }
-            _ => {
-                return Err(format!("unknown token after define directive"));
-            }
-        }
-        *index += 1;
-    }
     let mut def_data = Define {
         parameters: None,
         var_arg: false,
@@ -964,185 +997,73 @@ fn define_directive(
     else {
         unreachable!()
     };
-    //There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
-    //-- means that a whitespace character means the start of the replacement list
-    let mut define_needle_idx = *index + 1;
+    *index += 1;
+    let Some(position_of_newline) = tokens[*index..]
+        .iter()
+        .position(|t| t.r#type == TokenType::NEWLINE)
+    else {
+        unreachable!()
+    };
+    // There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
     if let Some(Token {
         r#type: TokenType::OPEN_PAR,
         ..
-    }) = tokens.get(define_needle_idx)
+    }) = tokens.get(*index)
     {
-        let start_open_par_idx = define_needle_idx;
-        def_data.parameters = Some(Vec::new());
-        let mut fn_like_macro_index = define_needle_idx + 1;
-        while matches!(
-            tokens.get(fn_like_macro_index),
-            Some(Token {
-                r#type: TokenType::WHITESPACE,
-                ..
-            })
-        ) && fn_like_macro_index < todo!()
-        {
-            define_needle_idx += 1;
-        }
-        while matches!(
-            tokens.get(fn_like_macro_index),
-            Some(Token {
-                r#type: TokenType::IDENT { .. } | TokenType::COMMA | TokenType::WHITESPACE,
-                ..
-            })
-        ) {
-            if let Some(Token {
-                r#type:
-                    TokenType::IDENT {
-                        str_map_key: arg_key,
-                        ..
-                    },
-                ..
-            }) = tokens.get(fn_like_macro_index)
-            {
-                if let Some(ref mut v) = def_data.parameters {
-                    let arg = &str_maps.key_to_byte_vec[*arg_key];
-                    if !v.contains(arg_key) {
-                        if *arg == *b"__VA_ARGS__" {
-                            return Err(format!("__VA_ARGS__ cannot be used as a parameter name"));
-                        }
-                        v.push(*arg_key);
-                    } else {
-                        return Err(format!("duplicate argument name found in define directive"));
-                    }
-                }
-            }
-            fn_like_macro_index += 1;
-        }
+        def_data.parameters = Some(parse_identifier_list(tokens, index, str_maps)?);
         if matches!(
-            tokens.get(fn_like_macro_index),
+            tokens.get(*index),
             Some(Token {
                 r#type: TokenType::ELLIPSIS,
                 ..
             })
         ) {
+            *index += 1;
             def_data.var_arg = true;
-            fn_like_macro_index += 1;
         }
-        while matches!(
-            tokens.get(fn_like_macro_index),
-            Some(Token {
-                r#type: TokenType::WHITESPACE,
-                ..
-            })
-        ) && fn_like_macro_index < *index
-        {
-            define_needle_idx += 1;
-        }
-        if !matches!(
-            tokens.get(fn_like_macro_index),
-            Some(Token {
-                r#type: TokenType::CLOSE_PAR,
-                ..
-            })
-        ) {
-            def_data.parameters = None;
-            def_data.var_arg = false;
-            def_data
-                .replacement_list
-                .extend_from_slice(&tokens[start_open_par_idx + 1..]);
-        } else {
-            def_data
-                .replacement_list
-                .extend_from_slice(&tokens[fn_like_macro_index + 1..]);
-        }
-        defines.insert(*identifier_of_macro_key, def_data);
-    } else {
-        def_data.replacement_list.extend_from_slice(&tokens);
-        defines.insert(*identifier_of_macro_key, def_data);
+        expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
     }
-    if defines.contains_key(&identifier_of_macro_key) {
-        let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
-        if *identifier_of_macro == *b"defined"
-            || *identifier_of_macro == *b"__LINE__"
-            || *identifier_of_macro == *b"__FILE__"
-            || *identifier_of_macro == *b"__DATE__"
-            || *identifier_of_macro == *b"__STDC__"
-            || *identifier_of_macro == *b"__STDC_HOSTED__"
-            || *identifier_of_macro == *b"__STDC_VERSION__"
-            || *identifier_of_macro == *b"__TIME__"
-        {
-            let Ok(s) = String::from_utf8(identifier_of_macro.to_vec()) else {
-                unreachable!()
-            };
-            return Err(format!("cannot define '{s}' as it is a cpp keyword",));
-        }
-        if let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) {
-            if dd.parameters.is_some() {
-                for t_index in 0..dd.replacement_list.len() {
-                    if matches!(
-                        dd.replacement_list.get(t_index),
-                        Some(Token {
-                            r#type: TokenType::HASH,
-                            ..
-                        })
-                    ) && !matches!(
-                        dd.replacement_list.get(t_index + 1),
-                        Some(Token {
-                            r#type: TokenType::IDENT { .. },
-                            ..
-                        })
-                    ) && !matches!(
-                        dd.replacement_list.get(t_index + 1..t_index + 3),
-                        Some([
-                            Token {
-                                r#type: TokenType::WHITESPACE,
-                                ..
-                            },
-                            Token {
-                                r#type: TokenType::IDENT { .. },
-                                ..
-                            }
-                        ])
-                    ) {
-                        return Err(format!("'#' does not immediately precede an argument name"));
-                    }
-                }
-            }
-            if let Some(Token {
-                r#type: TokenType::WHITESPACE,
-                ..
-            }) = dd.replacement_list.first()
-            {
-                dd.replacement_list.remove(0);
-            }
-            if let Some(Token {
-                r#type: TokenType::WHITESPACE,
-                ..
-            }) = dd.replacement_list.last()
-            {
-                dd.replacement_list.pop();
-            }
-            if matches!(
-                dd.replacement_list.first(),
-                Some(Token {
-                    r#type: TokenType::HASH_HASH,
-                    ..
-                })
-            ) || matches!(
-                dd.replacement_list.last(),
-                Some(Token {
-                    r#type: TokenType::HASH_HASH,
-                    ..
-                })
-            ) {
-                return Err(format!(
-                    "'##' cannot be at the beginning or end of a replacement list"
-                ));
-            }
-            return Ok(());
-        }
+    consume_specifically_spaces(tokens, index);
+    def_data
+        .replacement_list
+        .extend_from_slice(&tokens[*index..position_of_newline]);
+    defines.insert(*identifier_of_macro_key, def_data);
+    let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
+    let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) else {
+        unreachable!()
+    };
+    while let Some(Token {
+        r#type: TokenType::WHITESPACE,
+        ..
+    }) = dd.replacement_list.last()
+    {
+        dd.replacement_list.pop();
     }
-    Err(format!(
-        "define directive not properly formed at {}",
-        *index
-    ))
+    if let Some(Token {
+            r#type: TokenType::HASH_HASH,
+            location: Some(Location{line,column})
+        }) =
+        dd.replacement_list.first()
+    {
+        return Err(error(
+            "'##' cannot be at the beginning or end of a replacement list",
+            *line,
+            *column,
+        ));
+    }
+    if let Some(Token {
+            r#type: TokenType::HASH_HASH,
+            location: Some(Location{line,column})
+        }) =
+        dd.replacement_list.last()
+    {
+        return Err(error(
+            "'##' cannot be at the beginning or end of a replacement list",
+            *line,
+            *column,
+        ));
+    }
+    return Ok(());
 }
 fn error_directive(_tokens: &mut Vec<TokenType>) {
     todo!()
@@ -1988,14 +1909,55 @@ fn expand_macro(
     Ok(())
 }
 
+fn get_newline_location(tokens: &[Token], index: &usize) -> usize {
+    *index + tokens[*index..].iter().position(|t| t.r#type == TokenType::NEWLINE).expect("There should be a newline on the same line as the preprocessing directive")
+}
+
+fn look_for_next_preprocessing_directive(
+    tokens: &[Token],
+    index: &mut usize,
+) -> bool {
+    let mut preceded_only_by_whitespace_or_nothing_or_newline = true;
+    while *index < tokens.len() {
+        match tokens.get(*index) {
+            Some(Token {
+                r#type: TokenType::NEWLINE,
+                ..
+            }) => {
+                preceded_only_by_whitespace_or_nothing_or_newline = true;
+            }
+            Some(Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            }) => {}
+            Some(Token {
+                r#type: TokenType::HASH,
+                ..
+            }) if preceded_only_by_whitespace_or_nothing_or_newline => {
+                consume_specifically_spaces(tokens, index);
+                // There's no need to check for an identifier token that matches one of the directive names
+                // because of the existence of `non-directives` that are actually directives but have undefined behavior.
+                // I handle directives outside of this function
+                let newline_comes_after = check_valid_directive(tokens, *index);
+                if newline_comes_after {
+                    return true;
+                }
+            }
+            Some(Token { .. }) => preceded_only_by_whitespace_or_nothing_or_newline = false,
+            None => unreachable!(),
+        }
+        *index += 1;
+    }
+    false
+}
+
 fn parse_control_line(
-    tokens: &mut Vec<Token>,
+    tokens: &mut [Token],
     index: &mut usize,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
-    final_tokens: &mut Vec<Token>,
 ) -> Result<(), String> {
     let Some(Token {
         r#type: TokenType::IDENT { str_map_key: s },
@@ -2006,6 +1968,7 @@ fn parse_control_line(
     };
     match str_maps.key_to_byte_vec[*s].as_slice() {
         b"include" => {
+            *index += 1;
             include_directive(
                 tokens,
                 index,
@@ -2013,10 +1976,11 @@ fn parse_control_line(
                 include_paths,
                 defines,
                 str_maps,
-                final_tokens,
             )?;
         }
         b"define" => {
+            *index += 1;
+            consume_specifically_spaces(tokens, index);
             define_directive(tokens, index, defines, str_maps)?;
         }
         b"error" => todo!(),
@@ -2032,42 +1996,113 @@ fn parse_control_line(
     }
     Ok(())
 }
-fn parse_endif_line() {
-    todo!()
-}
-fn parse_else_group() {
-    todo!()
-}
-fn parse_elif_group() {
-    todo!()
-}
-fn parse_elif_groups() {
-    todo!()
-}
-fn parse_if_group() {
-    todo!()
-}
-fn parse_if_section(
-    tokens: &mut Vec<Token>,
+fn parse_endif_line(
+    tokens: &[Token],
     index: &mut usize,
     str_maps: &ByteVecMaps,
-    final_tokens: &mut Vec<Token>,
-    defines: &mut HashMap<usize, Define>,
-    if_directive_type: &[u8],
+    location_of_if_directive: Location,
 ) -> Result<(), String> {
-    *index += 1;
-    consume_whitespace(tokens, index);
+    let found = look_for_next_preprocessing_directive(tokens, index);
+    if found {
+        let Token {
+            r#type: TokenType::IDENT { str_map_key },
+            ..
+        } = tokens[*index]
+        else {
+            unreachable!()
+        };
+        if *str_maps.key_to_byte_vec[str_map_key] == *b"endif" {
+            return Ok(());
+        }
+    }
+    let Location { line, column } = location_of_if_directive;
+    Err(error(
+        "Expected 'endif' for corresponding 'if' directive",
+        line,
+        column,
+    ))
+}
+fn parse_else_group() {
+}
+fn parse_elif_group(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+) -> Result<(), String> {
+    let newline_location = get_newline_location(tokens, index);
+    let res = eval_constant_expression_integer_when_preprocess(&tokens[*index..newline_location], index, str_maps)?;
+    parse_group(tokens, index, str_maps, curr_path, include_paths, defines)?;
+    Ok(())
+}
+fn parse_elif_groups(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+) {
+    loop {
+        let found = look_for_next_preprocessing_directive(tokens, index);
+        if found {
+            if let Some(Token { r#type: TokenType::IDENT { str_map_key }, .. }) = tokens.get(*index) {
+                let name = &str_maps.key_to_byte_vec[*str_map_key];
+                if *name == *b"elif" {
+                    *index += 1;
+                    consume_specifically_spaces(tokens, index);
+                    parse_elif_group(tokens, index, str_maps,curr_path,include_paths,defines);
+                }
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+// My current thoughts on handling conditional inclusion with preprocessing, is that I'll use recursion and recursive descent parsing in order
+// to handle nested if sections correctly without having to track depth.
+// With if sections handled correctly, I can process if, elif and else correctly as well
+fn parse_if_group(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+    if_directive_type: &[u8],
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+) -> Result<(), String> {
+    let Token {
+        location: Some(Location { line, column }),
+        ..
+    } = tokens[*index - 1]
+    else {
+        unreachable!()
+    };
     match if_directive_type {
-        b"if" => {}
+        b"if" => {
+        }
         b"ifdef" => {}
         b"ifndef" => {}
         _ => unreachable!(),
     }
-    parse_endif_line();
+    let start_of_group_idx = get_newline_location(tokens, index) + 1;
+    parse_group(tokens, index, str_maps,curr_path,include_paths, defines)?;
+    parse_elif_groups(tokens, index, str_maps,curr_path,include_paths,defines);
+    parse_endif_line(tokens, index, str_maps, Location { line, column })?;
     Ok(())
 }
-fn parse_preprocessing_group_part() {}
-fn parse_preprocessing_group() {}
+
+fn parse_if_section(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+    if_directive_type: &[u8],
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+) -> Result<(), String> {
+    parse_if_group(tokens, index, str_maps, if_directive_type, curr_path,include_paths,defines)?;
+    Ok(())
+}
+
 fn check_valid_directive(tokens: &[Token], index: usize) -> bool {
     let mut newline_comes_after_idx = index + 1;
     while newline_comes_after_idx < tokens.len()
@@ -2082,6 +2117,89 @@ fn check_valid_directive(tokens: &[Token], index: usize) -> bool {
         newline_comes_after_idx += 1;
     }
     newline_comes_after_idx < tokens.len()
+}
+
+fn handle_null_directive_or_non_directive(tokens: &mut [Token], index: &mut usize) {
+    // at this point, index should be at the newline token
+    while !matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::HASH,
+            ..
+        })
+    ) {
+        *index -= 1;
+    }
+    tokens[*index].r#type = TokenType::WHITESPACE
+}
+
+fn parse_group(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+) -> Result<(), String> {
+    let found = look_for_next_preprocessing_directive(tokens, index);
+    if found {
+        if let Some(Token {
+            r#type: TokenType::NEWLINE,
+            ..
+        }) = tokens.get(*index)
+        {
+            handle_null_directive_or_non_directive(tokens, index);
+            return Ok(());
+        }
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::IDENT { .. },
+                ..
+            })
+        ) {
+            handle_null_directive_or_non_directive(tokens, index);
+            return Ok(());
+        }
+        let Some(Token {
+            r#type: TokenType::IDENT { str_map_key },
+            location: Some(Location { line, column }),
+        }) = tokens.get(*index)
+        else {
+            unreachable!()
+        };
+        match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
+            b"if" | b"ifdef" | b"ifndef" => {
+                *index += 1;
+                consume_specifically_spaces(tokens, index);
+                parse_if_section(
+                    tokens,
+                    index,
+                    str_maps,
+                    &str_maps.key_to_byte_vec[*str_map_key].clone(),
+                    curr_path,include_paths,defines
+                )?;
+            }
+            b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
+                *index += 1;
+                consume_specifically_spaces(tokens, index);
+                parse_control_line(
+                    tokens,
+                    index,
+                    curr_path,
+                    include_paths,
+                    defines,
+                    str_maps,
+                )?;
+            }
+            d @ (b"else" | b"elif" | b"endif") => {
+                return Err(error(
+                    &format!("Unexpected '{}' directive", String::from_utf8(d.to_vec()).unwrap()),
+                    *line,
+                    *column,
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 fn preprocessing_directives(
     tokens: &mut Vec<Token>,
@@ -2100,81 +2218,7 @@ fn preprocessing_directives(
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
     let mut index: usize = 0;
-    let mut preceded_only_by_whitespace_nothing_or_newline: bool = true;
-    let mut final_tokens = Vec::new();
-    while index < tokens.len() {
-        match &tokens[index].r#type {
-            TokenType::WHITESPACE => {}
-            TokenType::NEWLINE => {
-                preceded_only_by_whitespace_nothing_or_newline = true;
-            }
-            TokenType::HASH
-                if preceded_only_by_whitespace_nothing_or_newline
-                    && matches!(
-                        tokens.get(index + 1),
-                        Some(Token {
-                            r#type: TokenType::IDENT { .. },
-                            ..
-                        })
-                    ) =>
-            {
-                index += 1;
-                let newline_comes_after = check_valid_directive(tokens, index);
-                if newline_comes_after {
-                    let Some(Token {
-                        r#type: TokenType::IDENT { str_map_key },
-                        ..
-                    }) = tokens.get(index)
-                    else {
-                        unreachable!()
-                    };
-                    match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
-                        b"if" | b"ifdef" | b"ifndef" => {
-                            parse_if_section(
-                                tokens,
-                                &mut index,
-                                str_maps,
-                                &mut final_tokens,
-                                defines,
-                                str_maps.key_to_byte_vec[*str_map_key].as_slice(),
-                            );
-                        }
-                        b"include" | b"define" | b"error" | b"line" | b"undef" => {
-                            parse_control_line(
-                                tokens,
-                                &mut index,
-                                curr_path,
-                                include_paths,
-                                defines,
-                                str_maps,
-                                &mut final_tokens,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            TokenType::IDENT {
-                str_map_key: key, ..
-            } => {
-                if defines.contains_key(&key) {
-                    expand_macro(tokens, &mut index, defines, str_maps, &mut final_tokens)?;
-                    continue;
-                }
-            }
-            _ => {
-                preceded_only_by_whitespace_nothing_or_newline = false;
-            }
-        }
-        if index < tokens.len() {
-            final_tokens.push(tokens[index]);
-        }
-        index += 1;
-    }
-    if index >= tokens.len() {
-        *tokens = final_tokens;
-        return Ok(());
-    }
+    while index < tokens.len() {}
     Err(String::from("unable to preprocess"))
 }
 pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {

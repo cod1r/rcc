@@ -20,6 +20,18 @@ pub fn consume_whitespace(tokens: &[Token], index: &mut usize) {
     }
 }
 
+pub fn consume_specifically_spaces(tokens: &[Token], index: &mut usize) {
+    while matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::WHITESPACE,
+            ..
+        })
+    ) {
+        *index += 1;
+    }
+}
+
 pub fn expected_token(
     tokens: &[Token],
     idx: &mut usize,
