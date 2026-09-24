@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::error::*;
 use crate::lexer::*;
-use crate::parser::*;
 use crate::parser::expressions::*;
+use crate::parser::*;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -1040,10 +1040,9 @@ fn define_directive(
         dd.replacement_list.pop();
     }
     if let Some(Token {
-            r#type: TokenType::HASH_HASH,
-            location: Some(Location{line,column})
-        }) =
-        dd.replacement_list.first()
+        r#type: TokenType::HASH_HASH,
+        location: Some(Location { line, column }),
+    }) = dd.replacement_list.first()
     {
         return Err(error(
             "'##' cannot be at the beginning or end of a replacement list",
@@ -1052,10 +1051,9 @@ fn define_directive(
         ));
     }
     if let Some(Token {
-            r#type: TokenType::HASH_HASH,
-            location: Some(Location{line,column})
-        }) =
-        dd.replacement_list.last()
+        r#type: TokenType::HASH_HASH,
+        location: Some(Location { line, column }),
+    }) = dd.replacement_list.last()
     {
         return Err(error(
             "'##' cannot be at the beginning or end of a replacement list",
@@ -1910,13 +1908,14 @@ fn expand_macro(
 }
 
 fn get_newline_location(tokens: &[Token], index: &usize) -> usize {
-    *index + tokens[*index..].iter().position(|t| t.r#type == TokenType::NEWLINE).expect("There should be a newline on the same line as the preprocessing directive")
+    *index
+        + tokens[*index..]
+            .iter()
+            .position(|t| t.r#type == TokenType::NEWLINE)
+            .expect("There should be a newline on the same line as the preprocessing directive")
 }
 
-fn look_for_next_preprocessing_directive(
-    tokens: &[Token],
-    index: &mut usize,
-) -> bool {
+fn look_for_next_preprocessing_directive(tokens: &[Token], index: &mut usize) -> bool {
     let mut preceded_only_by_whitespace_or_nothing_or_newline = true;
     while *index < tokens.len() {
         match tokens.get(*index) {
@@ -1969,14 +1968,7 @@ fn parse_control_line(
     match str_maps.key_to_byte_vec[*s].as_slice() {
         b"include" => {
             *index += 1;
-            include_directive(
-                tokens,
-                index,
-                curr_path,
-                include_paths,
-                defines,
-                str_maps,
-            )?;
+            include_directive(tokens, index, curr_path, include_paths, defines, str_maps)?;
         }
         b"define" => {
             *index += 1;
@@ -2022,20 +2014,29 @@ fn parse_endif_line(
         column,
     ))
 }
-fn parse_else_group() {
-}
-fn parse_elif_group(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+fn parse_else_group() {}
+fn parse_elif_group(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
 
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
 ) -> Result<(), String> {
     let newline_location = get_newline_location(tokens, index);
-    let res = eval_constant_expression_integer_when_preprocess(&tokens[*index..newline_location], index, str_maps)?;
+    let res = eval_constant_expression_integer_when_preprocess(
+        &tokens[*index..newline_location],
+        index,
+        str_maps,
+    )?;
     parse_group(tokens, index, str_maps, curr_path, include_paths, defines)?;
     Ok(())
 }
-fn parse_elif_groups(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+fn parse_elif_groups(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
@@ -2043,12 +2044,16 @@ fn parse_elif_groups(tokens: &mut [Token], index: &mut usize, str_maps: &mut Byt
     loop {
         let found = look_for_next_preprocessing_directive(tokens, index);
         if found {
-            if let Some(Token { r#type: TokenType::IDENT { str_map_key }, .. }) = tokens.get(*index) {
+            if let Some(Token {
+                r#type: TokenType::IDENT { str_map_key },
+                ..
+            }) = tokens.get(*index)
+            {
                 let name = &str_maps.key_to_byte_vec[*str_map_key];
                 if *name == *b"elif" {
                     *index += 1;
                     consume_specifically_spaces(tokens, index);
-                    parse_elif_group(tokens, index, str_maps,curr_path,include_paths,defines);
+                    parse_elif_group(tokens, index, str_maps, curr_path, include_paths, defines);
                 }
             } else {
                 break;
@@ -2077,15 +2082,14 @@ fn parse_if_group(
         unreachable!()
     };
     match if_directive_type {
-        b"if" => {
-        }
+        b"if" => {}
         b"ifdef" => {}
         b"ifndef" => {}
         _ => unreachable!(),
     }
     let start_of_group_idx = get_newline_location(tokens, index) + 1;
-    parse_group(tokens, index, str_maps,curr_path,include_paths, defines)?;
-    parse_elif_groups(tokens, index, str_maps,curr_path,include_paths,defines);
+    parse_group(tokens, index, str_maps, curr_path, include_paths, defines)?;
+    parse_elif_groups(tokens, index, str_maps, curr_path, include_paths, defines);
     parse_endif_line(tokens, index, str_maps, Location { line, column })?;
     Ok(())
 }
@@ -2099,7 +2103,15 @@ fn parse_if_section(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
 ) -> Result<(), String> {
-    parse_if_group(tokens, index, str_maps, if_directive_type, curr_path,include_paths,defines)?;
+    parse_if_group(
+        tokens,
+        index,
+        str_maps,
+        if_directive_type,
+        curr_path,
+        include_paths,
+        defines,
+    )?;
     Ok(())
 }
 
@@ -2133,7 +2145,10 @@ fn handle_null_directive_or_non_directive(tokens: &mut [Token], index: &mut usiz
     tokens[*index].r#type = TokenType::WHITESPACE
 }
 
-fn parse_group(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMaps,
+fn parse_group(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
@@ -2174,24 +2189,22 @@ fn parse_group(tokens: &mut [Token], index: &mut usize, str_maps: &mut ByteVecMa
                     index,
                     str_maps,
                     &str_maps.key_to_byte_vec[*str_map_key].clone(),
-                    curr_path,include_paths,defines
+                    curr_path,
+                    include_paths,
+                    defines,
                 )?;
             }
             b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
                 *index += 1;
                 consume_specifically_spaces(tokens, index);
-                parse_control_line(
-                    tokens,
-                    index,
-                    curr_path,
-                    include_paths,
-                    defines,
-                    str_maps,
-                )?;
+                parse_control_line(tokens, index, curr_path, include_paths, defines, str_maps)?;
             }
             d @ (b"else" | b"elif" | b"endif") => {
                 return Err(error(
-                    &format!("Unexpected '{}' directive", String::from_utf8(d.to_vec()).unwrap()),
+                    &format!(
+                        "Unexpected '{}' directive",
+                        String::from_utf8(d.to_vec()).unwrap()
+                    ),
                     *line,
                     *column,
                 ));
