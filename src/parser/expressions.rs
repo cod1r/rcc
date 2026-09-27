@@ -1,8 +1,10 @@
+use crate::cpp::*;
 use crate::error::*;
 use crate::lexer::*;
 use crate::parser::declarations::*;
 use crate::parser::statements::*;
 use crate::parser::*;
+use std::collections::HashMap;
 
 // The parsing functions written are closely modeled after the syntax groups defined in https://www.open-std.org/jtc1/sc22/wg14/www/docs/n2310.pdf
 // It was hard for me to decide whether to write the logic where `parse_conditional_expression` will ALWAYS return conditional expressions or to follow the syntax grouping/precedence but
@@ -1138,15 +1140,92 @@ pub fn parse_expressions(
     parse_comma_expression(tokens, index, flattened, str_maps)
 }
 
+fn preprocess_defined(
+    tokens: &mut [Token],
+    str_maps: &mut ByteVecMaps,
+    defines: &HashMap<usize, Define>,
+) -> Result<(), String> {
+    let mut index = 0usize;
+    while index < tokens.len() {
+        if matches!(
+            tokens.get(index),
+            Some(Token {
+                r#type: TokenType::IDENT { .. },
+                ..
+            })
+        ) {
+            let TokenType::IDENT { str_map_key } = tokens[index].r#type.clone() else {
+                unreachable!()
+            };
+            if str_maps.key_to_byte_vec[str_map_key].as_slice() == b"defined" {
+                let start = index;
+                index += 1;
+                consume_specifically_spaces(tokens, &mut index);
+                let mut key = None;
+                if matches!(
+                    tokens.get(index),
+                    Some(Token {
+                        r#type: TokenType::OPEN_PAR,
+                        ..
+                    })
+                ) {
+                    index += 1;
+                    expected_identifier(tokens, str_maps, &mut index)?;
+                    let Some(Token {
+                        r#type: TokenType::IDENT { str_map_key },
+                        ..
+                    }) = tokens.get(index)
+                    else {
+                        unreachable!()
+                    };
+                    consume_specifically_spaces(tokens, &mut index);
+                    expected_token(tokens, &mut index, TokenType::CLOSE_PAR, "Expected ')'")?;
+                    key = Some(str_map_key);
+                } else {
+                    expected_identifier(tokens, str_maps, &mut index)?;
+                    let Some(Token {
+                        r#type: TokenType::IDENT { str_map_key },
+                        ..
+                    }) = tokens.get(index)
+                    else {
+                        unreachable!()
+                    };
+                    key = Some(str_map_key);
+                }
+                for token in tokens[start..index].iter_mut() {
+                    token.r#type = TokenType::WHITESPACE;
+                }
+                let location = tokens[start].location;
+                tokens[start] = Token {
+                    r#type: TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec(if defines.contains_key(&str_map_key) {
+                            b"1"
+                        } else {
+                            b"0"
+                        }),
+                        suffix: None,
+                    },
+                    location,
+                };
+            }
+        }
+        index += 1;
+    }
+    Ok(())
+}
+
 //Notes:
 //The expression that controls conditional inclusion shall be an integer constant expression
 //Because the controlling constant expression is evaluated during translation phase 4, all identifiers either are or are not macro names — there simply are no keywords, enumeration constants, etc
 //All macro identifiers are evaluated as defined or not defined.
-// TODO: rewrite this. It works but is WAYY too convoluted.
+
+// This function is only used for evaluating the constant expressions that are used in
+// the preprocessing phase.
+// So, `tokens` will be a slice of **just** the constant expression rather than the entire source tokens.
 pub fn eval_constant_expression_integer_when_preprocess(
-    tokens: &[Token],
-    index: &mut usize,
+    tokens: &mut [Token],
     str_maps: &mut ByteVecMaps,
+    defines: &HashMap<usize, Define>,
 ) -> Result<i128, String> {
     if let Some(not_allowed_t) = tokens.iter().find(|t| {
         matches!(
@@ -1187,10 +1266,9 @@ pub fn eval_constant_expression_integer_when_preprocess(
         };
         return Err(error(&msg, line, column));
     }
-    // TODO: describe our algorithm in comments below
-    // or we will forget how any of this shit works
+    preprocess_defined(tokens, str_maps, defines)?;
     let mut flattened = Flattened::new();
-    let curr_expr = parse_conditional_expression(tokens, index, &mut flattened, str_maps)?;
+    let curr_expr = parse_conditional_expression(tokens, &mut 0, &mut flattened, str_maps)?;
     recursive_eval(&curr_expr, str_maps, flattened.expressions.as_slice())
 }
 
@@ -1248,9 +1326,12 @@ fn recursive_eval(
             }
         }
         Expr::PostFix(_) => {
-            todo!("ERROR HERE")
+            todo!("the case of `defined identifier` or `defined(identifier)` isn't handled at all.")
         }
         Expr::Unary(u) => {
+            todo!(
+                "the case of `defined identifier` or `defined(identifier)` isn't handled at all."
+            );
             let UnaryType::Expr { op, first } = u else {
                 unreachable!()
             };

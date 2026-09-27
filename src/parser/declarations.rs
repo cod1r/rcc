@@ -994,11 +994,10 @@ fn parse_enumerator_specifier(
                     })
                 ) {
                     // TODO: probably call parse_expressions here instead of evaluating
-                    let constant_val =
-                        eval_constant_expression_integer_when_preprocess(tokens, index, str_maps)?;
+                    //let expr = parse_conditional_expression(tokens, index, str_maps, ...)?;
                     enum_specifier
                         .enumerator_list
-                        .push(Enumerator::EnumWithConstantExpr(str_map_key, constant_val));
+                        .push(Enumerator::EnumWithConstantExpr(str_map_key, 0));
                 } else {
                     enum_specifier
                         .enumerator_list

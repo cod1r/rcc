@@ -65,7 +65,7 @@ pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) -> R
 
 pub fn expected_identifier(
     tokens: &[Token],
-    str_maps: &mut ByteVecMaps,
+    str_maps: &ByteVecMaps,
     idx: &mut usize,
 ) -> Result<(), String> {
     match tokens.get(*idx) {
