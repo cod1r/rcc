@@ -63,7 +63,7 @@ pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) -> R
     Ok(())
 }
 
-pub fn expected_identifier(
+pub fn expected_identifier_and_consume(
     tokens: &[Token],
     str_maps: &ByteVecMaps,
     idx: &mut usize,

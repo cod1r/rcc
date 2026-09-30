@@ -399,99 +399,6 @@ fn include_directive(
     Err(String::from("file not found"))
 }
 
-fn parse_defined_in_if_directive(
-    tokens: &[Token],
-    index: usize,
-    final_eval_tokens: &mut Vec<Token>,
-    defines: &HashMap<usize, Define>,
-    str_maps: &mut ByteVecMaps,
-) -> Result<(), String> {
-    let mut defined_index = index + 1;
-    if let Some(Token {
-        r#type: TokenType::WHITESPACE | TokenType::OPEN_PAR,
-        ..
-    }) = tokens.get(defined_index)
-    {
-        let start = defined_index;
-        defined_index += 1;
-        if let Some(Token {
-            r#type: TokenType::WHITESPACE,
-            ..
-        }) = tokens.get(defined_index)
-        {
-            defined_index += 1;
-        }
-        if let Some(Token {
-            r#type: TokenType::OPEN_PAR,
-            ..
-        }) = tokens.get(defined_index)
-        {
-            defined_index += 1;
-        }
-        if let Some(Token {
-            r#type: TokenType::WHITESPACE,
-            ..
-        }) = tokens.get(defined_index)
-        {
-            defined_index += 1;
-        }
-        if let Some(Token {
-            r#type:
-                TokenType::IDENT {
-                    str_map_key: identifier_name_key,
-                },
-            ..
-        }) = tokens.get(defined_index)
-        {
-            defined_index += 1;
-            if defines.contains_key(&identifier_name_key) {
-                final_eval_tokens.push(Token {
-                    r#type: TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec(&[b'1']),
-                        suffix: None,
-                    },
-                    location: None,
-                });
-            } else {
-                final_eval_tokens.push(Token {
-                    r#type: TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec(&[b'0']),
-                        suffix: None,
-                    },
-                    location: None,
-                });
-            }
-            if matches!(
-                tokens.get(start),
-                Some(Token {
-                    r#type: TokenType::OPEN_PAR,
-                    ..
-                })
-            ) {
-                while !matches!(
-                    tokens.get(defined_index),
-                    Some(Token {
-                        r#type: TokenType::CLOSE_PAR,
-                        ..
-                    })
-                ) && defined_index < tokens.len()
-                {
-                    defined_index += 1;
-                }
-                if defined_index == tokens.len() {
-                    return Err(format!("Missing closing parenthesis for defined at: TODO!"));
-                }
-                return Ok(());
-            }
-        } else {
-            return Err(format!("unexpected token: {:?}", tokens[defined_index]));
-        }
-    } else {
-        return Err(format!("unexpected token: {:?}", tokens[defined_index]));
-    }
-    Ok(())
-}
-
 fn parse_identifier_list(
     tokens: &[Token],
     index: &mut usize,
@@ -1566,13 +1473,14 @@ fn parse_control_line(
     Ok(())
 }
 fn parse_endif_line(
-    tokens: &[Token],
+    tokens: &mut [Token],
     index: &mut usize,
     str_maps: &ByteVecMaps,
     location_of_if_directive: Location,
 ) -> Result<(), String> {
     let found = look_for_next_preprocessing_directive(tokens, index);
     if found {
+        let start_of_directive = *index;
         *index += 1;
         consume_specifically_spaces(tokens, index);
         let Token {
@@ -1583,6 +1491,8 @@ fn parse_endif_line(
             unreachable!()
         };
         if *str_maps.key_to_byte_vec[str_map_key] == *b"endif" {
+            let newline_location = get_newline_location(tokens, index);
+            remove_directive(tokens, start_of_directive, newline_location);
             *index += 1;
             return Ok(());
         }
@@ -1602,9 +1512,11 @@ fn parse_else_group(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
+    previous_branch_true: bool,
 ) -> Result<(), String> {
     let found = look_for_next_preprocessing_directive(tokens, index);
     if found {
+        let start_of_directive = *index;
         *index += 1;
         consume_specifically_spaces(tokens, index);
         if let Some(Token {
@@ -1612,8 +1524,25 @@ fn parse_else_group(
             ..
         }) = tokens.get(*index)
         {
-            *index += 1;
-            //parse_group()?;
+            if str_maps.key_to_byte_vec[*str_map_key] == b"else" {
+                *index += 1;
+                let newline_location = get_newline_location(tokens, index);
+                parse_group(
+                    tokens,
+                    index,
+                    in_conditional_directive,
+                    str_maps,
+                    curr_path,
+                    include_paths,
+                    defines,
+                )?;
+                remove_directive(tokens, start_of_directive, newline_location);
+                if previous_branch_true {
+                    remove_group(tokens, newline_location + 1, *index);
+                }
+            } else {
+                *index = start_of_directive;
+            }
         }
     }
     Ok(())
@@ -1626,13 +1555,16 @@ fn parse_elif_group(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-) -> Result<(), String> {
+    previous_branch_true: bool,
+    start_of_directive: usize,
+) -> Result<bool, String> {
     let newline_location = get_newline_location(tokens, index);
     let res = eval_constant_expression_integer_when_preprocess(
         &mut tokens[*index..newline_location],
         str_maps,
         defines,
     )?;
+    let start = newline_location + 1;
     parse_group(
         tokens,
         index,
@@ -1642,8 +1574,13 @@ fn parse_elif_group(
         include_paths,
         defines,
     )?;
-    Ok(())
+    remove_directive(tokens, start_of_directive, newline_location);
+    if previous_branch_true || res == 0 {
+        remove_group(tokens, start, *index);
+    }
+    Ok(res != 0)
 }
+
 fn parse_elif_groups(
     tokens: &mut [Token],
     index: &mut usize,
@@ -1652,10 +1589,12 @@ fn parse_elif_groups(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-) -> Result<(), String> {
+    mut previous_branch_true: bool,
+) -> Result<bool, String> {
     loop {
         let found = look_for_next_preprocessing_directive(tokens, index);
         if found {
+            let start_of_directive = *index;
             *index += 1;
             consume_specifically_spaces(tokens, index);
             if let Some(Token {
@@ -1667,7 +1606,7 @@ fn parse_elif_groups(
                 if *name == *b"elif" {
                     *index += 1;
                     consume_specifically_spaces(tokens, index);
-                    parse_elif_group(
+                    previous_branch_true = parse_elif_group(
                         tokens,
                         index,
                         in_conditional_directive,
@@ -1675,14 +1614,32 @@ fn parse_elif_groups(
                         curr_path,
                         include_paths,
                         defines,
+                        previous_branch_true,
+                        start_of_directive,
                     )?;
+                    continue;
                 }
-            } else {
-                break;
             }
+            // Resetting to the beginning of the directive if it's not `elif`
+            *index = start_of_directive;
         }
+        break;
     }
-    Ok(())
+    Ok(previous_branch_true)
+}
+
+fn remove_directive(tokens: &mut [Token], start: usize, end: usize) {
+    tokens[start..end]
+        .iter_mut()
+        .for_each(|t| t.r#type = TokenType::WHITESPACE);
+}
+
+fn remove_group(tokens: &mut [Token], start: usize, end: usize) {
+    tokens[start..end].iter_mut().for_each(|t| {
+        if t.r#type != TokenType::NEWLINE {
+            t.r#type = TokenType::WHITESPACE
+        }
+    });
 }
 
 // My current thoughts on handling conditional inclusion with preprocessing, is that I'll use recursion and recursive descent parsing in order
@@ -1697,11 +1654,16 @@ fn parse_if_group(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-) -> Result<(), String> {
+    start_of_directive: usize,
+) -> Result<bool, String> {
     let newline_location = get_newline_location(tokens, index);
     let constant_expr_result = match if_directive_type {
         b"if" => {
-            todo!("")
+            eval_constant_expression_integer_when_preprocess(
+                &mut tokens[*index..newline_location],
+                str_maps,
+                defines,
+            )? != 0
         }
         b"ifdef" | b"ifndef" => {
             let non_ident = tokens[*index..newline_location]
@@ -1752,7 +1714,15 @@ fn parse_if_group(
         include_paths,
         defines,
     )?;
-    Ok(())
+    remove_directive(tokens, start_of_directive, newline_location);
+    if !constant_expr_result {
+        tokens[start_of_group_idx..*index].iter_mut().for_each(|t| {
+            if t.r#type != TokenType::NEWLINE {
+                t.r#type = TokenType::WHITESPACE
+            }
+        })
+    }
+    Ok(constant_expr_result)
 }
 
 fn parse_if_section(
@@ -1764,15 +1734,10 @@ fn parse_if_section(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
+    location: Location,
+    start_of_directive: usize,
 ) -> Result<(), String> {
-    let Token {
-        location: Some(Location { line, column }),
-        ..
-    } = tokens[*index - 1]
-    else {
-        unreachable!()
-    };
-    parse_if_group(
+    let constant_expr_result = parse_if_group(
         tokens,
         index,
         in_conditional_directive,
@@ -1781,8 +1746,9 @@ fn parse_if_section(
         curr_path,
         include_paths,
         defines,
+        start_of_directive,
     )?;
-    parse_elif_groups(
+    let constant_expr_result = parse_elif_groups(
         tokens,
         index,
         in_conditional_directive,
@@ -1790,6 +1756,7 @@ fn parse_if_section(
         curr_path,
         include_paths,
         defines,
+        constant_expr_result,
     )?;
     parse_else_group(
         tokens,
@@ -1799,8 +1766,9 @@ fn parse_if_section(
         curr_path,
         include_paths,
         defines,
+        constant_expr_result,
     )?;
-    parse_endif_line(tokens, index, str_maps, Location { line, column })?;
+    parse_endif_line(tokens, index, str_maps, location)?;
     Ok(())
 }
 
@@ -1820,20 +1788,6 @@ fn check_valid_directive(tokens: &[Token], index: usize) -> bool {
     newline_comes_after_idx < tokens.len()
 }
 
-fn handle_null_directive_or_non_directive(tokens: &mut [Token], index: &mut usize) {
-    // at this point, index should be at the newline token
-    while !matches!(
-        tokens.get(*index),
-        Some(Token {
-            r#type: TokenType::HASH,
-            ..
-        })
-    ) {
-        *index -= 1;
-    }
-    tokens[*index].r#type = TokenType::WHITESPACE
-}
-
 fn parse_group(
     tokens: &mut [Token],
     index: &mut usize,
@@ -1845,6 +1799,7 @@ fn parse_group(
 ) -> Result<(), String> {
     let found = look_for_next_preprocessing_directive(tokens, index);
     if found {
+        let start_of_directive = *index;
         *index += 1;
         consume_specifically_spaces(tokens, index);
         if let Some(Token {
@@ -1852,7 +1807,8 @@ fn parse_group(
             ..
         }) = tokens.get(*index)
         {
-            handle_null_directive_or_non_directive(tokens, index);
+            let newline_location = get_newline_location(tokens, index);
+            remove_directive(tokens, start_of_directive, newline_location);
             return Ok(());
         }
         if !matches!(
@@ -1862,7 +1818,8 @@ fn parse_group(
                 ..
             })
         ) {
-            handle_null_directive_or_non_directive(tokens, index);
+            let newline_location = get_newline_location(tokens, index);
+            remove_directive(tokens, start_of_directive, newline_location);
             return Ok(());
         }
         let Some(Token {
@@ -1885,6 +1842,11 @@ fn parse_group(
                     curr_path,
                     include_paths,
                     defines,
+                    Location {
+                        line: *line,
+                        column: *column,
+                    },
+                    start_of_directive,
                 )?;
             }
             b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
@@ -1892,15 +1854,22 @@ fn parse_group(
                 consume_specifically_spaces(tokens, index);
                 parse_control_line(tokens, index, curr_path, include_paths, defines, str_maps)?;
             }
-            d @ (b"else" | b"elif" | b"endif") if !in_conditional_directive => {
-                return Err(error(
-                    &format!(
-                        "Unexpected '{}' directive",
-                        String::from_utf8(d.to_vec()).unwrap()
-                    ),
-                    *line,
-                    *column,
-                ));
+            d @ (b"else" | b"elif" | b"endif") => {
+                if !in_conditional_directive {
+                    return Err(error(
+                        &format!(
+                            "Unexpected '{}' directive",
+                            String::from_utf8(d.to_vec()).unwrap()
+                        ),
+                        *line,
+                        *column,
+                    ));
+                }
+                // This codepath will be taken if there isn't any nested directives in the group.
+                // If there aren't any directives, then reset the index variable back to the
+                // start ('#' token), so that `else`, `elif`, and `endif` can be caught by
+                // parse_if_section.
+                *index = start_of_directive;
             }
             _ => {}
         }
@@ -2051,8 +2020,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        cpp, define_directive, expand_macro, if_directive, parse_defined_in_if_directive,
-        preprocessing_directives, process_comments, Define,
+        cpp, define_directive, expand_macro, parse_group, preprocessing_directives,
+        process_comments, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -2908,39 +2877,23 @@ PP(/,*)PP2(*,/)"##
         let src = r##"defined(HI)"##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut final_tokens = Vec::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        parse_defined_in_if_directive(
-            tokens.as_slice(),
-            0,
-            &mut final_tokens,
-            &defines,
-            &mut str_maps,
-        )?;
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer_when_preprocess(
-            &final_tokens,
-            &mut 0,
+            &mut tokens,
             &mut str_maps,
+            &defines,
         )?;
-        assert_eq!(res != 0, false, "failed 1");
+        assert!(res == 0);
         let src = r##"defined HI "##.as_bytes();
         let defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut final_tokens = Vec::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        parse_defined_in_if_directive(
-            tokens.as_slice(),
-            0,
-            &mut final_tokens,
-            &defines,
-            &mut str_maps,
-        )?;
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let res = expressions::eval_constant_expression_integer_when_preprocess(
-            &final_tokens,
-            &mut 0,
+            &mut tokens,
             &mut str_maps,
+            &defines,
         )?;
-        assert_eq!(res != 0, false, "failed 2");
+        assert!(res == 0);
         Ok(())
     }
     #[test]
@@ -2951,24 +2904,36 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
 
             assert_eq!(
                 vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
                     TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None,
+                        suffix: None
                     },
                     TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
                 ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed for 1 inner test"
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
             );
         }
         {
@@ -2977,10 +2942,18 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
             assert_eq!(
                 tokens
                     .iter()
@@ -2991,7 +2964,6 @@ PP(/,*)PP2(*,/)"##
                     ))
                     .count(),
                 0,
-                "failed for 2 inner test"
             );
         }
         {
@@ -3000,24 +2972,44 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
 
             assert_eq!(
                 vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
                     TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None,
+                        suffix: None
                     },
                     TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
                 ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed for 3 inner test"
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
             );
         }
         {
@@ -3026,10 +3018,19 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
+
             assert_eq!(
                 tokens
                     .iter()
@@ -3040,7 +3041,6 @@ PP(/,*)PP2(*,/)"##
                     ))
                     .count(),
                 0,
-                "failed for 4 inner test"
             );
         }
         {
@@ -3049,24 +3049,36 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
 
             assert_eq!(
                 vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
                     TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None,
+                        suffix: None
                     },
                     TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
                 ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed for 5 inner test"
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
             );
         }
         {
@@ -3077,154 +3089,102 @@ PP(/,*)PP2(*,/)"##
 #endif
 "##
             .as_bytes();
-            let defines = HashMap::new();
+            let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            if_directive(&mut tokens, &mut 0, &defines, &mut str_maps)?;
-            assert_eq!(
-                vec![
-                    TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix: None,
-                    },
-                    TokenType::NEWLINE,
-                ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed 6"
-            );
-        }
-        {
-            let src = r##"#define add(a,b) a + b
-#if add(4,4) < 8
-4
-#elif add(1,4) > 0
-5
-#endif
-"##
-            .as_bytes();
-            let mut defines = HashMap::new();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = cpp(
-                src.to_vec(),
-                "",
-                &["./test_c_files"],
-                &mut defines,
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
                 &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
             )?;
             assert_eq!(
                 vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
                     TokenType::CONSTANT_DEC_INT {
                         value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix: None,
+                        suffix: None
                     },
                     TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
                 ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed 7"
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
             );
         }
         {
-            let src = r##"#define add(a,b) a + b
-#if add(4,4) < '8'
+            let src = r##"#if 0
 4
-#elif add(1,4) > '0'
+#elif 0
 5
-#endif
-        "##
-            .as_bytes();
-            let mut defines = HashMap::new();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = cpp(
-                src.to_vec(),
-                "",
-                &["./test_c_files"],
-                &mut defines,
-                &mut str_maps,
-            )?;
-            assert_eq!(
-                vec![
-                    TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None,
-                    },
-                    TokenType::NEWLINE,
-                ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed 8"
-            );
-        }
-        {
-            let src = r##"#if HI && 1
-4
+#elif 1
+6
 #else
-5
+7
 #endif
 "##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
-            let tokens = cpp(
-                src.to_vec(),
-                "",
-                &["./test_c_files"],
-                &mut defines,
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
                 &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
             )?;
             assert_eq!(
                 vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
                     TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec("5".as_bytes()),
-                        suffix: None,
+                        value_key: str_maps.add_byte_vec("6".as_bytes()),
+                        suffix: None
                     },
                     TokenType::NEWLINE,
-                ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed 9"
-            );
-        }
-        {
-            let src = r##"#define HI
-#if defined(HI) && 1
-4
-#else
-5
-#endif
-"##
-            .as_bytes();
-            let mut defines = HashMap::new();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = cpp(
-                src.to_vec(),
-                "",
-                &["./test_c_files"],
-                &mut defines,
-                &mut str_maps,
-            )?;
-            assert_eq!(
-                vec![
-                    TokenType::CONSTANT_DEC_INT {
-                        value_key: str_maps.add_byte_vec("4".as_bytes()),
-                        suffix: None,
-                    },
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
                     TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
                 ],
-                tokens[0..2]
-                    .iter()
-                    .map(|t| t.r#type)
-                    .collect::<Vec<TokenType>>(),
-                "failed 10"
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
             );
         }
         Ok(())

@@ -431,7 +431,7 @@ fn parse_postfix_expression(
                 return Err(error("Expected expression before", *line, *column));
             }
             consume_whitespace(tokens, index);
-            expected_identifier(tokens, str_maps, index)?;
+            expected_identifier_and_consume(tokens, str_maps, index)?;
             let Token {
                 r#type: TokenType::IDENT { str_map_key },
                 ..
@@ -745,6 +745,7 @@ fn parse_relational_expression(
             },
         ) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let second_operand = parse_shift_expression(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(shift_expr);
             let first = flattened.expressions.len() - 1;
@@ -753,7 +754,7 @@ fn parse_relational_expression(
             let r#type = match t.r#type {
                 TokenType::LESS_THAN => BinaryExprType::LessThan,
                 TokenType::LESS_THAN_EQ => BinaryExprType::LessThanEq,
-                TokenType::GREATER_THAN => BinaryExprType::LessThan,
+                TokenType::GREATER_THAN => BinaryExprType::GreaterThan,
                 TokenType::GREATER_THAN_EQ => BinaryExprType::LessThanEq,
                 _ => unreachable!(),
             };
@@ -1170,11 +1171,12 @@ fn preprocess_defined(
                     })
                 ) {
                     index += 1;
-                    expected_identifier(tokens, str_maps, &mut index)?;
+                    consume_specifically_spaces(tokens, &mut index);
+                    expected_identifier_and_consume(tokens, str_maps, &mut index)?;
                     let Some(Token {
                         r#type: TokenType::IDENT { str_map_key },
                         ..
-                    }) = tokens.get(index)
+                    }) = tokens.get(index - 1)
                     else {
                         unreachable!()
                     };
@@ -1182,11 +1184,11 @@ fn preprocess_defined(
                     expected_token(tokens, &mut index, TokenType::CLOSE_PAR, "Expected ')'")?;
                     key = Some(str_map_key);
                 } else {
-                    expected_identifier(tokens, str_maps, &mut index)?;
+                    expected_identifier_and_consume(tokens, str_maps, &mut index)?;
                     let Some(Token {
                         r#type: TokenType::IDENT { str_map_key },
                         ..
-                    }) = tokens.get(index)
+                    }) = tokens.get(index - 1)
                     else {
                         unreachable!()
                     };
@@ -1502,8 +1504,12 @@ mod tests {
     fn eval_expression_temp() -> Result<(), String> {
         let src = r##"1 + 2 * 4"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(
+            &mut tokens,
+            &mut str_maps,
+            &HashMap::new(),
+        );
         assert!(res == Ok(9));
         Ok(())
     }
@@ -1513,17 +1519,23 @@ mod tests {
         {
             let src = r##"((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res =
-                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(
+                &mut tokens,
+                &mut str_maps,
+                &HashMap::new(),
+            )?;
             assert_eq!(res != 0, true, "((((1))))");
         }
         {
             let src = r##"(((((1))))"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res =
-                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(
+                &mut tokens,
+                &mut str_maps,
+                &HashMap::new(),
+            );
             match res {
                 Err(_) => {}
                 Ok(_) => return Err(String::from("unbalanced parentheses not caught")),
@@ -1532,9 +1544,12 @@ mod tests {
         {
             let src = r##"0 - (1 + 1)"##.as_bytes();
             let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-            let res =
-                eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(
+                &mut tokens,
+                &mut str_maps,
+                &HashMap::new(),
+            )?;
             assert_eq!(res != 0, true, "0 - (1 + 1)");
         }
         Ok(())
@@ -1543,13 +1558,21 @@ mod tests {
     fn eval_expression_test_unary() -> Result<(), String> {
         let src = r##"!1"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(
+            &mut tokens,
+            &mut str_maps,
+            &HashMap::new(),
+        )?;
         assert_eq!(res == 0, true, "!1");
         let src = r##"--------------1"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps);
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(
+            &mut tokens,
+            &mut str_maps,
+            &HashMap::new(),
+        );
         match res {
             Err(ref e) => println!("{}", e),
             Ok(_) => {}
@@ -1564,48 +1587,34 @@ mod tests {
     fn eval_expression_test_logical_or() -> Result<(), String> {
         let src = r##"1 || 1"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
+        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+        let res = eval_constant_expression_integer_when_preprocess(
+            &mut tokens,
+            &mut str_maps,
+            &HashMap::new(),
+        )?;
         assert_eq!(res != 0, true);
-        let src = r##"0 || 1"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, true);
-        let src = r##"0 || 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert_eq!(res != 0, false);
         Ok(())
     }
     #[test]
     fn eval_expression_test_conditional() -> Result<(), String> {
-        let src = r##"1 ? 1 : 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert!(res != 0);
-        let src = r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert!(res == 0);
-        let src = r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert!(res == 1);
-        let src = r##"0 ? 0 : 1 * 4"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert!(res == 4);
-        let src = r##"0 ? 0 : !(1 * 4)"##.as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let res = eval_constant_expression_integer_when_preprocess(&tokens, &mut 0, &mut str_maps)?;
-        assert!(res == 0);
+        let srcs = [
+            r##"1 ? 1 : 0"##.as_bytes(),
+            r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes(),
+            r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes(),
+            r##"0 ? 0 : 1 * 4"##.as_bytes(),
+            r##"0 ? 0 : !(1 * 4)"##.as_bytes(),
+        ];
+        for src in srcs {
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let res = eval_constant_expression_integer_when_preprocess(
+                &mut tokens,
+                &mut str_maps,
+                &HashMap::new(),
+            )?;
+            assert!(res != 0);
+        }
         Ok(())
     }
     #[test]

@@ -507,7 +507,7 @@ pub fn parse_jump_statement(
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
-            expected_identifier(tokens, str_maps, index)?;
+            expected_identifier_and_consume(tokens, str_maps, index)?;
             let Some(Token {
                 r#type: TokenType::IDENT { str_map_key, .. },
                 ..
