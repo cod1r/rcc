@@ -1491,10 +1491,12 @@ fn parse_endif_line(
             unreachable!()
         };
         if *str_maps.key_to_byte_vec[str_map_key] == *b"endif" {
+            *index += 1;
             let newline_location = get_newline_location(tokens, index);
             remove_directive(tokens, start_of_directive, newline_location);
-            *index += 1;
             return Ok(());
+        } else {
+            *index = start_of_directive;
         }
     }
     let Location { line, column } = location_of_if_directive;
@@ -1797,81 +1799,91 @@ fn parse_group(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
 ) -> Result<(), String> {
-    let found = look_for_next_preprocessing_directive(tokens, index);
-    if found {
-        let start_of_directive = *index;
-        *index += 1;
-        consume_specifically_spaces(tokens, index);
-        if let Some(Token {
-            r#type: TokenType::NEWLINE,
-            ..
-        }) = tokens.get(*index)
-        {
-            let newline_location = get_newline_location(tokens, index);
-            remove_directive(tokens, start_of_directive, newline_location);
-            return Ok(());
-        }
-        if !matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::IDENT { .. },
+    // Looping here until I do not find any more preprocessing directives in group
+    // and also I need to consume all of the pp tokens in group.
+    // Only breaking out of the loop when I encounter something that indicates the
+    // end of a group like `else`, `elif`.
+    // I think this is only necessary for conditional preprocessing.
+    loop {
+        let found = look_for_next_preprocessing_directive(tokens, index);
+        if found {
+            let start_of_directive = *index;
+            *index += 1;
+            consume_specifically_spaces(tokens, index);
+            if let Some(Token {
+                r#type: TokenType::NEWLINE,
                 ..
-            })
-        ) {
-            let newline_location = get_newline_location(tokens, index);
-            remove_directive(tokens, start_of_directive, newline_location);
-            return Ok(());
-        }
-        let Some(Token {
-            r#type: TokenType::IDENT { str_map_key },
-            location: Some(Location { line, column }),
-        }) = tokens.get(*index)
-        else {
-            unreachable!()
-        };
-        match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
-            b"if" | b"ifdef" | b"ifndef" => {
-                *index += 1;
-                consume_specifically_spaces(tokens, index);
-                parse_if_section(
-                    tokens,
-                    index,
-                    true,
-                    str_maps,
-                    &str_maps.key_to_byte_vec[*str_map_key].clone(),
-                    curr_path,
-                    include_paths,
-                    defines,
-                    Location {
-                        line: *line,
-                        column: *column,
-                    },
-                    start_of_directive,
-                )?;
+            }) = tokens.get(*index)
+            {
+                let newline_location = get_newline_location(tokens, index);
+                remove_directive(tokens, start_of_directive, newline_location);
+                return Ok(());
             }
-            b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
-                *index += 1;
-                consume_specifically_spaces(tokens, index);
-                parse_control_line(tokens, index, curr_path, include_paths, defines, str_maps)?;
+            if !matches!(
+                tokens.get(*index),
+                Some(Token {
+                    r#type: TokenType::IDENT { .. },
+                    ..
+                })
+            ) {
+                let newline_location = get_newline_location(tokens, index);
+                remove_directive(tokens, start_of_directive, newline_location);
+                return Ok(());
             }
-            d @ (b"else" | b"elif" | b"endif") => {
-                if !in_conditional_directive {
-                    return Err(error(
-                        &format!(
-                            "Unexpected '{}' directive",
-                            String::from_utf8(d.to_vec()).unwrap()
-                        ),
-                        *line,
-                        *column,
-                    ));
+            let Some(Token {
+                r#type: TokenType::IDENT { str_map_key },
+                location: Some(Location { line, column }),
+            }) = tokens.get(*index)
+            else {
+                unreachable!()
+            };
+            match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
+                b"if" | b"ifdef" | b"ifndef" => {
+                    *index += 1;
+                    consume_specifically_spaces(tokens, index);
+                    parse_if_section(
+                        tokens,
+                        index,
+                        true,
+                        str_maps,
+                        &str_maps.key_to_byte_vec[*str_map_key].clone(),
+                        curr_path,
+                        include_paths,
+                        defines,
+                        Location {
+                            line: *line,
+                            column: *column,
+                        },
+                        start_of_directive,
+                    )?;
                 }
-                // This codepath will be taken if there isn't any nested directives in the group.
-                // If there aren't any directives, then reset the index variable back to the
-                // start ('#' token), so that `else`, `elif`, and `endif` can be caught by
-                // parse_if_section.
-                *index = start_of_directive;
+                b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
+                    *index += 1;
+                    consume_specifically_spaces(tokens, index);
+                    parse_control_line(tokens, index, curr_path, include_paths, defines, str_maps)?;
+                }
+                d @ (b"else" | b"elif" | b"endif") => {
+                    if !in_conditional_directive {
+                        return Err(error(
+                            &format!(
+                                "Unexpected '{}' directive",
+                                String::from_utf8(d.to_vec()).unwrap()
+                            ),
+                            *line,
+                            *column,
+                        ));
+                    }
+                    // If there aren't any directives left in group,
+                    // then reset the index variable back to the
+                    // start ('#' token), so that `else`, `elif`, and `endif` can be caught by
+                    // parse_if_section.
+                    *index = start_of_directive;
+                    break;
+                }
+                _ => {}
             }
-            _ => {}
+        } else {
+            break;
         }
     }
     Ok(())
@@ -2898,6 +2910,76 @@ PP(/,*)PP2(*,/)"##
     }
     #[test]
     fn if_directive_test() -> Result<(), String> {
+        {
+            let src = r##"#if 1
+#if 0
+#endif
+4
+#if 1
+5
+#endif
+6
+#endif
+"##
+            .as_bytes();
+            let mut defines = HashMap::new();
+            let mut str_maps = ByteVecMaps::new();
+            let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            parse_group(
+                &mut tokens,
+                &mut 0,
+                true,
+                &mut str_maps,
+                ".",
+                &[],
+                &mut defines,
+            )?;
+
+            assert_eq!(
+                vec![
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec("4".as_bytes()),
+                        suffix: None
+                    },
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec("5".as_bytes()),
+                        suffix: None
+                    },
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE,
+                    TokenType::CONSTANT_DEC_INT {
+                        value_key: str_maps.add_byte_vec("6".as_bytes()),
+                        suffix: None
+                    },
+                    TokenType::NEWLINE,
+                    TokenType::WHITESPACE,
+                    TokenType::WHITESPACE,
+                    TokenType::NEWLINE
+                ],
+                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+            );
+        }
         {
             let src = r##"#if 1
 4
