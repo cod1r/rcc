@@ -209,13 +209,13 @@ fn include_directive(
         }) = tokens.get(expand_macro_index)
         {
             if defines.contains_key(str_map_key) {
-                expand_macro(
-                    tokens,
-                    &mut expand_macro_index,
-                    defines,
-                    str_maps,
-                    &mut include_tokens,
-                )?;
+                //expand_macro(
+                //    tokens,
+                //    &mut expand_macro_index,
+                //    defines,
+                //    str_maps,
+                //    &mut include_tokens,
+                //)?;
                 continue;
             }
         }
@@ -407,11 +407,21 @@ fn parse_identifier_list(
     let mut identifier_keys = Vec::new();
     loop {
         consume_specifically_spaces(tokens, index);
-        if let Some(Token {
-            r#type: TokenType::IDENT { str_map_key },
-            location: Some(Location { line, column }),
-        }) = tokens.get(*index)
-        {
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::ELLIPSIS,
+                ..
+            })
+        ) {
+            expected_identifier_and_consume(tokens, str_maps, index)?;
+            let Some(Token {
+                r#type: TokenType::IDENT { str_map_key },
+                location: Some(Location { line, column }),
+            }) = tokens.get(*index - 1)
+            else {
+                unreachable!()
+            };
             *index += 1;
             let arg = &str_maps.key_to_byte_vec[*str_map_key];
             if identifier_keys.contains(str_map_key) {
@@ -426,15 +436,6 @@ fn parse_identifier_list(
                 ));
             }
             identifier_keys.push(*str_map_key);
-        } else {
-            if let Some(Token {
-                location: Some(Location { line, column }),
-                ..
-            }) = tokens.get(*index)
-            {
-                return Err(error("Expected identifier token", *line, *column));
-            }
-            return Err("Expected identifier token".to_string());
         }
         consume_specifically_spaces(tokens, index);
         if !matches!(
@@ -447,6 +448,7 @@ fn parse_identifier_list(
             break Ok(identifier_keys);
         }
         *index += 1;
+        consume_specifically_spaces(tokens, index);
         if matches!(
             tokens.get(*index),
             Some(Token {
@@ -460,10 +462,11 @@ fn parse_identifier_list(
 }
 
 fn define_directive(
-    tokens: &[Token],
+    tokens: &mut [Token],
     index: &mut usize,
     defines: &mut HashMap<usize, Define>,
     str_maps: &ByteVecMaps,
+    start_of_directive: usize,
 ) -> Result<(), String> {
     let mut def_data = Define {
         parameters: None,
@@ -479,21 +482,25 @@ fn define_directive(
         ..
     }) = tokens.get(*index)
     else {
-        unreachable!()
+        if let Some(Token {
+            location: Some(Location { line, column }),
+            ..
+        }) = tokens.get(*index)
+        {
+            return Err(error("Expected identifier for macro name", *line, *column));
+        }
+        return Err("Expected identifier for macro name".to_string());
     };
     *index += 1;
-    let Some(position_of_newline) = tokens[*index..]
-        .iter()
-        .position(|t| t.r#type == TokenType::NEWLINE)
-    else {
-        unreachable!()
-    };
+    let position_of_newline = get_newline_location(tokens, index);
     // There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
     if let Some(Token {
         r#type: TokenType::OPEN_PAR,
         ..
     }) = tokens.get(*index)
     {
+        *index += 1;
+        consume_specifically_spaces(tokens, index);
         def_data.parameters = Some(parse_identifier_list(tokens, index, str_maps)?);
         if matches!(
             tokens.get(*index),
@@ -508,9 +515,15 @@ fn define_directive(
         expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
     }
     consume_specifically_spaces(tokens, index);
-    def_data
-        .replacement_list
-        .extend_from_slice(&tokens[*index..position_of_newline]);
+    def_data.replacement_list.extend_from_slice(
+        &tokens[*index..position_of_newline]
+            .iter()
+            .map(|t| Token {
+                r#type: t.r#type,
+                location: None,
+            })
+            .collect::<Vec<Token>>(),
+    );
     defines.insert(*identifier_of_macro_key, def_data);
     let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
     let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) else {
@@ -545,6 +558,7 @@ fn define_directive(
             *column,
         ));
     }
+    remove_directive(tokens, start_of_directive, position_of_newline);
     return Ok(());
 }
 fn error_directive(_tokens: &mut Vec<TokenType>) {
@@ -1246,7 +1260,8 @@ fn expand_arguments(
     }
     Ok(())
 }
-fn expand_macro(
+
+fn expand_macros(
     tokens: &[Token],
     index: &mut usize,
     defines: &HashMap<usize, Define>,
@@ -1426,7 +1441,9 @@ fn look_for_next_preprocessing_directive(tokens: &[Token], index: &mut usize) ->
                     return true;
                 }
             }
-            Some(Token { .. }) => preceded_only_by_whitespace_or_nothing_or_newline = false,
+            Some(Token { .. }) => {
+                preceded_only_by_whitespace_or_nothing_or_newline = false;
+            }
             None => unreachable!(),
         }
         *index += 1;
@@ -1441,33 +1458,21 @@ fn parse_control_line(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
+    directive: &[u8],
+    start_of_directive: usize,
 ) -> Result<(), String> {
-    let Some(Token {
-        r#type: TokenType::IDENT { str_map_key: s },
-        location: Some(Location { line, column }),
-    }) = tokens.get(*index)
-    else {
-        unreachable!()
-    };
-    match str_maps.key_to_byte_vec[*s].as_slice() {
+    match directive {
         b"include" => {
-            *index += 1;
             include_directive(tokens, index, curr_path, include_paths, defines, str_maps)?;
         }
         b"define" => {
-            *index += 1;
-            consume_specifically_spaces(tokens, index);
-            define_directive(tokens, index, defines, str_maps)?;
+            define_directive(tokens, index, defines, str_maps, start_of_directive)?;
         }
         b"error" => todo!(),
         b"line" => todo!(),
         b"pragma" => todo!(),
         _ => {
-            return Err(error(
-                "Unknown control line preprocessing directive",
-                *line,
-                *column,
-            ))
+            unreachable!()
         }
     }
     Ok(())
@@ -1837,7 +1842,8 @@ fn parse_group(
             else {
                 unreachable!()
             };
-            match str_maps.key_to_byte_vec[*str_map_key].as_slice() {
+            let d = str_maps.key_to_byte_vec[*str_map_key].clone();
+            match d.as_slice() {
                 b"if" | b"ifdef" | b"ifndef" => {
                     *index += 1;
                     consume_specifically_spaces(tokens, index);
@@ -1857,12 +1863,21 @@ fn parse_group(
                         start_of_directive,
                     )?;
                 }
-                b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
+                (b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma") => {
                     *index += 1;
                     consume_specifically_spaces(tokens, index);
-                    parse_control_line(tokens, index, curr_path, include_paths, defines, str_maps)?;
+                    parse_control_line(
+                        tokens,
+                        index,
+                        curr_path,
+                        include_paths,
+                        defines,
+                        str_maps,
+                        &d,
+                        start_of_directive,
+                    )?;
                 }
-                d @ (b"else" | b"elif" | b"endif") => {
+                (b"else" | b"elif" | b"endif") => {
                     if !in_conditional_directive {
                         return Err(error(
                             &format!(
@@ -1888,6 +1903,7 @@ fn parse_group(
     }
     Ok(())
 }
+
 fn preprocessing_directives(
     tokens: &mut Vec<Token>,
     curr_path: &str,
@@ -1916,7 +1932,7 @@ fn preprocessing_directives(
             defines,
         )?;
     }
-    Err(String::from("unable to preprocess"))
+    Ok(())
 }
 pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {
     let vec_bytes = tokens
@@ -2032,8 +2048,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        cpp, define_directive, expand_macro, parse_group, preprocessing_directives,
-        process_comments, Define,
+        cpp, define_directive, parse_group, preprocessing_directives, process_comments, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -2197,17 +2212,7 @@ HI(5 5);"##
             .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![TokenType::StringLiteral {
                 str_lit: StringLiteral {
@@ -2215,10 +2220,7 @@ HI(5 5);"##
                     sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
                 },
             }],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2230,49 +2232,13 @@ HI(5 5);"##
 #define join(c, d) in_between(c hash_hash d)
 char p[] = join(x, y);"##;
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        let mut index = 0;
         let mut defines = HashMap::new();
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        while index < tokens.len() {
-            if let Some(
-                [Token {
-                    r#type:
-                        TokenType::IDENT {
-                            str_map_key: first, ..
-                        },
-                    ..
-                }, Token {
-                    r#type: TokenType::OPEN_PAR,
-                    ..
-                }, Token {
-                    r#type:
-                        TokenType::IDENT {
-                            str_map_key: second,
-                            ..
-                        },
-                    ..
-                }],
-            ) = tokens.get(index..index + 3)
-            {
-                if *first == str_maps.add_byte_vec("join".as_bytes())
-                    && *second == str_maps.add_byte_vec("x".as_bytes())
-                {
-                    break;
-                }
-            }
-            index += 1;
-        }
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
+        let tokens = cpp(
+            src.as_bytes().to_vec(),
+            "",
+            &[],
+            &mut defines,
             &mut str_maps,
-            &mut final_tokens,
         )?;
         assert_eq!(
             vec![TokenType::StringLiteral {
@@ -2281,10 +2247,7 @@ char p[] = join(x, y);"##;
                     sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
                 },
             }],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2316,19 +2279,20 @@ PP_STRINGIZE_ALL( hello       /* */ world) /* "hello world" */
     #[test]
     fn test_define_directive() -> Result<(), String> {
         let mut str_maps = ByteVecMaps::new();
-        let src = "#define hash_hash # ## #\n";
-        let src2 = "#define mkstr(a) # a\n";
-        let src3 = "#define in_between(a) mkstr(a)\n";
-        let src4 = "#define join(c, d) in_between(c hash_hash d)\n";
-        let mut tokens = lexer(&src.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens2 = lexer(&src2.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens3 = lexer(&src3.as_bytes().to_vec(), true, &mut str_maps)?;
-        let mut tokens4 = lexer(&src4.as_bytes().to_vec(), true, &mut str_maps)?;
+        let src = r##"
+#define hash_hash # ## #
+#define mkstr(a) # a
+#define in_between(a) mkstr(a)
+#define join(c, d) in_between(c hash_hash d)
+"##;
         let mut defines = HashMap::new();
-        define_directive(&mut tokens, &mut 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens2, &mut 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens3, &mut 0, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens4, &mut 0, &mut defines, &mut str_maps)?;
+        cpp(
+            src.as_bytes().to_vec(),
+            ".",
+            &[],
+            &mut defines,
+            &mut str_maps,
+        )?;
         assert_eq!(defines.len(), 4);
         assert!(defines.contains_key(&str_maps.add_byte_vec("hash_hash".as_bytes())));
         assert!(defines.contains_key(&str_maps.add_byte_vec("mkstr".as_bytes())));
@@ -2449,27 +2413,13 @@ A"##
         .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(src, true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("4".as_bytes()),
                 suffix: None,
             }],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2481,18 +2431,7 @@ A"##
         .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::CONSTANT_DEC_INT {
@@ -2510,10 +2449,7 @@ A"##
                     suffix: None,
                 }
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2524,17 +2460,7 @@ HI((,),(,))"##
             .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::OPEN_PAR,
@@ -2545,10 +2471,7 @@ HI((,),(,))"##
                 TokenType::COMMA,
                 TokenType::CLOSE_PAR,
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2559,17 +2482,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
             .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::IDENT {
@@ -2610,10 +2523,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                 TokenType::CLOSE_PAR,
                 TokenType::CLOSE_PAR,
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2625,16 +2535,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::CONSTANT_DEC_INT {
@@ -2657,10 +2558,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
                     suffix: None,
                 },
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2673,17 +2571,7 @@ HAHA(C,4)"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::COMMA,
@@ -2695,10 +2583,7 @@ HAHA(C,4)"##
                     suffix: None,
                 },
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2710,18 +2595,7 @@ f(2)(9)"##
             .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::CONSTANT_DEC_INT {
@@ -2739,10 +2613,7 @@ f(2)(9)"##
                 },
                 TokenType::CLOSE_PAR,
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2755,17 +2626,7 @@ INVOKE(FOO,BAR)"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::IDENT {
@@ -2787,10 +2648,7 @@ INVOKE(FOO,BAR)"##
                 },
                 TokenType::CLOSE_PAR,
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2801,17 +2659,7 @@ CHICKEN(1 2,3 4)"##
             .as_bytes();
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &mut tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::CONSTANT_DEC_INT {
@@ -2834,10 +2682,7 @@ CHICKEN(1 2,3 4)"##
                     suffix: None,
                 },
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }
@@ -2848,27 +2693,8 @@ CHICKEN(1 2,3 4)"##
 PP(/,*)PP2(*,/)"##
             .as_bytes();
         let mut str_maps = ByteVecMaps::new();
-        let src = process_comments(src)?;
-        let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let mut defines = HashMap::new();
-        let mut index = 0;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        define_directive(&mut tokens, &mut index, &mut defines, &mut str_maps)?;
-        let mut final_tokens = Vec::new();
-        expand_macro(
-            &tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
-        expand_macro(
-            &tokens,
-            &mut index,
-            &defines,
-            &mut str_maps,
-            &mut final_tokens,
-        )?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
                 TokenType::DIV,
@@ -2877,10 +2703,7 @@ PP(/,*)PP2(*,/)"##
                 TokenType::WHITESPACE,
                 TokenType::DIV,
             ],
-            final_tokens
-                .iter()
-                .map(|t| t.r#type)
-                .collect::<Vec<TokenType>>()
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
     }

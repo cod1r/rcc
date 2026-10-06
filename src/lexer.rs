@@ -1879,7 +1879,7 @@ pub fn lexer(
                     r#type: token_type,
                     location: Some(Location { column, line }),
                 });
-                column += index - old_index;
+                column += 1;
             } else {
                 return Err(unknown_token(char::from(program_str_bytes[index]), line));
             }
