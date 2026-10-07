@@ -461,6 +461,27 @@ fn parse_identifier_list(
     }
 }
 
+fn apply_HASH_constraint(replacement_list: &[Token]) {
+    for (i, t) in replacement_list.iter().enumerate() {
+        if t.r#type == TokenType::HASH {
+            let mut j = i;
+            consume_specifically_spaces(&replacement_list, &mut j);
+            if let Some(Token {
+                r#type: TokenType::IDENT { str_map_key },
+                location: Some(Location { line, column }),
+            }) = replacment_list.get(j)
+            {
+                if !vec.contains(str_map_key) {
+                    return Err(error("Each '#' pp token in replacement list in fn like macro shall be followed by parameter", *line, *column));
+                }
+            } else {
+                let loc = t.location.expect("Location of token that isn't identifier");
+                return Err(error("Each '#' pp token in replacement list in fn like macro shall be followed by parameter", loc.line, loc.column));
+            }
+        }
+    }
+}
+
 fn define_directive(
     tokens: &mut [Token],
     index: &mut usize,
@@ -524,6 +545,12 @@ fn define_directive(
             })
             .collect::<Vec<Token>>(),
     );
+    if let Some(vec) = &def_data.parameters {
+        // Each # preprocessing token in the replacement list for a function-like macro
+        // shall be followed by a parameter as the next preprocessing token in the
+        // replacement list.
+        apply_HASH_constraint(def_data.replacement_list);
+    }
     defines.insert(*identifier_of_macro_key, def_data);
     let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
     let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) else {
@@ -1266,7 +1293,6 @@ fn expand_macros(
     index: &mut usize,
     defines: &HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
-    final_tokens: &mut Vec<Token>,
 ) -> Result<(), String> {
     let mut accumulated_replacements = Vec::<Token>::new();
     let mut current_token = tokens[*index];
