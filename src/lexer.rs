@@ -402,6 +402,9 @@ pub enum Suffix {
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum TokenType {
+    RCC_INTERNAL_MACRO_REPLACEMENT {
+        idx_of_macro_replacement: usize,
+    },
     IDENT {
         str_map_key: usize,
     },

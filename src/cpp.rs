@@ -461,7 +461,7 @@ fn parse_identifier_list(
     }
 }
 
-fn apply_HASH_constraint(replacement_list: &[Token]) {
+fn apply_HASH_constraint(replacement_list: &[Token], parameters: &[usize]) -> Result<(), String> {
     for (i, t) in replacement_list.iter().enumerate() {
         if t.r#type == TokenType::HASH {
             let mut j = i;
@@ -469,17 +469,19 @@ fn apply_HASH_constraint(replacement_list: &[Token]) {
             if let Some(Token {
                 r#type: TokenType::IDENT { str_map_key },
                 location: Some(Location { line, column }),
-            }) = replacment_list.get(j)
+            }) = replacement_list.get(j)
             {
-                if !vec.contains(str_map_key) {
+                if !parameters.contains(str_map_key) {
                     return Err(error("Each '#' pp token in replacement list in fn like macro shall be followed by parameter", *line, *column));
                 }
             } else {
+                println!("{:?}", t);
                 let loc = t.location.expect("Location of token that isn't identifier");
                 return Err(error("Each '#' pp token in replacement list in fn like macro shall be followed by parameter", loc.line, loc.column));
             }
         }
     }
+    Ok(())
 }
 
 fn define_directive(
@@ -536,6 +538,12 @@ fn define_directive(
         expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
     }
     consume_specifically_spaces(tokens, index);
+    if let Some(vec) = &def_data.parameters {
+        // Each # preprocessing token in the replacement list for a function-like macro
+        // shall be followed by a parameter as the next preprocessing token in the
+        // replacement list.
+        apply_HASH_constraint(&tokens[*index..position_of_newline], vec);
+    }
     def_data.replacement_list.extend_from_slice(
         &tokens[*index..position_of_newline]
             .iter()
@@ -545,12 +553,6 @@ fn define_directive(
             })
             .collect::<Vec<Token>>(),
     );
-    if let Some(vec) = &def_data.parameters {
-        // Each # preprocessing token in the replacement list for a function-like macro
-        // shall be followed by a parameter as the next preprocessing token in the
-        // replacement list.
-        apply_HASH_constraint(def_data.replacement_list);
-    }
     defines.insert(*identifier_of_macro_key, def_data);
     let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
     let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) else {
@@ -593,59 +595,6 @@ fn error_directive(_tokens: &mut Vec<TokenType>) {
 }
 fn line_directive(_tokens: &mut Vec<TokenType>, _index: usize, _end: usize) -> Result<(), String> {
     todo!()
-}
-fn undef_directive(
-    tokens: &[Token],
-    index: &mut usize,
-    defines: &mut HashMap<usize, Define>,
-    _str_maps: &mut ByteVecMaps,
-) -> Result<(), String> {
-    let mut index_of_identifier = *index + 1;
-    if matches!(
-        tokens.get(index_of_identifier),
-        Some(Token {
-            r#type: TokenType::WHITESPACE,
-            ..
-        })
-    ) {
-        index_of_identifier += 1;
-    }
-    index_of_identifier += 1;
-    if matches!(
-        tokens.get(index_of_identifier),
-        Some(Token {
-            r#type: TokenType::WHITESPACE,
-            ..
-        })
-    ) {
-        index_of_identifier += 1;
-        if let Some(Token {
-            r#type:
-                TokenType::IDENT {
-                    str_map_key: identifier_to_be_undef_key,
-                    ..
-                },
-            ..
-        }) = tokens.get(index_of_identifier)
-        {
-            defines.remove(identifier_to_be_undef_key);
-            let mut newline_index = index_of_identifier + 1;
-            while !matches!(
-                tokens.get(newline_index),
-                Some(Token {
-                    r#type: TokenType::NEWLINE,
-                    ..
-                })
-            ) {
-                newline_index += 1;
-                if matches!(tokens.get(newline_index), None) {
-                    return Err(String::from("missing newline for undef directive"));
-                }
-            }
-            return Ok(());
-        }
-    }
-    Err(format!("undef directive not formed correctly"))
 }
 
 fn hash_hash_deletion_and_concat_tokens(
@@ -1288,149 +1237,13 @@ fn expand_arguments(
     Ok(())
 }
 
-fn expand_macros(
+fn macro_substitutions(
     tokens: &[Token],
     index: &mut usize,
     defines: &HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
 ) -> Result<(), String> {
-    let mut accumulated_replacements = Vec::<Token>::new();
-    let mut current_token = tokens[*index];
-    let mut macro_index = index;
-    // vector of (macro_key, depth)
-    let mut already_replaced_macros: Vec<(usize, usize)> = Vec::new();
-    let mut rechecking = false;
-    let mut rechecking_idx = 0;
-    'recheck: loop {
-        let TokenType::IDENT {
-            str_map_key: macro_id_key,
-            ..
-        } = current_token.r#type
-        else {
-            unreachable!("{:?}", current_token)
-        };
-        let Some(def_data) = defines.get(&macro_id_key) else {
-            unreachable!()
-        };
-        let mut first_macro = if def_data.parameters.is_some() || def_data.var_arg {
-            let parsed = if !rechecking {
-                parse_function_macro(tokens, &[], *macro_index, defines, macro_id_key)
-            } else {
-                parse_function_macro(
-                    &accumulated_replacements,
-                    &tokens[*macro_index..],
-                    rechecking_idx,
-                    defines,
-                    macro_id_key,
-                )
-            };
-            if let Some(mut m) = parsed {
-                let Some(args) = &mut m.arguments else {
-                    unreachable!()
-                };
-                for arg in args {
-                    expand_arguments(arg, defines, str_maps)?;
-                }
-                m.depth = already_replaced_macros
-                    .iter()
-                    .fold(0, |a, (_, depth)| a.max(*depth))
-                    + 1;
-                m
-            } else {
-                if !rechecking {
-                    accumulated_replacements.push(tokens[*macro_index]);
-                    *macro_index += 1;
-                }
-                break 'recheck;
-            }
-        } else {
-            Macro {
-                macro_key: macro_id_key,
-                start: *macro_index,
-                end: *macro_index,
-                depth: 1,
-                arguments: None,
-            }
-        };
-        let mut original_macro = if !rechecking {
-            tokens[first_macro.start..first_macro.end + 1].to_vec()
-        } else {
-            let mut first_part = accumulated_replacements[first_macro.start..].to_vec();
-            let length_of_macro = first_macro.end + 1 - first_macro.start;
-            first_part.extend_from_slice(
-                &tokens[*macro_index
-                    ..*macro_index + length_of_macro
-                        - (accumulated_replacements.len() - first_macro.start)],
-            );
-            accumulated_replacements.truncate(rechecking_idx);
-            first_part
-        };
-        // only change macro_index if the current macro ends past the current macro_index
-        // FOR THE CASE OF WHEN A MACRO IS INVOKED WITHIN ACCUMULATED_REPLACEMENTS AND THE REST OF
-        // THE MACRO INVOCATION IS IN 'tokens', 'macro_index' is only ever used to index 'tokens'
-        // so macro_index shouldn't be changed if first_macro.end + 1 is less than macro_index
-        if !rechecking {
-            *macro_index = first_macro.end + 1;
-        } else {
-            *macro_index = *macro_index
-                + (first_macro.end - (accumulated_replacements.len() - first_macro.start))
-                + 1;
-        }
-        // set to zero because the original_macro/replacement_list starts at the first_macro
-        first_macro.start = 0;
-        // set to length of original_macro/replacement_list because the previous value was an
-        // offset in 'tokens'
-        first_macro.end = original_macro.len() - 1;
-        let mut macro_stack: Vec<Macro> = vec![first_macro];
-        while !macro_stack.is_empty() {
-            parse_macro_and_replace(
-                defines,
-                &mut macro_stack,
-                &mut original_macro,
-                str_maps,
-                &mut already_replaced_macros,
-            )?;
-        }
-        // have to check the last non whitespace token to see if it is a fn like macro just in case
-        // if the replacement has a fn like macro at the end and the invocation itself is not in
-        // the replacement but in tokens like 'f(2)(9)' -> '2*g'. g is fn like macro where the
-        // invocation is (9) but 2*g is in final_tokens and (9) is in tokens.
-        'outer: for rescan_idx in 0..original_macro.len() {
-            if let Some(Token {
-                r#type:
-                    TokenType::IDENT {
-                        str_map_key: key, ..
-                    },
-                ..
-            }) = original_macro.get(rescan_idx)
-            {
-                if defines.contains_key(key) {
-                    for (macro_key, _) in &already_replaced_macros {
-                        if *macro_key == *key {
-                            continue 'outer;
-                        }
-                    }
-                    current_token = original_macro[rescan_idx];
-                    rechecking = true;
-                    rechecking_idx = accumulated_replacements.len() + rescan_idx;
-                    accumulated_replacements.extend_from_slice(&original_macro);
-                    //already_replaced_macros.clear();
-                    already_replaced_macros.push((
-                        *key,
-                        already_replaced_macros
-                            .iter()
-                            .fold(0, |a, (_, depth)| a.max(*depth))
-                            + 1,
-                    ));
-                    continue 'recheck;
-                }
-            }
-        }
-        accumulated_replacements.extend_from_slice(&original_macro);
-        break 'recheck;
-    }
-    final_tokens.extend_from_slice(&accumulated_replacements);
-    Ok(())
+    todo!()
 }
 
 fn get_newline_location(tokens: &[Token], index: &usize) -> usize {
@@ -1477,6 +1290,27 @@ fn look_for_next_preprocessing_directive(tokens: &[Token], index: &mut usize) ->
     false
 }
 
+fn parse_undef_line(
+    tokens: &mut [Token],
+    index: &mut usize,
+    str_maps: &ByteVecMaps,
+    defines: &mut HashMap<usize, Define>,
+    start_of_directive: usize,
+) -> Result<(), String> {
+    let newline_location = get_newline_location(tokens, index);
+    expected_identifier_and_consume(tokens, str_maps, index)?;
+    let Token {
+        r#type: TokenType::IDENT { str_map_key },
+        ..
+    } = tokens[*index - 1]
+    else {
+        unreachable!()
+    };
+    defines.remove(&str_map_key);
+    remove_directive(tokens, start_of_directive, newline_location);
+    Ok(())
+}
+
 fn parse_control_line(
     tokens: &mut [Token],
     index: &mut usize,
@@ -1497,6 +1331,9 @@ fn parse_control_line(
         b"error" => todo!(),
         b"line" => todo!(),
         b"pragma" => todo!(),
+        b"undef" => {
+            parse_undef_line(tokens, index, str_maps, defines, start_of_directive)?;
+        }
         _ => {
             unreachable!()
         }
