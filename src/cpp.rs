@@ -597,310 +597,6 @@ fn line_directive(_tokens: &mut Vec<TokenType>, _index: usize, _end: usize) -> R
     todo!()
 }
 
-fn parse_macro_and_replace(
-    defines: &HashMap<usize, Define>,
-    macro_stack: &mut Vec<Macro>,
-    replacement_list: &mut Vec<Token>,
-    str_maps: &mut ByteVecMaps,
-    already_replaced_macros: &mut Vec<(usize, usize)>,
-) -> Result<(), String> {
-    let Some(curr_macro) = macro_stack.pop() else {
-        unreachable!()
-    };
-    let Some(defines_data) = defines.get(&curr_macro.macro_key) else {
-        unreachable!()
-    };
-    // actual_replacement_list is the current replacement_list for the current macro replacement
-    // the replacement_list in the fn args is the overall replacement_list
-    let mut actual_replacement_list = defines_data.replacement_list.clone();
-    let mut hash_hash_from_args = Vec::new();
-    if let Some(parameters) = &defines_data.parameters {
-        let Some(arguments) = curr_macro.arguments else {
-            unreachable!(
-                "{}",
-                String::from_utf8(str_maps.key_to_byte_vec[curr_macro.macro_key].clone()).unwrap()
-            )
-        };
-        let mut token_index = 0;
-        while token_index < actual_replacement_list.len() {
-            let token = actual_replacement_list[token_index];
-            match token.r#type {
-                TokenType::IDENT {
-                    str_map_key: id_key,
-                    ..
-                } => {
-                    if parameters.contains(&id_key)
-                        || str_maps.key_to_byte_vec[id_key] == b"__VA_ARGS__"
-                    {
-                        // can never go out of bounds
-                        let mut p_index = 0;
-                        let seen_arg_index = loop {
-                            if p_index == parameters.len() || parameters[p_index] == id_key {
-                                break p_index;
-                            }
-                            p_index += 1;
-                        };
-                        let argument = if seen_arg_index >= arguments.len() {
-                            Vec::<Token>::new()
-                        } else {
-                            arguments[seen_arg_index].clone()
-                        };
-                        let first_condition = token_index > 0
-                            && matches!(
-                                actual_replacement_list.get(token_index - 1),
-                                Some(Token {
-                                    r#type: TokenType::HASH,
-                                    ..
-                                })
-                            );
-                        let second_condition = token_index > 1
-                            && matches!(
-                                actual_replacement_list.get(token_index - 2),
-                                Some(Token {
-                                    r#type: TokenType::HASH,
-                                    ..
-                                })
-                            )
-                            && matches!(
-                                actual_replacement_list.get(token_index - 1),
-                                Some(Token {
-                                    r#type: TokenType::WHITESPACE,
-                                    ..
-                                })
-                            );
-                        if first_condition || second_condition {
-                            // stringification of argument token sequence
-                            let mut sequence = Vec::new();
-                            let start_remove_index = if first_condition {
-                                token_index - 1
-                            } else {
-                                token_index - 2
-                            };
-                            for _ in start_remove_index..token_index + 1 {
-                                actual_replacement_list.remove(start_remove_index);
-                            }
-                            for t in argument {
-                                match t.r#type {
-                                    TokenType::NEWLINE => {
-                                        sequence.push(b' ');
-                                    }
-                                    _ => {
-                                        if let Some(mut bv) = t.to_byte_vec(str_maps) {
-                                            if bv.contains(&b'\\') || bv.contains(&b'"') {
-                                                for bv_index in 0..bv.len() {
-                                                    if bv[bv_index] == b'\\' || bv[bv_index] == b'"'
-                                                    {
-                                                        bv.insert(bv_index, b'\\');
-                                                    }
-                                                }
-                                            }
-                                            sequence.extend_from_slice(&bv);
-                                        } else {
-                                            return Err(format!(
-                                                    "tried to stringify token that cannot be stringified"
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                            actual_replacement_list.insert(
-                                start_remove_index,
-                                Token {
-                                    r#type: TokenType::StringLiteral {
-                                        str_lit: StringLiteral {
-                                            prefix_key: None,
-                                            sequence_key: str_maps.add_byte_vec(&sequence),
-                                        },
-                                    },
-                                    location: None,
-                                },
-                            );
-                        } else {
-                            actual_replacement_list.remove(token_index);
-                            let mut insert_index = token_index;
-                            let count_of_non_whitespace = argument
-                                .iter()
-                                .filter(|t| {
-                                    !matches!(
-                                        t,
-                                        Token {
-                                            r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
-                                            ..
-                                        }
-                                    )
-                                })
-                                .count();
-                            if count_of_non_whitespace > 0 {
-                                for t in argument {
-                                    if matches!(
-                                        t,
-                                        Token {
-                                            r#type: TokenType::HASH_HASH,
-                                            ..
-                                        }
-                                    ) {
-                                        hash_hash_from_args.push(insert_index);
-                                    }
-                                    actual_replacement_list.insert(insert_index, t);
-                                    insert_index += 1;
-                                }
-                                token_index = insert_index;
-                            } else {
-                                // Only add placemarker if parameter is preceded or followed by ##
-                                if (token_index > 1
-                                    && matches!(
-                                        actual_replacement_list.get(token_index - 2),
-                                        Some(Token {
-                                            r#type: TokenType::HASH_HASH,
-                                            ..
-                                        })
-                                    )
-                                    && matches!(
-                                        actual_replacement_list.get(token_index - 1),
-                                        Some(Token {
-                                            r#type: TokenType::WHITESPACE,
-                                            ..
-                                        })
-                                    ))
-                                    || (token_index > 0
-                                        && matches!(
-                                            actual_replacement_list.get(token_index - 1),
-                                            Some(Token {
-                                                r#type: TokenType::HASH_HASH,
-                                                ..
-                                            })
-                                        ))
-                                    || matches!(
-                                        actual_replacement_list.get(token_index + 1),
-                                        Some(Token {
-                                            r#type: TokenType::HASH_HASH,
-                                            ..
-                                        })
-                                    )
-                                    || (matches!(
-                                        actual_replacement_list.get(token_index + 1),
-                                        Some(Token {
-                                            r#type: TokenType::WHITESPACE,
-                                            ..
-                                        })
-                                    ) && matches!(
-                                        actual_replacement_list.get(token_index + 2),
-                                        Some(Token {
-                                            r#type: TokenType::HASH_HASH,
-                                            ..
-                                        })
-                                    ))
-                                {
-                                    actual_replacement_list.insert(
-                                        insert_index,
-                                        Token {
-                                            r#type: TokenType::PLACEMARKER,
-                                            location: None,
-                                        },
-                                    );
-                                    token_index += 1;
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                }
-                _ => {}
-            }
-            token_index += 1;
-        }
-    }
-    hash_hash_deletion_and_concat_tokens(&mut actual_replacement_list, &hash_hash_from_args);
-    let mut placemarker_removal_index = 0;
-    while placemarker_removal_index < actual_replacement_list.len() {
-        if let Token {
-            r#type: TokenType::PLACEMARKER,
-            ..
-        } = actual_replacement_list[placemarker_removal_index]
-        {
-            actual_replacement_list.remove(placemarker_removal_index);
-            continue;
-        }
-        placemarker_removal_index += 1;
-    }
-    let mut byte_vec = Vec::new();
-    for t in actual_replacement_list {
-        let Some(inner_byte_vec) = t.to_byte_vec(str_maps) else {
-            unreachable!()
-        };
-        byte_vec.extend_from_slice(inner_byte_vec.as_slice());
-    }
-    let actual_replacement_list = lexer(byte_vec.as_slice(), true, str_maps)?;
-    for _ in curr_macro.start..curr_macro.end + 1 {
-        replacement_list.remove(curr_macro.start);
-    }
-    let mut insert_index = curr_macro.start;
-    for t in &actual_replacement_list {
-        replacement_list.insert(insert_index, *t);
-        insert_index += 1;
-    }
-    already_replaced_macros.push((curr_macro.macro_key, curr_macro.depth));
-    // rescanning for further replacement
-    let mut moar_macros_index = curr_macro.start;
-    'outer: while moar_macros_index < replacement_list.len() {
-        if let Some(Token {
-            r#type: TokenType::IDENT {
-                str_map_key: key, ..
-            },
-            ..
-        }) = replacement_list.get(moar_macros_index)
-        {
-            if defines.contains_key(key) {
-                for already_replaced_macros_index in 0..already_replaced_macros.len() {
-                    let (macro_key, depth) = already_replaced_macros[already_replaced_macros_index];
-                    if *key == macro_key && depth < curr_macro.depth {
-                        moar_macros_index += 1;
-                        continue 'outer;
-                    }
-                }
-                let Some(define_data) = defines.get(key) else {
-                    unreachable!()
-                };
-                if let Some(parameters) = &define_data.parameters {
-                    if let Some(mut next_macro) = parse_function_macro(
-                        replacement_list,
-                        &[],
-                        moar_macros_index,
-                        defines,
-                        *key,
-                    ) {
-                        let Some(args) = &mut next_macro.arguments else {
-                            unreachable!()
-                        };
-                        if args.len() < parameters.len()
-                            || (args.len() > parameters.len() && !define_data.var_arg)
-                        {
-                            moar_macros_index += 1;
-                            continue 'outer;
-                        }
-                        for arg in args {
-                            expand_arguments(arg, defines, str_maps)?;
-                        }
-                        next_macro.depth = curr_macro.depth + 1;
-                        moar_macros_index = next_macro.end + 1;
-                        macro_stack.push(next_macro);
-                        continue 'outer;
-                    }
-                } else {
-                    macro_stack.push(Macro {
-                        macro_key: *key,
-                        start: moar_macros_index,
-                        end: moar_macros_index,
-                        depth: curr_macro.depth + 1,
-                        arguments: None,
-                    });
-                }
-            }
-        }
-        moar_macros_index += 1;
-    }
-    Ok(())
-}
 // This function takes in either a starting (
 // or a starting identifier. Reason being is that
 // final_tokens could have a function macro identifier somewhere
@@ -1125,15 +821,7 @@ fn expand_arguments(
         if macro_stack.is_empty() {
             break;
         }
-        while !macro_stack.is_empty() {
-            parse_macro_and_replace(
-                defines,
-                &mut macro_stack,
-                argument,
-                str_maps,
-                &mut already_replaced_macros,
-            )?;
-        }
+        while !macro_stack.is_empty() {}
         current_depth += 1;
     }
     Ok(())
@@ -1183,14 +871,14 @@ fn parse_macro_fn_arguments<'a>(tokens: &'a [Token], idx: &mut usize) -> Vec<&'a
 fn replace_parameter(
     args: &[&[Token]],
     parameters: &[usize],
-    replacement_list: &mut Vec<Token>,
-    mut i: usize,
-    hash_hash: bool
+    processed_replacement_list: &mut Vec<Token>,
+    parameter: Token,
+    hash_hash: bool,
 ) {
     let Token {
         r#type: TokenType::IDENT { str_map_key },
         ..
-    } = replacement_list[i].clone()
+    } = parameter
     else {
         unreachable!()
     };
@@ -1198,69 +886,120 @@ fn replace_parameter(
         unreachable!()
     };
     let arg = args[idx];
-    replacement_list.remove(i);
     for t in arg {
-        replacement_list.insert(i, *t);
-        i += 1;
+        processed_replacement_list.push(*t);
     }
     if hash_hash {
-        replacement_list.insert(i, Token { r#type: TokenType::PLACEMARKER, location: None });
+        processed_replacement_list.push(Token {
+            r#type: TokenType::PLACEMARKER,
+            location: None,
+        });
+    }
+}
+
+fn argument_substitution_non_operands(
+    args: &[&[Token]],
+    parameters: &[usize],
+    replacement_list: &[Token],
+    processed_replacement_list: &mut Vec<Token>,
+    i: usize,
+) {
+    let prev_token = replacement_list[0..i]
+        .iter()
+        .rev()
+        .find(|t| t.r#type != TokenType::WHITESPACE);
+    let next_token = replacement_list[i..]
+        .iter()
+        .find(|t| t.r#type != TokenType::WHITESPACE);
+    if !matches!(
+        prev_token,
+        Some(Token {
+            r#type: TokenType::HASH | TokenType::HASH_HASH,
+            ..
+        })
+    ) && !matches!(
+        next_token,
+        Some(Token {
+            r#type: TokenType::HASH_HASH,
+            ..
+        })
+    ) {
+        replace_parameter(
+            args,
+            parameters,
+            processed_replacement_list,
+            replacement_list[i],
+            false,
+        );
     }
 }
 
 fn process_replacement_list_with_args(
     args: &[&[Token]],
-    replacement_list: &mut Vec<Token>,
+    replacement_list: &[Token],
     parameters: &[usize],
-) {
-    let mut i = 0;
-    while i < replacement_list.len() {
-        let t = replacement_list[i].clone();
-        if let TokenType::IDENT { str_map_key } = t.r#type {
-            if parameters.contains(&str_map_key) {
-                let prev_token = replacement_list[0..i]
-                    .iter()
-                    .rev()
-                    .find(|t| t.r#type != TokenType::WHITESPACE);
-                let next_token = replacement_list[i..]
-                    .iter()
-                    .find(|t| t.r#type != TokenType::WHITESPACE);
-                if !matches!(
-                    prev_token,
-                    Some(Token {
-                        r#type: TokenType::HASH | TokenType::HASH_HASH,
-                        ..
-                    })
-                ) && !matches!(
-                    next_token,
-                    Some(Token {
-                        r#type: TokenType::HASH_HASH,
-                        ..
-                    })
-                ) {
-                    replace_parameter(args, parameters, replacement_list, i, false);
-                    continue;
+    str_maps: &mut ByteVecMaps,
+) -> Result<(), String> {
+    // The reason a separate `processed_replacement_list` is used, is
+    // so that `#` and `##` preprocessing tokens do not interfere with the
+    // actual `#` and `##` preprocessing tokens in the original replacement list.
+    let mut processed_replacement_list = Vec::new();
+    for (i, t) in replacement_list.iter().enumerate() {
+        match t.r#type {
+            TokenType::IDENT { str_map_key } => {
+                if parameters.contains(&str_map_key) {
+                    argument_substitution_non_operands(
+                        args,
+                        parameters,
+                        replacement_list,
+                        &mut processed_replacement_list,
+                        i,
+                    );
                 }
             }
+            TokenType::HASH => {
+                process_hash_operator(
+                    args,
+                    replacement_list,
+                    &mut processed_replacement_list,
+                    parameters,
+                    str_maps,
+                    i,
+                );
+            }
+            TokenType::HASH_HASH => {
+                process_hash_hash_operator(
+                    args,
+                    replacement_list,
+                    &mut processed_replacement_list,
+                    parameters,
+                    str_maps,
+                    i,
+                )?;
+            }
+            _ => {
+                processed_replacement_list.push(*t);
+            }
         }
-        i += 1;
     }
+    Ok(())
 }
 
 fn process_hash_operator(
     args: &[&[Token]],
-    replacement_list: &mut Vec<Token>,
+    replacement_list: &[Token],
+    processed_replacement_list: &mut Vec<Token>,
     parameters: &[usize],
     str_maps: &mut ByteVecMaps,
-    i: &mut usize,
+    mut i: usize,
 ) {
-    let start_of_replacement = *i;
-    *i += 1;
-    consume_whitespace(replacement_list, i);
+    let start_of_replacement = i;
+    i += 1;
+    consume_whitespace(replacement_list, &mut i);
     let Token {
         r#type: TokenType::IDENT { str_map_key },
         ..
-    } = replacement_list[*i].clone()
+    } = replacement_list[i].clone()
     else {
         unreachable!()
     };
@@ -1276,61 +1015,38 @@ fn process_hash_operator(
         acc
     });
     let sequence_key = str_maps.add_byte_vec(&byte_vec);
-    for _ in start_of_replacement..*i + 1 {
-        replacement_list.remove(start_of_replacement);
-    }
-    replacement_list.insert(
-        start_of_replacement,
-        Token {
-            r#type: TokenType::StringLiteral {
-                str_lit: StringLiteral {
-                    prefix_key: None,
-                    sequence_key,
-                },
+    processed_replacement_list.push(Token {
+        r#type: TokenType::StringLiteral {
+            str_lit: StringLiteral {
+                prefix_key: None,
+                sequence_key,
             },
-            location: None,
         },
-    );
+        location: None,
+    });
 }
 
 fn process_hash_hash_operator(
     args: &[&[Token]],
-    replacement_list: &mut Vec<Token>,
+    replacement_list: &[Token],
+    processed_replacement_list: &mut Vec<Token>,
     parameters: &[usize],
     str_maps: &mut ByteVecMaps,
-    i: &mut usize,
+    i: usize,
 ) -> Result<(), String> {
-    let Some(prev_token_idx) = replacement_list[0..*i]
+    let Some(prev_token) = replacement_list[0..i]
         .iter()
         .rev()
-        .position(|t| t.r#type != TokenType::WHITESPACE)
+        .find(|t| t.r#type != TokenType::WHITESPACE)
     else {
         unreachable!()
     };
-    if let Some(Token {
-        r#type: TokenType::IDENT { str_map_key },
-        ..
-    }) = replacement_list.get(prev_token)
-    {
-        if parameters.contains(str_map_key) {
-            replace_parameter(args, parameters, replacement_list, prev_token_idx, true);
-        }
-    }
-    let Some(next_token_idx) = replacement_list[*i + 1..]
+    let Some(next_token) = replacement_list[i + 1..]
         .iter()
-        .position(|t| t.r#type != TokenType::WHITESPACE)
+        .find(|t| t.r#type != TokenType::WHITESPACE)
     else {
         unreachable!()
     };
-    if let Some(Token {
-        r#type: TokenType::IDENT { str_map_key },
-        ..
-    }) = replacement_list.get(next_token)
-    {
-        if parameters.contains(str_map_key) {
-            replace_parameter(args, parameters, replacement_list, next_token_idx, true);
-        }
-    }
     let Some(mut left_byte_vec) = prev_token.to_byte_vec(str_maps) else {
         unreachable!()
     };
@@ -1338,7 +1054,11 @@ fn process_hash_hash_operator(
         unreachable!()
     };
     left_byte_vec.extend(&right_byte_vec);
-    let tokens = lexer(left_byte_vec, true, str_maps)?;
+    let tokens = lexer(&left_byte_vec, true, str_maps)?;
+    if tokens.len() > 1 {
+        return Err("Not valid preprocessing token".to_string());
+    }
+    processed_replacement_list.push(tokens[0]);
     Ok(())
 }
 
@@ -1906,9 +1626,9 @@ fn parse_group(
                 }
                 _ => {}
             }
-            macro_substitutions(tokens, str_maps, defines)?;
+            //macro_substitutions(tokens, str_maps, defines)?;
         } else {
-            macro_substitutions(tokens, str_maps, defines)?;
+            //macro_substitutions(tokens, str_maps, defines)?;
             break;
         }
     }
