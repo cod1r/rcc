@@ -873,7 +873,6 @@ fn replace_parameter(
     parameters: &[usize],
     processed_replacement_list: &mut Vec<Token>,
     parameter: Token,
-    hash_hash: bool,
 ) {
     let Token {
         r#type: TokenType::IDENT { str_map_key },
@@ -888,12 +887,6 @@ fn replace_parameter(
     let arg = args[idx];
     for t in arg {
         processed_replacement_list.push(*t);
-    }
-    if hash_hash {
-        processed_replacement_list.push(Token {
-            r#type: TokenType::PLACEMARKER,
-            location: None,
-        });
     }
 }
 
@@ -929,17 +922,18 @@ fn argument_substitution_non_operands(
             parameters,
             processed_replacement_list,
             replacement_list[i],
-            false,
         );
     }
 }
 
-fn process_replacement_list_with_args(
+fn process_replacement_list(
     args: &[&[Token]],
     replacement_list: &[Token],
     parameters: &[usize],
     str_maps: &mut ByteVecMaps,
-) -> Result<(), String> {
+    defines: &HashMap<usize, Define>,
+    macros_being_replaced: &mut Vec<usize>,
+) -> Result<Vec<Token>, String> {
     // The reason a separate `processed_replacement_list` is used, is
     // so that `#` and `##` preprocessing tokens do not interfere with the
     // actual `#` and `##` preprocessing tokens in the original replacement list.
@@ -982,7 +976,15 @@ fn process_replacement_list_with_args(
             }
         }
     }
-    Ok(())
+    macro_substitutions(
+        &mut processed_replacement_list,
+        str_maps,
+        defines,
+        &mut Vec::new(),
+        macros_being_replaced,
+        true,
+    )?;
+    Ok(processed_replacement_list)
 }
 
 fn process_hash_operator(
@@ -993,7 +995,6 @@ fn process_hash_operator(
     str_maps: &mut ByteVecMaps,
     mut i: usize,
 ) {
-    let start_of_replacement = i;
     i += 1;
     consume_whitespace(replacement_list, &mut i);
     let Token {
@@ -1026,6 +1027,23 @@ fn process_hash_operator(
     });
 }
 
+fn get_parameter_args<'a, 'b>(
+    t: Token,
+    parameters: &'b [usize],
+    args: &'a [&'a [Token]],
+) -> Option<&'a [Token]> {
+    if let Token {
+        r#type: TokenType::IDENT { str_map_key },
+        ..
+    } = t
+    {
+        if let Some(idx) = parameters.iter().position(|key| *key == str_map_key) {
+            return Some(args[idx]);
+        }
+    }
+    None
+}
+
 fn process_hash_hash_operator(
     args: &[&[Token]],
     replacement_list: &[Token],
@@ -1047,27 +1065,75 @@ fn process_hash_hash_operator(
     else {
         unreachable!()
     };
-    let Some(mut left_byte_vec) = prev_token.to_byte_vec(str_maps) else {
-        unreachable!()
+    let prev_token = if let Some(arg) = get_parameter_args(*prev_token, parameters, args) {
+        processed_replacement_list.extend(&arg[0..arg.len() - 1]);
+        if arg.len() == 0 {
+            Token {
+                r#type: TokenType::PLACEMARKER,
+                location: None,
+            }
+        } else {
+            *arg.last().expect("Last token in the argument")
+        }
+    } else {
+        *prev_token
     };
-    let Some(right_byte_vec) = next_token.to_byte_vec(str_maps) else {
-        unreachable!()
+    let next_token = if let Some(arg) = get_parameter_args(*next_token, parameters, args) {
+        processed_replacement_list.extend(&arg[0..arg.len() - 1]);
+        if arg.len() == 0 {
+            Token {
+                r#type: TokenType::PLACEMARKER,
+                location: None,
+            }
+        } else {
+            *arg.last().expect("Last token in the argument")
+        }
+    } else {
+        *next_token
     };
-    left_byte_vec.extend(&right_byte_vec);
-    let tokens = lexer(&left_byte_vec, true, str_maps)?;
-    if tokens.len() > 1 {
-        return Err("Not valid preprocessing token".to_string());
+    if prev_token.r#type != TokenType::PLACEMARKER && next_token.r#type != TokenType::PLACEMARKER {
+        let Some(mut left_byte_vec) = prev_token.to_byte_vec(str_maps) else {
+            unreachable!()
+        };
+        let Some(right_byte_vec) = next_token.to_byte_vec(str_maps) else {
+            unreachable!()
+        };
+        left_byte_vec.extend(&right_byte_vec);
+        let tokens = lexer(&left_byte_vec, true, str_maps)?;
+        if tokens.len() > 1 {
+            return Err("Not valid preprocessing token".to_string());
+        }
+        if matches!(tokens[0].r#type, TokenType::IDENT { .. }) {
+            processed_replacement_list.push(tokens[0]);
+        } else {
+            // Doing this so that in the case of `# ## #`, the resulting
+            // token isn't seen as a ## operator when rescanning.
+            processed_replacement_list.push(prev_token);
+            processed_replacement_list.push(next_token);
+        }
+    } else if prev_token.r#type != next_token.r#type {
+        let non_placemarker_token = if prev_token.r#type == TokenType::PLACEMARKER {
+            next_token
+        } else {
+            prev_token
+        };
+        processed_replacement_list.push(non_placemarker_token);
+    } else {
+        processed_replacement_list.push(Token {
+            r#type: TokenType::PLACEMARKER,
+            location: None,
+        });
     }
-    processed_replacement_list.push(tokens[0]);
     Ok(())
 }
 
 fn macro_substitutions(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     str_maps: &mut ByteVecMaps,
     defines: &HashMap<usize, Define>,
-    start_index: usize,
     replacements: &mut Vec<Vec<Token>>,
+    macros_being_replaced: &mut Vec<usize>,
+    rescanning: bool,
 ) -> Result<(), String> {
     let mut i = 0;
     while i < tokens.len() {
@@ -1075,7 +1141,10 @@ fn macro_substitutions(
             Token {
                 r#type: TokenType::IDENT { str_map_key },
                 ..
-            } if defines.contains_key(&str_map_key) => {
+            } if defines.contains_key(&str_map_key)
+                && !macros_being_replaced.contains(&str_map_key) =>
+            {
+                let start_of_macro = i;
                 let Some(define) = defines.get(&str_map_key) else {
                     unreachable!()
                 };
@@ -1091,16 +1160,64 @@ fn macro_substitutions(
                         i += 1;
                         let args = parse_macro_fn_arguments(tokens, &mut i);
                         expected_token(tokens, &mut i, TokenType::CLOSE_PAR, "Expected ')'")?;
+                        macros_being_replaced.push(str_map_key);
+                        let processed_replacement_list = process_replacement_list(
+                            &args,
+                            &replacement_list,
+                            parameters,
+                            str_maps,
+                            defines,
+                            macros_being_replaced,
+                        )?;
+                        macros_being_replaced.pop();
+                        if rescanning {
+                            for _ in start_of_macro..i {
+                                tokens.remove(start_of_macro);
+                            }
+                            let mut insert_idx = start_of_macro;
+                            for t in processed_replacement_list {
+                                tokens.insert(insert_idx, t);
+                                insert_idx += 1;
+                            }
+                        } else {
+                            replacements.push(processed_replacement_list);
+                            for idx in start_of_macro..i {
+                                let location = tokens[idx].location;
+                                tokens[idx] = Token {
+                                    r#type: TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
+                                        idx_of_macro_replacement: replacements.len() - 1,
+                                    },
+                                    location,
+                                };
+                            }
+                        }
                     }
                 } else {
-                    replacements.push(replacement_list);
-                    let location = tokens[i].location;
-                    tokens[i] = Token {
-                        r#type: TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                            idx_of_macro_replacement: replacements.len() - 1,
-                        },
-                        location,
-                    };
+                    let processed_replacement_list = process_replacement_list(
+                        &[],
+                        &replacement_list,
+                        &[],
+                        str_maps,
+                        defines,
+                        macros_being_replaced,
+                    )?;
+                    if rescanning {
+                        tokens.remove(i);
+                        let mut insert_idx = start_of_macro;
+                        for t in processed_replacement_list {
+                            tokens.insert(insert_idx, t);
+                            insert_idx += 1;
+                        }
+                    } else {
+                        replacements.push(processed_replacement_list);
+                        let location = tokens[i].location;
+                        tokens[i] = Token {
+                            r#type: TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
+                                idx_of_macro_replacement: replacements.len() - 1,
+                            },
+                            location,
+                        };
+                    }
                 }
             }
             _ => {}
@@ -1239,7 +1356,7 @@ fn parse_endif_line(
     ))
 }
 fn parse_else_group(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
     in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
@@ -1247,6 +1364,7 @@ fn parse_else_group(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     previous_branch_true: bool,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<(), String> {
     let found = look_for_next_preprocessing_directive(tokens, index);
     if found {
@@ -1269,6 +1387,7 @@ fn parse_else_group(
                     curr_path,
                     include_paths,
                     defines,
+                    replacements,
                 )?;
                 remove_directive(tokens, start_of_directive, newline_location);
                 if previous_branch_true {
@@ -1282,7 +1401,7 @@ fn parse_else_group(
     Ok(())
 }
 fn parse_elif_group(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
     in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
@@ -1291,6 +1410,7 @@ fn parse_elif_group(
     defines: &mut HashMap<usize, Define>,
     previous_branch_true: bool,
     start_of_directive: usize,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<bool, String> {
     let newline_location = get_newline_location(tokens, index);
     let res = eval_constant_expression_integer_when_preprocess(
@@ -1307,6 +1427,7 @@ fn parse_elif_group(
         curr_path,
         include_paths,
         defines,
+        replacements,
     )?;
     remove_directive(tokens, start_of_directive, newline_location);
     if previous_branch_true || res == 0 {
@@ -1316,7 +1437,7 @@ fn parse_elif_group(
 }
 
 fn parse_elif_groups(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
     in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
@@ -1324,6 +1445,7 @@ fn parse_elif_groups(
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     mut previous_branch_true: bool,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<bool, String> {
     loop {
         let found = look_for_next_preprocessing_directive(tokens, index);
@@ -1350,6 +1472,7 @@ fn parse_elif_groups(
                         defines,
                         previous_branch_true,
                         start_of_directive,
+                        replacements,
                     )?;
                     continue;
                 }
@@ -1380,15 +1503,15 @@ fn remove_group(tokens: &mut [Token], start: usize, end: usize) {
 // to handle nested if sections correctly without having to track depth.
 // With if sections handled correctly, I can process if, elif and else correctly as well
 fn parse_if_group(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
-    in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
     if_directive_type: &[u8],
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     start_of_directive: usize,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<bool, String> {
     let newline_location = get_newline_location(tokens, index);
     let constant_expr_result = match if_directive_type {
@@ -1447,6 +1570,7 @@ fn parse_if_group(
         curr_path,
         include_paths,
         defines,
+        replacements,
     )?;
     remove_directive(tokens, start_of_directive, newline_location);
     if !constant_expr_result {
@@ -1461,7 +1585,7 @@ fn parse_if_group(
 }
 
 fn parse_if_section(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
     in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
@@ -1471,17 +1595,18 @@ fn parse_if_section(
     defines: &mut HashMap<usize, Define>,
     location: Location,
     start_of_directive: usize,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<(), String> {
     let constant_expr_result = parse_if_group(
         tokens,
         index,
-        in_conditional_directive,
         str_maps,
         if_directive_type,
         curr_path,
         include_paths,
         defines,
         start_of_directive,
+        replacements,
     )?;
     let constant_expr_result = parse_elif_groups(
         tokens,
@@ -1492,6 +1617,7 @@ fn parse_if_section(
         include_paths,
         defines,
         constant_expr_result,
+        replacements,
     )?;
     parse_else_group(
         tokens,
@@ -1502,6 +1628,7 @@ fn parse_if_section(
         include_paths,
         defines,
         constant_expr_result,
+        replacements,
     )?;
     parse_endif_line(tokens, index, str_maps, location)?;
     Ok(())
@@ -1524,13 +1651,14 @@ fn check_valid_directive(tokens: &[Token], index: usize) -> bool {
 }
 
 fn parse_group(
-    tokens: &mut [Token],
+    tokens: &mut Vec<Token>,
     index: &mut usize,
     in_conditional_directive: bool,
     str_maps: &mut ByteVecMaps,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
+    replacements: &mut Vec<Vec<Token>>,
 ) -> Result<(), String> {
     // Looping here until I do not find any more preprocessing directives in group
     // and also I need to consume all of the pp tokens in group.
@@ -1590,9 +1718,10 @@ fn parse_group(
                             column: *column,
                         },
                         start_of_directive,
+                        replacements,
                     )?;
                 }
-                (b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma") => {
+                b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
                     *index += 1;
                     consume_specifically_spaces(tokens, index);
                     parse_control_line(
@@ -1606,7 +1735,7 @@ fn parse_group(
                         start_of_directive,
                     )?;
                 }
-                (b"else" | b"elif" | b"endif") => {
+                b"else" | b"elif" | b"endif" => {
                     if !in_conditional_directive {
                         return Err(error(
                             &format!(
@@ -1626,9 +1755,23 @@ fn parse_group(
                 }
                 _ => {}
             }
-            //macro_substitutions(tokens, str_maps, defines)?;
+            macro_substitutions(
+                tokens,
+                str_maps,
+                defines,
+                replacements,
+                &mut Vec::new(),
+                false,
+            )?;
         } else {
-            //macro_substitutions(tokens, str_maps, defines)?;
+            macro_substitutions(
+                tokens,
+                str_maps,
+                defines,
+                replacements,
+                &mut Vec::new(),
+                false,
+            )?;
             break;
         }
     }
@@ -1652,6 +1795,7 @@ fn preprocessing_directives(
     // An integer constant expression shall have integer type and shall only have operands that are integer
     // constants, enumeration constants, character constants
     let mut index: usize = 0;
+    let mut replacements = Vec::new();
     while index < tokens.len() {
         parse_group(
             tokens,
@@ -1661,6 +1805,7 @@ fn preprocessing_directives(
             curr_path,
             include_paths,
             defines,
+            &mut replacements,
         )?;
     }
     Ok(())
@@ -2480,6 +2625,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2488,6 +2634,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
 
             assert_eq!(
@@ -2544,6 +2691,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2552,6 +2700,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
 
             assert_eq!(
@@ -2582,6 +2731,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2590,6 +2740,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
             assert_eq!(
                 tokens
@@ -2612,6 +2763,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2620,6 +2772,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
 
             assert_eq!(
@@ -2658,6 +2811,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2666,6 +2820,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
 
             assert_eq!(
@@ -2689,6 +2844,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2697,6 +2853,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
 
             assert_eq!(
@@ -2729,6 +2886,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2737,6 +2895,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
             assert_eq!(
                 vec![
@@ -2777,6 +2936,7 @@ PP(/,*)PP2(*,/)"##
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
+            let mut replacements = Vec::new();
             parse_group(
                 &mut tokens,
                 &mut 0,
@@ -2785,6 +2945,7 @@ PP(/,*)PP2(*,/)"##
                 ".",
                 &[],
                 &mut defines,
+                &mut replacements,
             )?;
             assert_eq!(
                 vec![
