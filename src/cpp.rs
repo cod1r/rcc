@@ -761,6 +761,7 @@ fn parse_macro_fn_arguments<'a>(
     tokens: &'a [Token],
     idx: &mut usize,
     parameters: &[usize],
+    str_maps: &ByteVecMaps,
 ) -> Result<Vec<&'a [Token]>, String> {
     let start_of_fn_macro = *idx;
     let mut stack = Vec::new();
@@ -812,6 +813,24 @@ fn parse_macro_fn_arguments<'a>(
         };
         return Err(error(
             "Too few arguments passed into function-like macro",
+            line,
+            column,
+        ));
+    }
+    if args.len() > parameters.len()
+        && !parameters
+            .iter()
+            .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__")
+    {
+        let Token {
+            location: Some(Location { line, column }),
+            ..
+        } = tokens[start_of_fn_macro]
+        else {
+            unreachable!()
+        };
+        return Err(error(
+            "Too many arguments passed into function-like macro",
             line,
             column,
         ));
@@ -1180,7 +1199,7 @@ fn macro_substitutions(
                     {
                         // TODO: make sure each new-line character is considered to be a normal white-space character.
                         i += 1;
-                        let args = parse_macro_fn_arguments(tokens, &mut i, parameters)?;
+                        let args = parse_macro_fn_arguments(tokens, &mut i, parameters, str_maps)?;
                         expected_token(tokens, &mut i, TokenType::CLOSE_PAR, "Expected ')'")?;
                         macros_being_replaced.push(str_map_key);
                         let processed_replacement_list = process_replacement_list(
