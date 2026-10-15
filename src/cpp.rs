@@ -549,15 +549,9 @@ fn define_directive(
         // replacement list.
         apply_HASH_constraint(&tokens[*index..position_of_newline], vec, str_maps);
     }
-    def_data.replacement_list.extend_from_slice(
-        &tokens[*index..position_of_newline]
-            .iter()
-            .map(|t| Token {
-                r#type: t.r#type,
-                location: None,
-            })
-            .collect::<Vec<Token>>(),
-    );
+    def_data
+        .replacement_list
+        .extend_from_slice(&tokens[*index..position_of_newline]);
     defines.insert(*identifier_of_macro_key, def_data);
     let identifier_of_macro = &str_maps.key_to_byte_vec[*identifier_of_macro_key];
     let Some(ref mut dd) = defines.get_mut(&identifier_of_macro_key) else {
@@ -607,11 +601,14 @@ fn parse_macro_fn_arguments<'a>(
     idx: &mut usize,
     parameters: &[usize],
     str_maps: &ByteVecMaps,
+    start_of_fn_macro: usize,
 ) -> Result<Vec<&'a [Token]>, String> {
-    let start_of_fn_macro = *idx;
     let mut stack = Vec::new();
     let mut args = Vec::new();
     let mut start_of_arg = *idx;
+    let has_var_args = parameters
+        .iter()
+        .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
     while *idx < tokens.len() {
         match tokens.get(*idx) {
             Some(Token {
@@ -626,8 +623,7 @@ fn parse_macro_fn_arguments<'a>(
             }) => {
                 if let Some(TokenType::OPEN_PAR) = stack.last() {
                     stack.pop();
-                }
-                if stack.len() == 0 {
+                } else if stack.len() == 0 {
                     args.push(&tokens[start_of_arg..*idx]);
                     break;
                 }
@@ -636,7 +632,14 @@ fn parse_macro_fn_arguments<'a>(
                 r#type: TokenType::COMMA,
                 ..
             }) => {
-                if stack.len() == 0 {
+                if stack.len() == 0
+                    && args.len()
+                        < if has_var_args {
+                            parameters.len() - 1
+                        } else {
+                            parameters.len()
+                        }
+                {
                     args.push(&tokens[start_of_arg..*idx]);
                     *idx += 1;
                     consume_specifically_spaces(tokens, idx);
@@ -649,9 +652,6 @@ fn parse_macro_fn_arguments<'a>(
         }
         *idx += 1;
     }
-    let has_var_args = parameters
-        .iter()
-        .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
     if args.len()
         < if has_var_args {
             parameters.len() - 1
@@ -685,13 +685,6 @@ fn parse_macro_fn_arguments<'a>(
             line,
             column,
         ));
-    }
-    if args.len() > parameters.len() && has_var_args {
-        let mut va_args = Vec::new();
-        while args.len() >= parameters.len() {
-            va_args.push(args.remove(parameters.len() - 1));
-        }
-        args.extend(&va_args);
     }
     Ok(args)
 }
@@ -1050,7 +1043,13 @@ fn macro_substitutions(
                     {
                         // TODO: make sure each new-line character is considered to be a normal white-space character.
                         i += 1;
-                        let args = parse_macro_fn_arguments(tokens, &mut i, parameters, str_maps)?;
+                        let args = parse_macro_fn_arguments(
+                            tokens,
+                            &mut i,
+                            parameters,
+                            str_maps,
+                            start_of_macro,
+                        )?;
                         expected_token(tokens, &mut i, TokenType::CLOSE_PAR, "Expected ')'")?;
                         macros_being_replaced.push(str_map_key);
                         let processed_replacement_list = process_replacement_list(
@@ -2101,105 +2100,106 @@ join(x, y)
         assert!(defines.contains_key(&str_maps.add_byte_vec("in_between".as_bytes())));
         assert!(defines.contains_key(&str_maps.add_byte_vec("join".as_bytes())));
         assert_eq!(
-            Define {
-                parameters: None,
-                replacement_list: vec![
-                    TokenType::HASH,
-                    TokenType::WHITESPACE,
-                    TokenType::HASH_HASH,
-                    TokenType::WHITESPACE,
-                    TokenType::HASH,
-                ]
-                .iter()
-                .map(|t| Token {
-                    r#type: *t,
-                    location: None
-                })
-                .collect::<Vec<Token>>()
-            },
-            *defines
+            vec![
+                TokenType::HASH,
+                TokenType::WHITESPACE,
+                TokenType::HASH_HASH,
+                TokenType::WHITESPACE,
+                TokenType::HASH,
+            ],
+            defines
                 .get(&str_maps.add_byte_vec("hash_hash".as_bytes()))
                 .unwrap()
+                .replacement_list
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         assert_eq!(
-            Define {
-                parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
-                replacement_list: vec![
-                    TokenType::HASH,
-                    TokenType::WHITESPACE,
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("a".as_bytes()),
-                    },
-                ]
-                .iter()
-                .map(|t| Token {
-                    r#type: *t,
-                    location: None
-                })
-                .collect::<Vec<Token>>()
-            },
-            *defines
+            Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
+            defines
                 .get(&str_maps.add_byte_vec("mkstr".as_bytes()))
                 .unwrap()
+                .parameters
         );
         assert_eq!(
-            Define {
-                parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
-                replacement_list: vec![
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
-                    },
-                    TokenType::OPEN_PAR,
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("a".as_bytes())
-                    },
-                    TokenType::CLOSE_PAR,
-                ]
+            vec![
+                TokenType::HASH,
+                TokenType::WHITESPACE,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("a".as_bytes()),
+                },
+            ],
+            defines
+                .get(&str_maps.add_byte_vec("mkstr".as_bytes()))
+                .unwrap()
+                .replacement_list
                 .iter()
-                .map(|t| Token {
-                    r#type: *t,
-                    location: None
-                })
-                .collect::<Vec<Token>>()
-            },
-            *defines
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
+        );
+        assert_eq!(
+            Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
+            defines
                 .get(&str_maps.add_byte_vec("in_between".as_bytes()))
                 .unwrap()
+                .parameters
         );
         assert_eq!(
-            Define {
-                parameters: Some(vec![
-                    str_maps.add_byte_vec("c".as_bytes()),
-                    str_maps.add_byte_vec("d".as_bytes())
-                ]),
-                replacement_list: vec![
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
-                    },
-                    TokenType::OPEN_PAR,
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("c".as_bytes())
-                    },
-                    TokenType::WHITESPACE,
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("hash_hash".as_bytes())
-                    },
-                    TokenType::WHITESPACE,
-                    TokenType::IDENT {
-                        str_map_key: str_maps.add_byte_vec("d".as_bytes())
-                    },
-                    TokenType::CLOSE_PAR,
-                ]
+            vec![
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
+                },
+                TokenType::OPEN_PAR,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("a".as_bytes())
+                },
+                TokenType::CLOSE_PAR,
+            ],
+            defines
+                .get(&str_maps.add_byte_vec("in_between".as_bytes()))
+                .unwrap()
+                .replacement_list
                 .iter()
-                .map(|t| Token {
-                    r#type: *t,
-                    location: None
-                })
-                .collect::<Vec<Token>>()
-            },
-            *defines
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
+        );
+        assert_eq!(
+            Some(vec![
+                str_maps.add_byte_vec("c".as_bytes()),
+                str_maps.add_byte_vec("d".as_bytes())
+            ]),
+            defines
                 .get(&str_maps.add_byte_vec("join".as_bytes()))
                 .unwrap()
+                .parameters
+        );
+        assert_eq!(
+            vec![
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
+                },
+                TokenType::OPEN_PAR,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("c".as_bytes())
+                },
+                TokenType::WHITESPACE,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("hash_hash".as_bytes())
+                },
+                TokenType::WHITESPACE,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("d".as_bytes())
+                },
+                TokenType::CLOSE_PAR,
+            ],
+            defines
+                .get(&str_maps.add_byte_vec("join".as_bytes()))
+                .unwrap()
+                .replacement_list
+                .iter()
+                .map(|t| t.r#type)
+                .collect::<Vec<TokenType>>()
         );
         assert_eq!(
             vec![
@@ -2540,12 +2540,22 @@ CHICKEN(1 2,3 4)"##
                 TokenType::WHITESPACE,
                 TokenType::NEWLINE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec("1".as_bytes()),
                     suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: 4,
+                    value_key: str_maps.add_byte_vec("2".as_bytes()),
+                    suffix: None
+                },
+                TokenType::COMMA,
+                TokenType::CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec("3".as_bytes()),
+                    suffix: None
+                },
+                TokenType::WHITESPACE,
+                TokenType::CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None
                 }
             ],
@@ -3094,7 +3104,7 @@ f(f))"##;
         let tokens = cpp(
             src.as_bytes().to_vec(),
             "",
-            &[""],
+            &[],
             &mut defines,
             &mut str_maps,
         )?;
