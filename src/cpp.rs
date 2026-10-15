@@ -11,7 +11,6 @@ pub struct Define {
     // but 'parameters' here will be Some(...) if it is a function-like macro and None
     // if it isn't.
     pub parameters: Option<Vec<usize>>,
-    pub var_arg: bool,
     pub replacement_list: Vec<Token>,
 }
 
@@ -407,25 +406,23 @@ fn parse_identifier_list(
     let mut identifier_keys = Vec::new();
     loop {
         consume_specifically_spaces(tokens, index);
-        if !matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::ELLIPSIS,
-                ..
-            })
-        ) {
-            expected_identifier_and_consume(tokens, str_maps, index)?;
-            let Some(Token {
-                r#type: TokenType::IDENT { str_map_key },
-                location: Some(Location { line, column }),
-            }) = tokens.get(*index - 1)
-            else {
-                unreachable!()
-            };
+        if let Some(Token {
+            r#type: TokenType::IDENT { str_map_key },
+            location: Some(Location { line, column }),
+        }) = tokens.get(*index)
+        {
+            *index += 1;
             let arg = &str_maps.key_to_byte_vec[*str_map_key];
             if identifier_keys.contains(str_map_key) {
                 // A parameter identifier in a function-like macro shall be uniquely declared within its scope.
-                return Err(error("duplicate parameter name", *line, *column));
+                return Err(error(
+                    &format!(
+                        "duplicate parameter name: '{}'",
+                        String::from_utf8(str_maps.key_to_byte_vec[*str_map_key].clone()).unwrap()
+                    ),
+                    *line,
+                    *column,
+                ));
             }
             if *arg == *b"__VA_ARGS__" {
                 return Err(error(
@@ -436,6 +433,16 @@ fn parse_identifier_list(
             }
             identifier_keys.push(*str_map_key);
         }
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::COMMA,
+                ..
+            })
+        ) {
+            *index += 1;
+            continue;
+        }
         consume_specifically_spaces(tokens, index);
         if matches!(
             tokens.get(*index),
@@ -444,20 +451,19 @@ fn parse_identifier_list(
                 ..
             })
         ) {
+            *index += 1;
             identifier_keys.push(str_maps.add_byte_vec(b"__VA_ARGS__"));
             break Ok(identifier_keys);
         }
-        if !matches!(
+        if matches!(
             tokens.get(*index),
             Some(Token {
-                r#type: TokenType::COMMA,
+                r#type: TokenType::CLOSE_PAR,
                 ..
             })
         ) {
             break Ok(identifier_keys);
         }
-        *index += 1;
-        consume_specifically_spaces(tokens, index);
     }
 }
 
@@ -496,7 +502,6 @@ fn define_directive(
 ) -> Result<(), String> {
     let mut def_data = Define {
         parameters: None,
-        var_arg: false,
         replacement_list: Vec::new(),
     };
     let Some(Token {
@@ -519,7 +524,6 @@ fn define_directive(
     };
     *index += 1;
     let position_of_newline = get_newline_location(tokens, index);
-    // There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
     if let Some(Token {
         r#type: TokenType::OPEN_PAR,
         ..
@@ -528,17 +532,15 @@ fn define_directive(
         *index += 1;
         consume_specifically_spaces(tokens, index);
         def_data.parameters = Some(parse_identifier_list(tokens, index, str_maps)?);
-        if matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::ELLIPSIS,
-                ..
-            })
-        ) {
-            *index += 1;
-            def_data.var_arg = true;
-        }
         expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
+    } else {
+        // There shall be white space between the identifier and the replacement list in the definition of an object-like macro.
+        expected_token(
+            tokens,
+            index,
+            TokenType::WHITESPACE,
+            "Expected white-space between identifier and replacement list",
+        )?;
     }
     consume_specifically_spaces(tokens, index);
     if let Some(vec) = &def_data.parameters {
@@ -600,163 +602,6 @@ fn line_directive(_tokens: &mut Vec<TokenType>, _index: usize, _end: usize) -> R
     todo!()
 }
 
-// This function takes in either a starting (
-// or a starting identifier. Reason being is that
-// final_tokens could have a function macro identifier somewhere
-// on the end of it but the invocation is in the tokens vector.
-//
-// This function also takes in two slices, because when the 'tokens' parameter slice ends,
-// the extended_tokens could have actual tokens that, when combined with the actual tokens in the
-// 'tokens' parameter, become an actual macro function invocation.
-fn parse_function_macro(
-    tokens: &[Token],
-    extended_tokens: &[Token],
-    start_index: usize,
-    defines: &HashMap<usize, Define>,
-    // have to pass macro_key in because some macro could expand and have a macro name at the end,
-    // inside of final_tokens
-    macro_key: usize,
-) -> Option<Macro> {
-    let mut fn_macro_index = start_index;
-    if matches!(
-        tokens.get(fn_macro_index),
-        Some(Token {
-            r#type: TokenType::IDENT { .. },
-            ..
-        })
-    ) {
-        fn_macro_index += 1;
-    }
-    while matches!(
-        tokens.get(fn_macro_index),
-        Some(Token {
-            r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
-            ..
-        })
-    ) {
-        fn_macro_index += 1;
-    }
-    if !matches!(
-        tokens.get(fn_macro_index),
-        Some(Token {
-            r#type: TokenType::OPEN_PAR,
-            ..
-        })
-    ) && !matches!(
-        extended_tokens.get(
-            if !extended_tokens.is_empty() && fn_macro_index >= tokens.len() {
-                fn_macro_index - tokens.len()
-            } else {
-                0
-            },
-        ),
-        Some(Token {
-            r#type: TokenType::OPEN_PAR,
-            ..
-        })
-    ) {
-        return None;
-    }
-    if defines.get(&macro_key).is_none() {
-        return None;
-    }
-    let Some(def_data) = defines.get(&macro_key) else {
-        unreachable!()
-    };
-    let Some(parameters) = &def_data.parameters else {
-        unreachable!()
-    };
-    let open_par_index = fn_macro_index;
-    let mut parenth_stack = vec![(TokenType::OPEN_PAR, fn_macro_index)];
-    fn_macro_index += 1;
-    let mut comma_indices = Vec::<usize>::new();
-    while !parenth_stack.is_empty()
-        && (tokens.get(fn_macro_index).is_some()
-            || if !extended_tokens.is_empty() && fn_macro_index >= tokens.len() {
-                extended_tokens.get(fn_macro_index - tokens.len()).is_some()
-            } else {
-                false
-            })
-    {
-        let temp_list = [
-            tokens.get(fn_macro_index),
-            extended_tokens.get(
-                if !extended_tokens.is_empty() && fn_macro_index >= tokens.len() {
-                    fn_macro_index - tokens.len()
-                } else {
-                    0
-                },
-            ),
-        ];
-        let Some(ot) = temp_list.iter().find(|ot| ot.is_some()) else {
-            unreachable!()
-        };
-        if let Some(t) = ot {
-            match t.r#type {
-                TokenType::COMMA => {
-                    if comma_indices.len() < parameters.len() {
-                        comma_indices.push(fn_macro_index);
-                    }
-                }
-                TokenType::OPEN_PAR => {
-                    parenth_stack.push((TokenType::OPEN_PAR, fn_macro_index));
-                }
-                TokenType::CLOSE_PAR => {
-                    if let (TokenType::OPEN_PAR, par_index) = parenth_stack[parenth_stack.len() - 1]
-                    {
-                        parenth_stack.pop();
-                        if let Some(comma_index) = comma_indices.last() {
-                            if *comma_index > par_index
-                                && *comma_index < fn_macro_index
-                                && !parenth_stack.is_empty()
-                            {
-                                comma_indices.pop();
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        fn_macro_index += 1;
-    }
-    if parenth_stack.is_empty() {
-        let close_par_index = fn_macro_index - 1;
-        let mut prev_comma_index = open_par_index + 1;
-        let mut macro_obj = Macro {
-            macro_key,
-            start: start_index,
-            end: close_par_index,
-            depth: 1,
-            arguments: Some(Vec::new()),
-        };
-        let Some(v) = &mut macro_obj.arguments else {
-            unreachable!()
-        };
-        for comma_idx in comma_indices {
-            if prev_comma_index < tokens.len() {
-                v.push(tokens[prev_comma_index..comma_idx].to_vec());
-            } else {
-                v.push(
-                    extended_tokens[prev_comma_index - tokens.len()..comma_idx - tokens.len()]
-                        .to_vec(),
-                );
-            }
-            prev_comma_index = comma_idx + 1;
-        }
-        if prev_comma_index < tokens.len() {
-            v.push(tokens[prev_comma_index..close_par_index].to_vec());
-        } else {
-            v.push(
-                extended_tokens[prev_comma_index - tokens.len()..close_par_index - tokens.len()]
-                    .to_vec(),
-            );
-        }
-        return Some(macro_obj);
-    }
-    None
-}
-
 fn parse_macro_fn_arguments<'a>(
     tokens: &'a [Token],
     idx: &mut usize,
@@ -796,6 +641,7 @@ fn parse_macro_fn_arguments<'a>(
                     *idx += 1;
                     consume_specifically_spaces(tokens, idx);
                     start_of_arg = *idx;
+                    continue;
                 }
             }
             Some(Token { .. }) => {}
@@ -803,7 +649,16 @@ fn parse_macro_fn_arguments<'a>(
         }
         *idx += 1;
     }
-    if args.len() < parameters.len() {
+    let has_var_args = parameters
+        .iter()
+        .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
+    if args.len()
+        < if has_var_args {
+            parameters.len() - 1
+        } else {
+            parameters.len()
+        }
+    {
         let Token {
             location: Some(Location { line, column }),
             ..
@@ -817,11 +672,7 @@ fn parse_macro_fn_arguments<'a>(
             column,
         ));
     }
-    if args.len() > parameters.len()
-        && !parameters
-            .iter()
-            .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__")
-    {
+    if args.len() > parameters.len() && !has_var_args {
         let Token {
             location: Some(Location { line, column }),
             ..
@@ -835,7 +686,7 @@ fn parse_macro_fn_arguments<'a>(
             column,
         ));
     }
-    if args.len() > parameters.len() && parameters.len() > 0 {
+    if args.len() > parameters.len() && has_var_args {
         let mut va_args = Vec::new();
         while args.len() >= parameters.len() {
             va_args.push(args.remove(parameters.len() - 1));
@@ -2252,7 +2103,6 @@ join(x, y)
         assert_eq!(
             Define {
                 parameters: None,
-                var_arg: false,
                 replacement_list: vec![
                     TokenType::HASH,
                     TokenType::WHITESPACE,
@@ -2274,7 +2124,6 @@ join(x, y)
         assert_eq!(
             Define {
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
-                var_arg: false,
                 replacement_list: vec![
                     TokenType::HASH,
                     TokenType::WHITESPACE,
@@ -2296,7 +2145,6 @@ join(x, y)
         assert_eq!(
             Define {
                 parameters: Some(vec![str_maps.add_byte_vec("a".as_bytes())]),
-                var_arg: false,
                 replacement_list: vec![
                     TokenType::IDENT {
                         str_map_key: str_maps.add_byte_vec("mkstr".as_bytes())
@@ -2324,7 +2172,6 @@ join(x, y)
                     str_maps.add_byte_vec("c".as_bytes()),
                     str_maps.add_byte_vec("d".as_bytes())
                 ]),
-                var_arg: false,
                 replacement_list: vec![
                     TokenType::IDENT {
                         str_map_key: str_maps.add_byte_vec("in_between".as_bytes())
@@ -2682,25 +2529,25 @@ CHICKEN(1 2,3 4)"##
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None,
+                    value_key: 3,
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None,
-                },
-                TokenType::COMMA,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None,
-                },
-                TokenType::WHITESPACE,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None,
-                },
+                    value_key: 4,
+                    suffix: None
+                }
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -3169,12 +3016,67 @@ GET_SECOND(COMMA PP,T)"##;
         let tokens = cpp(
             src.as_bytes().to_vec(),
             "",
-            &[""],
+            &[],
             &mut defines,
             &mut str_maps,
         )?;
         assert_eq!(
-            vec![TokenType::OPEN_PAR, TokenType::CLOSE_PAR],
+            vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::OPEN_PAR,
+                TokenType::IDENT {
+                    str_map_key: str_maps.add_byte_vec("T".as_bytes())
+                },
+                TokenType::CLOSE_PAR
+            ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())

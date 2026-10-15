@@ -1,4 +1,4 @@
-use crate::error;
+use crate::error::*;
 use std::collections::HashMap;
 
 // TODO: it'd be faster to just push slices into the vec and keep the original bytes vector
@@ -1878,11 +1878,22 @@ pub fn lexer(
             let old_index = index;
             let token_type = chain_lex(&program_str_bytes, &mut index, is_pp, str_maps);
             if let Ok(Some(token_type)) = token_type {
-                tokens.push(Token {
+                let t = Token {
                     r#type: token_type,
                     location: Some(Location { column, line }),
-                });
-                column += 1;
+                };
+                tokens.push(t);
+                let length = match t.to_byte_vec(str_maps) {
+                    Some(v) => v.len(),
+                    None => {
+                        return Err(error(
+                            "Token cannot be converted to byte string",
+                            line,
+                            column,
+                        ));
+                    }
+                };
+                column += length;
             } else {
                 return Err(unknown_token(char::from(program_str_bytes[index]), line));
             }

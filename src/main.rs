@@ -111,7 +111,6 @@ fn main() {
     let mut str_maps = ByteVecMaps::new();
     let stdc_version = cpp::Define {
         parameters: None,
-        var_arg: false,
         replacement_list: vec![Token {
             r#type: TokenType::CONSTANT_DEC_INT {
                 value_key: str_maps.add_byte_vec("201710".as_bytes()),
@@ -135,7 +134,6 @@ fn main() {
     for file in &arg_info.files {
         let define = cpp::Define {
             parameters: None,
-            var_arg: false,
             replacement_list: vec![Token {
                 r#type: TokenType::StringLiteral {
                     str_lit: StringLiteral {
