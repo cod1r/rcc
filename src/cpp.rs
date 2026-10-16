@@ -652,40 +652,6 @@ fn parse_macro_fn_arguments<'a>(
         }
         *idx += 1;
     }
-    if args.len()
-        < if has_var_args {
-            parameters.len() - 1
-        } else {
-            parameters.len()
-        }
-    {
-        let Token {
-            location: Some(Location { line, column }),
-            ..
-        } = tokens[start_of_fn_macro]
-        else {
-            unreachable!()
-        };
-        return Err(error(
-            "Too few arguments passed into function-like macro",
-            line,
-            column,
-        ));
-    }
-    if args.len() > parameters.len() && !has_var_args {
-        let Token {
-            location: Some(Location { line, column }),
-            ..
-        } = tokens[start_of_fn_macro]
-        else {
-            unreachable!()
-        };
-        return Err(error(
-            "Too many arguments passed into function-like macro",
-            line,
-            column,
-        ));
-    }
     Ok(args)
 }
 
@@ -1001,6 +967,87 @@ fn process_hash_hash_operator(
     Ok(())
 }
 
+fn check_args_parity(
+    tokens: &[Token],
+    args: &[&[Token]],
+    parameters: &[usize],
+    start_of_fn_macro: usize,
+    str_maps: &ByteVecMaps,
+) -> Result<(), String> {
+    let has_var_args = parameters
+        .iter()
+        .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
+    if args.len()
+        < if has_var_args {
+            parameters.len() - 1
+        } else {
+            parameters.len()
+        }
+    {
+        let Token {
+            location: Some(Location { line, column }),
+            ..
+        } = tokens[start_of_fn_macro]
+        else {
+            unreachable!()
+        };
+        return Err(error(
+            "Too few arguments passed into function-like macro",
+            line,
+            column,
+        ));
+    }
+    if args.len() > parameters.len() && !has_var_args {
+        let Token {
+            location: Some(Location { line, column }),
+            ..
+        } = tokens[start_of_fn_macro]
+        else {
+            unreachable!()
+        };
+        return Err(error(
+            "Too many arguments passed into function-like macro",
+            line,
+            column,
+        ));
+    }
+    if args.len()
+        < if has_var_args {
+            parameters.len() - 1
+        } else {
+            parameters.len()
+        }
+    {
+        let Token {
+            location: Some(Location { line, column }),
+            ..
+        } = tokens[start_of_fn_macro]
+        else {
+            unreachable!()
+        };
+        return Err(error(
+            "Too few arguments passed into function-like macro",
+            line,
+            column,
+        ));
+    }
+    if args.len() > parameters.len() && !has_var_args {
+        let Token {
+            location: Some(Location { line, column }),
+            ..
+        } = tokens[start_of_fn_macro]
+        else {
+            unreachable!()
+        };
+        return Err(error(
+            "Too many arguments passed into function-like macro",
+            line,
+            column,
+        ));
+    }
+    Ok(())
+}
+
 fn macro_substitutions(
     tokens: &mut Vec<Token>,
     start_index: usize,
@@ -1050,31 +1097,52 @@ fn macro_substitutions(
                             str_maps,
                             start_of_macro,
                         )?;
-                        expected_token(tokens, &mut i, TokenType::CLOSE_PAR, "Expected ')'")?;
-                        macros_being_replaced.push(str_map_key);
-                        let processed_replacement_list = process_replacement_list(
-                            &args,
-                            &replacement_list,
-                            Some(parameters),
-                            str_maps,
-                            defines,
-                            macros_being_replaced,
-                        )?;
-                        macros_being_replaced.pop();
-                        if rescanning {
-                            let length = processed_replacement_list.len();
-                            tokens.splice(start_of_macro..i, processed_replacement_list);
-                            i = start_of_macro + length;
-                        } else {
-                            replacements.push(processed_replacement_list);
-                            for idx in start_of_macro..i {
-                                let location = tokens[idx].location;
-                                tokens[idx] = Token {
-                                    r#type: TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                                        idx_of_macro_replacement: replacements.len() - 1,
-                                    },
-                                    location,
-                                };
+                        if let Some(Token {
+                            r#type: TokenType::CLOSE_PAR,
+                            ..
+                        }) = tokens.get(i)
+                        {
+                            i += 1;
+                            check_args_parity(
+                                tokens,
+                                args.as_slice(),
+                                parameters,
+                                start_of_macro,
+                                str_maps,
+                            )?;
+                            macros_being_replaced.push(str_map_key);
+                            dbg!(macros_being_replaced
+                                .iter()
+                                .map(|key| String::from_utf8(
+                                    str_maps.key_to_byte_vec[*key].clone()
+                                )
+                                .unwrap())
+                                .collect::<Vec<String>>());
+                            let processed_replacement_list = process_replacement_list(
+                                &args,
+                                &replacement_list,
+                                Some(parameters),
+                                str_maps,
+                                defines,
+                                macros_being_replaced,
+                            )?;
+                            dbg!(&processed_replacement_list, rescanning);
+                            macros_being_replaced.pop();
+                            if rescanning {
+                                let length = processed_replacement_list.len();
+                                tokens.splice(start_of_macro..i, processed_replacement_list);
+                                i = start_of_macro + length;
+                            } else {
+                                replacements.push(processed_replacement_list);
+                                for idx in start_of_macro..i {
+                                    let location = tokens[idx].location;
+                                    tokens[idx] = Token {
+                                        r#type: TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
+                                            idx_of_macro_replacement: replacements.len() - 1,
+                                        },
+                                        location,
+                                    };
+                                }
                             }
                         }
                     }
@@ -1669,8 +1737,7 @@ fn replace_all_replacements(tokens: Vec<Token>, replacements: Vec<Vec<Token>>) -
     let mut new_tokens = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
-        let t = tokens[i];
-        match t.r#type {
+        match tokens[i].r#type {
             TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
                 idx_of_macro_replacement,
             } => {
@@ -1687,10 +1754,9 @@ fn replace_all_replacements(tokens: Vec<Token>, replacements: Vec<Vec<Token>>) -
                     i += 1;
                 }
             }
-            _ => {
-                new_tokens.push(t);
-            }
+            _ => {}
         }
+        new_tokens.push(tokens[i]);
         i += 1;
     }
     new_tokens
@@ -1729,7 +1795,8 @@ fn preprocessing_directives(
     let new_tokens = replace_all_replacements(tokens, replacements);
     Ok(new_tokens)
 }
-pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {
+
+pub fn output_tokens_dbg(tokens: &[Token], str_maps: &ByteVecMaps) {
     let vec_bytes = tokens
         .iter()
         .map(|t| t.to_byte_vec(str_maps).unwrap())
@@ -1737,7 +1804,7 @@ pub fn output_tokens_stdout(tokens: &[Token], str_maps: &ByteVecMaps) {
             a.extend_from_slice(&e);
             a
         });
-    print!("{}", String::from_utf8(vec_bytes).unwrap());
+    dbg!(String::from_utf8(vec_bytes).unwrap());
 }
 
 fn process_trigraphs(program_str: Vec<u8>) -> Vec<u8> {
@@ -1839,7 +1906,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        cpp, define_directive, parse_group, preprocessing_directives, process_comments, Define,
+        cpp, define_directive, output_tokens_dbg, parse_group, preprocessing_directives,
+        process_comments, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -3093,6 +3161,12 @@ GET_SECOND(COMMA PP,T)"##;
     }
     #[test]
     fn cpp_test_proper_rescanning() -> Result<(), String> {
+        /*
+        After all parameters in the replacement list have been substituted and # and ## processing has
+        taken place, all placemarker preprocessing tokens are removed. The resulting preprocessing token
+        sequence is then rescanned, ALONG WITH ALL SUBSEQUENT PREPROCESSING TOKENS OF THE SOURCE FILE, FOR
+        MORE MACRO NAMES TO REPLACE
+        */
         let src = r##"#define f(x) h(x
 #define h(x) x()
 f(f))"##;
@@ -3108,6 +3182,7 @@ f(f))"##;
             &mut defines,
             &mut str_maps,
         )?;
+        output_tokens_dbg(&tokens, &str_maps);
         assert_eq!(
             vec![
                 TokenType::IDENT {

@@ -180,7 +180,6 @@ fn main() {
                         return;
                     }
                 };
-                cpp::output_tokens_stdout(tokens.as_slice(), &str_maps);
                 //match parser::parser(&tokens, &mut str_maps) {
                 //    Ok(tu) => {
                 //    }
