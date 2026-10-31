@@ -854,6 +854,14 @@ fn process_hash_operator(
             let Some(byte_vec) = t.to_byte_vec(str_maps) else {
                 unreachable!()
             };
+            // Each occurrence of white space between the argument’s
+            // preprocessing tokens becomes a single space character
+            // in the character string literal
+            if let Some(b' ') = acc.last() {
+                if byte_vec == b" " {
+                    return acc;
+                }
+            }
             acc.extend(&byte_vec);
             acc
         });
@@ -1044,6 +1052,16 @@ fn get_next_nonwhitespace_token(
     if *buffer_idx == macro_replacement_buffer.len() - 1 {
         *index += 1;
         consume_whitespace(tokens, index);
+        if let Some(
+            t @ Token {
+                r#type: TokenType::WHITESPACE,
+                ..
+            },
+        ) = tokens.get(*index - 1)
+        {
+            // This ensures that the "white-space separation" is kept.
+            macro_replacement_buffer.push(*t);
+        }
         match tokens.get(*index) {
             Some(t) => {
                 macro_replacement_buffer.push(*t);
@@ -1137,9 +1155,6 @@ fn macro_substitutions(
                 };
                 if let Some(processed_replacement_list) = processed_replacement_list {
                     macros_being_replaced.push(str_map_key);
-                    //macros_being_replaced.iter().for_each(|key| {
-                    //    dbg!(String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap());
-                    //});
                     for i in 0..processed_replacement_list.len() {
                         if i < macro_replacement_buffer.len() {
                             macro_replacement_buffer[i] = processed_replacement_list[i];
@@ -1158,6 +1173,8 @@ fn macro_substitutions(
                         macros_being_replaced,
                     )?;
                     macros_being_replaced.pop();
+                } else {
+                    break;
                 }
             }
             _ => {
@@ -1824,6 +1841,7 @@ fn control_directive_stage_and_macro_replacement(
                     }
                     _ => unreachable!(),
                 }
+                preprocessed_tokens.extend_from_slice(&tokens[start_of_directive..index]);
                 continue;
             }
             TokenType::IDENT { str_map_key } if defines.contains_key(&str_map_key) => {
@@ -2259,7 +2277,6 @@ join(x, y)
             &mut defines,
             &mut str_maps,
         )?;
-        output_tokens_dbg(&tokens, &str_maps);
         assert!(defines.contains_key(&str_maps.add_byte_vec("hash_hash".as_bytes())));
         assert!(defines.contains_key(&str_maps.add_byte_vec("mkstr".as_bytes())));
         assert!(defines.contains_key(&str_maps.add_byte_vec("in_between".as_bytes())));
@@ -2431,7 +2448,8 @@ join(x, y)
                         prefix_key: None,
                         sequence_key: str_maps.add_byte_vec(b"x ## y")
                     }
-                }
+                },
+                TokenType::NEWLINE
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -3287,11 +3305,34 @@ f(f))"##;
             &mut defines,
             &mut str_maps,
         )?;
-        output_tokens_dbg(&tokens, &str_maps);
         assert_eq!(
             vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
                 TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("f".as_bytes())
+                    str_map_key: str_maps.add_byte_vec(b"f")
                 },
                 TokenType::OPEN_PAR,
                 TokenType::CLOSE_PAR
