@@ -5,6 +5,7 @@ use crate::lexer::*;
 use crate::parser::expressions::*;
 use crate::parser::*;
 use std::cmp::{min, Ord, Ordering};
+use std::ops::Range;
 use std::ops::{Index, IndexMut};
 use std::slice::SliceIndex;
 
@@ -608,21 +609,23 @@ fn line_directive(_tokens: &mut Vec<TokenType>, _index: usize, _end: usize) -> R
     todo!()
 }
 
-fn parse_macro_fn_arguments<'a>(
-    token_index_state: &mut TokenIndexState,
+fn parse_macro_fn_arguments(
+    tokens: &[Token],
+    index: &mut usize,
+    macro_replacement_buffer: &mut Vec<Token>,
+    buffer_idx: &mut usize,
     parameters: &[usize],
     str_maps: &ByteVecMaps,
-) -> Result<Vec<Vec<Token>>, String> {
+) -> Option<Vec<Range<usize>>> {
     let mut stack = Vec::new();
     let mut args = Vec::new();
-    let mut start_of_arg = token_index_state
-        .get_index()
-        .expect("start_of_arg should be Some");
+    let mut start_of_arg = *buffer_idx + 1;
     let has_var_args = parameters
         .iter()
         .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
-    while let Some(t) = token_index_state.get_token() {
-        let idx = token_index_state.get_prev_index();
+    while let Some(t) =
+        get_next_nonwhitespace_token(tokens, index, macro_replacement_buffer, buffer_idx)
+    {
         match t.r#type {
             TokenType::OPEN_PAR => {
                 stack.push(TokenType::OPEN_PAR);
@@ -631,9 +634,8 @@ fn parse_macro_fn_arguments<'a>(
                 if let Some(TokenType::OPEN_PAR) = stack.last() {
                     stack.pop();
                 } else if stack.len() == 0 {
-                    dbg!(start_of_arg, idx);
-                    args.push(token_index_state.get_vec_tokens(start_of_arg, idx));
-                    break;
+                    args.push(start_of_arg..*buffer_idx);
+                    return Some(args);
                 }
             }
             TokenType::COMMA => {
@@ -645,9 +647,8 @@ fn parse_macro_fn_arguments<'a>(
                             parameters.len()
                         }
                 {
-                    args.push(token_index_state.get_vec_tokens(start_of_arg, idx));
-                    token_index_state.consume_whitespace();
-                    start_of_arg = token_index_state.get_index().unwrap();
+                    args.push(start_of_arg..*buffer_idx);
+                    start_of_arg = *buffer_idx + 1;
                     continue;
                 }
             }
@@ -655,11 +656,11 @@ fn parse_macro_fn_arguments<'a>(
         }
     }
     dbg!(&args);
-    Ok(args)
+    None
 }
 
 fn replace_parameter(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     parameters: &[usize],
     processed_replacement_list: &mut Vec<Token>,
     parameter: Token,
@@ -677,23 +678,38 @@ fn replace_parameter(
     let Some(idx) = parameters.iter().position(|key| *key == str_map_key) else {
         unreachable!()
     };
-    let mut arg = args[idx].to_vec();
-    let mut replacements = Vec::new();
-    macro_substitutions(
-        TokenIndexState::new(&mut arg, &mut replacements, IndexInfo::TokensIdx(0)),
-        str_maps,
-        defines,
-        macros_being_replaced,
-    )?;
-    let replaced = replace_all_replacements(arg, replacements);
-    for t in replaced {
+    let arg = args[idx];
+    let mut preprocessed_tokens = Vec::new();
+    let mut macro_replacement_buffer = Vec::new();
+    for (i, t) in arg.iter().enumerate() {
+        match t.r#type {
+            TokenType::IDENT { str_map_key } if defines.contains_key(&str_map_key) => {
+                let mut idx = i;
+                macro_replacement_buffer.push(*t);
+                macro_substitutions(
+                    &arg,
+                    &mut idx,
+                    &mut preprocessed_tokens,
+                    &mut macro_replacement_buffer,
+                    str_maps,
+                    defines,
+                    macros_being_replaced,
+                )?;
+                preprocessed_tokens.extend_from_slice(&macro_replacement_buffer);
+            }
+            _ => {
+                preprocessed_tokens.push(*t);
+            }
+        }
+    }
+    for t in preprocessed_tokens {
         processed_replacement_list.push(t);
     }
     Ok(())
 }
 
 fn argument_substitution_non_operands(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     parameters: &[usize],
     replacement_list: &[Token],
     processed_replacement_list: &mut Vec<Token>,
@@ -736,7 +752,7 @@ fn argument_substitution_non_operands(
 }
 
 fn process_replacement_list(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     replacement_list: &[Token],
     parameters: Option<&[usize]>,
     str_maps: &mut ByteVecMaps,
@@ -811,7 +827,7 @@ fn process_replacement_list(
 }
 
 fn process_hash_operator(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     replacement_list: &[Token],
     processed_replacement_list: &mut Vec<Token>,
     parameters: &[usize],
@@ -822,7 +838,7 @@ fn process_hash_operator(
     consume_whitespace(replacement_list, i);
     let Token {
         r#type: TokenType::IDENT { str_map_key },
-        ..
+        location,
     } = replacement_list[*i].clone()
     else {
         unreachable!()
@@ -830,7 +846,7 @@ fn process_hash_operator(
     let Some(idx) = parameters.iter().position(|key| *key == str_map_key) else {
         unreachable!()
     };
-    let arg = args[idx].as_slice();
+    let arg = args[idx];
     let mut byte_vec = arg
         .iter()
         .skip_while(|t| t.r#type == TokenType::WHITESPACE)
@@ -853,14 +869,14 @@ fn process_hash_operator(
                 sequence_key,
             },
         },
-        location: None,
+        location,
     });
 }
 
 fn get_parameter_args<'a, 'b>(
     t: Token,
     parameters: &'b [usize],
-    args: &'a [Vec<Token>],
+    args: &'a [&[Token]],
 ) -> Option<&'a [Token]> {
     if let Token {
         r#type: TokenType::IDENT { str_map_key },
@@ -875,7 +891,7 @@ fn get_parameter_args<'a, 'b>(
 }
 
 fn process_hash_hash_operator(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     replacement_list: &[Token],
     processed_replacement_list: &mut Vec<Token>,
     parameters: &[usize],
@@ -958,7 +974,7 @@ fn process_hash_hash_operator(
 }
 
 fn check_args_parity(
-    args: &[Vec<Token>],
+    args: &[&[Token]],
     parameters: &[usize],
     start_token_location: Location,
     str_maps: &ByteVecMaps,
@@ -1010,391 +1026,94 @@ fn check_args_parity(
     Ok(())
 }
 
-struct TokenIndexState<'a> {
-    tokens: &'a mut [Token],
-    replacements: &'a mut Vec<Vec<Token>>,
-    index: Option<IndexInfo>,
-}
+/*
+I'm thinking of an entirely new approach rather than some linked list thingy
+or my TokenIndexState shit.
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Debug)]
-enum IndexInfo {
-    ReplacementIdx {
-        idx_of_replacement_token: usize,
-        replacement_list_idx: usize,
-    },
-    TokensIdx(usize),
-}
+I'll have a small dynamic buffer that will accept new tokens in from the source tokens
+and when it takes in something that is a macro that is replaceable, it'll start
+macro replacing in that buffer and rescan, consuming tokens from the source tokens.
+*/
 
-impl Ord for IndexInfo {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self {
-            IndexInfo::TokensIdx(idx) => match other {
-                IndexInfo::TokensIdx(idx2) => idx.cmp(idx2),
-                IndexInfo::ReplacementIdx {
-                    idx_of_replacement_token,
-                    replacement_list_idx,
-                } => idx.cmp(idx_of_replacement_token),
-            },
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => match other {
-                IndexInfo::TokensIdx(idx2) => idx_of_replacement_token.cmp(idx2),
-                IndexInfo::ReplacementIdx {
-                    idx_of_replacement_token: idx_rpl_tkn_2,
-                    replacement_list_idx: rpl_lst_2,
-                } => {
-                    if idx_of_replacement_token == idx_rpl_tkn_2 {
-                        replacement_list_idx.cmp(rpl_lst_2)
-                    } else {
-                        idx_of_replacement_token.cmp(idx_rpl_tkn_2)
-                    }
-                }
-            },
-        }
-    }
-}
-
-impl IndexInfo {
-    fn get_next_index(&self, tokens: &[Token], replacements: &[Vec<Token>]) -> Option<IndexInfo> {
-        match *self {
-            IndexInfo::TokensIdx(idx) => {
-                if let Some(Token {
-                    r#type:
-                        TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                            idx_of_macro_replacement,
-                        },
-                    ..
-                }) = tokens.get(idx + 1)
-                {
-                    return Some(IndexInfo::ReplacementIdx {
-                        idx_of_replacement_token: idx + 1,
-                        replacement_list_idx: 0,
-                    });
-                }
-                if idx + 1 >= tokens.len() {
-                    return None;
-                }
-                return Some(IndexInfo::TokensIdx(idx + 1));
+fn get_next_nonwhitespace_token(
+    tokens: &[Token],
+    index: &mut usize,
+    macro_replacement_buffer: &mut Vec<Token>,
+    buffer_idx: &mut usize,
+) -> Option<Token> {
+    if *buffer_idx == macro_replacement_buffer.len() - 1 {
+        *index += 1;
+        consume_whitespace(tokens, index);
+        match tokens.get(*index) {
+            Some(t) => {
+                macro_replacement_buffer.push(*t);
             }
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => {
-                let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                    idx_of_macro_replacement,
-                } = tokens[idx_of_replacement_token].r#type
-                else {
-                    unreachable!()
-                };
-                let replacement_list = &replacements[idx_of_macro_replacement];
-                if replacement_list_idx + 1 >= replacement_list.len() {
-                    if let Some(Token {
-                        r#type:
-                            TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                                idx_of_macro_replacement,
-                            },
-                        ..
-                    }) = tokens.get(idx_of_replacement_token + 1)
-                    {
-                        return Some(IndexInfo::ReplacementIdx {
-                            idx_of_replacement_token: idx_of_replacement_token + 1,
-                            replacement_list_idx: 0,
-                        });
-                    }
-                    if idx_of_replacement_token + 1 >= tokens.len() {
-                        return None;
-                    }
-                    return Some(IndexInfo::TokensIdx(idx_of_replacement_token + 1));
-                }
-                return Some(IndexInfo::ReplacementIdx {
-                    idx_of_replacement_token,
-                    replacement_list_idx: replacement_list_idx + 1,
-                });
+            None => {
+                return None;
             }
         }
     }
-    fn get_prev_index(&self, tokens: &[Token], replacements: &[Vec<Token>]) -> Option<IndexInfo> {
-        match *self {
-            IndexInfo::TokensIdx(idx) => {
-                if idx == 0 {
-                    return None;
-                }
-                if let Some(Token {
-                    r#type:
-                        TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                            idx_of_macro_replacement,
-                        },
-                    ..
-                }) = tokens.get(idx - 1)
-                {
-                    let replacement_list = &replacements[*idx_of_macro_replacement];
-                    return Some(IndexInfo::ReplacementIdx {
-                        idx_of_replacement_token: idx - 1,
-                        replacement_list_idx: replacement_list.len() - 1,
-                    });
-                }
-                return Some(IndexInfo::TokensIdx(idx - 1));
-            }
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => {
-                let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                    idx_of_macro_replacement,
-                } = tokens[idx_of_replacement_token].r#type
-                else {
-                    unreachable!()
-                };
-                let replacement_list = &replacements[idx_of_macro_replacement];
-                if replacement_list_idx == 0 {
-                    if idx_of_replacement_token == 0 {
-                        return None;
-                    }
-                    if let Some(Token {
-                        r#type:
-                            TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                                idx_of_macro_replacement,
-                            },
-                        ..
-                    }) = tokens.get(idx_of_replacement_token - 1)
-                    {
-                        let replacement_list = &replacements[*idx_of_macro_replacement];
-                        return Some(IndexInfo::ReplacementIdx {
-                            idx_of_replacement_token: idx_of_replacement_token - 1,
-                            replacement_list_idx: replacement_list.len() - 1,
-                        });
-                    }
-                    return Some(IndexInfo::TokensIdx(idx_of_replacement_token - 1));
-                }
-                return Some(IndexInfo::ReplacementIdx {
-                    idx_of_replacement_token,
-                    replacement_list_idx: replacement_list_idx - 1,
-                });
-            }
-        }
-    }
-}
-
-impl<'a> IndexMut<IndexInfo> for TokenIndexState<'a> {
-    fn index_mut(&mut self, index: IndexInfo) -> &mut Self::Output {
-        match index {
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => {
-                let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                    idx_of_macro_replacement,
-                } = self.tokens[idx_of_replacement_token].r#type
-                else {
-                    unreachable!()
-                };
-                let replacement_list = &mut self.replacements[idx_of_macro_replacement];
-                &mut replacement_list[replacement_list_idx]
-            }
-            IndexInfo::TokensIdx(idx) => &mut self.tokens[idx],
-        }
-    }
-}
-
-impl<'a> Index<IndexInfo> for TokenIndexState<'a> {
-    type Output = Token;
-    fn index(&self, index: IndexInfo) -> &Self::Output {
-        match index {
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => {
-                let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                    idx_of_macro_replacement,
-                } = self.tokens[idx_of_replacement_token].r#type
-                else {
-                    unreachable!()
-                };
-                let replacement_list = &self.replacements[idx_of_macro_replacement];
-                &replacement_list[replacement_list_idx]
-            }
-            IndexInfo::TokensIdx(idx) => &self.tokens[idx],
-        }
-    }
-}
-
-impl<'a> TokenIndexState<'a> {
-    fn new(
-        tokens: &'a mut [Token],
-        replacements: &'a mut Vec<Vec<Token>>,
-        start_index: IndexInfo,
-    ) -> Self {
-        TokenIndexState {
-            tokens,
-            replacements,
-            index: Some(start_index),
-        }
-    }
-    fn get_index(&self) -> Option<IndexInfo> {
-        self.index
-    }
-    fn get_vec_tokens(&self, start: IndexInfo, end: IndexInfo) -> Vec<Token> {
-        let mut slice = Vec::new();
-        let mut index = start;
-        while index < end {
-            match index {
-                IndexInfo::TokensIdx(idx) => {
-                    slice.push(self.tokens[idx]);
-                }
-                IndexInfo::ReplacementIdx {
-                    idx_of_replacement_token,
-                    replacement_list_idx,
-                } => {
-                    let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                        idx_of_macro_replacement,
-                    } = self.tokens[idx_of_replacement_token].r#type
-                    else {
-                        unreachable!()
-                    };
-                    let replacement_list = &self.replacements[idx_of_macro_replacement];
-                    slice.push(replacement_list[replacement_list_idx]);
-                }
-            }
-            index = index
-                .get_next_index(self.tokens, self.replacements)
-                .expect("Expected there to be another valid index");
-        }
-        slice
-    }
-    fn get_prev_index(&self) -> IndexInfo {
-        self.index
-            .expect("get_prev_index should only be called when self.index is Some")
-            .get_prev_index(self.tokens, self.replacements)
-            .expect("This should only be called when it is guaranteed a previous index")
-    }
-    fn get_last_token(&self) -> Option<Token> {
-        if let Some(idx) = self.index {
-            let last_idx = idx.get_prev_index(self.tokens, self.replacements);
-            return last_idx.map_or(None, |idx| Some(self[idx]));
-        }
-        if let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-            idx_of_macro_replacement,
-        } = self.tokens[self.tokens.len() - 1].r#type
-        {
-            return self.replacements[idx_of_macro_replacement].last().copied();
-        }
-        return self.tokens.last().copied();
-    }
-    fn get_token(&mut self) -> Option<Token> {
-        if let Some(idx) = self.index {
-            let token = self[idx];
-            self.index = idx.get_next_index(self.tokens, self.replacements);
-            Some(token)
-        } else {
-            None
-        }
-    }
-    fn consume_whitespace(&mut self) {
-        while let Some(idx) = self.index {
-            match self[idx].r#type {
-                TokenType::WHITESPACE | TokenType::NEWLINE | TokenType::RCC_INTERNAL_NOTHING => {
-                    self.index = idx.get_next_index(self.tokens, self.replacements);
-                }
-                _ => break,
-            }
-        }
-    }
-}
-
-fn handle_replacement_slice(
-    token_index_state: &mut TokenIndexState,
-    start_of_macro: IndexInfo,
-    end: Option<IndexInfo>,
-) {
-    let mut i = Some(start_of_macro);
-    loop {
-        match (i, end) {
-            (Some(i), Some(idx)) => {
-                if i >= idx {
-                    break;
-                }
-            }
-            (Some(_), None) => {}
-            (None, Some(_)) => unreachable!(),
-            (None, None) => {
-                break;
-            }
-        }
-        let valid_i = i.expect("At this point, `i` should be Some");
-        match valid_i {
-            IndexInfo::ReplacementIdx {
-                idx_of_replacement_token,
-                replacement_list_idx,
-            } => {
-                let TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                    idx_of_macro_replacement,
-                } = &mut token_index_state.tokens[idx_of_replacement_token].r#type
-                else {
-                    unreachable!()
-                };
-                let replacement_list =
-                    &mut token_index_state.replacements[*idx_of_macro_replacement];
-                break;
-            }
-            IndexInfo::TokensIdx(_) => {
-                if start_of_macro == valid_i {
-                    token_index_state[valid_i].r#type = TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                        idx_of_macro_replacement: token_index_state.replacements.len() - 1,
-                    };
-                } else {
-                    token_index_state[valid_i].r#type = TokenType::RCC_INTERNAL_NOTHING
-                }
-            }
-        }
-        i = valid_i.get_next_index(token_index_state.tokens, token_index_state.replacements);
-    }
+    *buffer_idx += 1;
+    consume_whitespace(macro_replacement_buffer, buffer_idx);
+    return macro_replacement_buffer.get(*buffer_idx).copied();
 }
 
 fn macro_substitutions(
-    mut token_index_state: TokenIndexState,
+    tokens: &[Token],
+    index: &mut usize,
+    preprocessed_tokens: &mut Vec<Token>,
+    macro_replacement_buffer: &mut Vec<Token>,
     str_maps: &mut ByteVecMaps,
     defines: &HashMap<usize, Define>,
     macros_being_replaced: &mut Vec<usize>,
 ) -> Result<(), String> {
-    while let Some(Token {
-        r#type,
-        location: Some(l),
-    }) = token_index_state.get_token()
-    {
+    let mut buffer_idx = 0;
+    /* The idea here is that I go through macro_replacement_buffer and will
+       consume more tokens from the tokens source if there are no more tokens to
+       process from the buffer and then rescan, repeating the same process.
+    */
+    while buffer_idx < macro_replacement_buffer.len() {
+        let Token { r#type, location } = macro_replacement_buffer[buffer_idx];
+        let l = location.unwrap();
         match r#type {
             TokenType::IDENT { str_map_key }
                 if defines.contains_key(&str_map_key)
                     && !macros_being_replaced.contains(&str_map_key) =>
             {
-                macros_being_replaced.push(str_map_key);
-                dbg!(String::from_utf8(str_maps.key_to_byte_vec[str_map_key].clone()).unwrap());
-                let start_of_macro = token_index_state.get_prev_index();
                 let Some(define) = defines.get(&str_map_key) else {
                     unreachable!()
                 };
-                let replacement_list = define.replacement_list.clone();
+                let replacement_list = &define.replacement_list;
                 let processed_replacement_list = if let Some(parameters) = &define.parameters {
-                    dbg!(String::from_utf8(str_maps.key_to_byte_vec[str_map_key].clone()).unwrap());
-                    token_index_state.consume_whitespace();
-                    dbg!(token_index_state.index, start_of_macro);
-                    if let Some(Token {
-                        r#type: TokenType::OPEN_PAR,
-                        ..
-                    }) = token_index_state.get_token()
-                    {
-                        // TODO: make sure each new-line character is considered to be a normal white-space character.
-                        let args =
-                            parse_macro_fn_arguments(&mut token_index_state, parameters, str_maps)?;
-                        if let Some(Token {
-                            r#type: TokenType::CLOSE_PAR,
+                    if let Some(
+                        t @ Token {
+                            r#type: TokenType::OPEN_PAR,
                             ..
-                        }) = token_index_state.get_last_token()
-                        {
+                        },
+                    ) = get_next_nonwhitespace_token(
+                        tokens,
+                        index,
+                        macro_replacement_buffer,
+                        &mut buffer_idx,
+                    ) {
+                        // TODO: make sure each new-line character is considered to be a normal white-space character.
+                        let args = parse_macro_fn_arguments(
+                            tokens,
+                            index,
+                            macro_replacement_buffer,
+                            &mut buffer_idx,
+                            parameters,
+                            str_maps,
+                        );
+                        if let Some(args) = args {
+                            let args = args
+                                .iter()
+                                .map(|r| &macro_replacement_buffer[r.start..r.end])
+                                .collect::<Vec<&[Token]>>();
                             check_args_parity(args.as_slice(), parameters, l, str_maps)?;
                             Some(process_replacement_list(
                                 &args,
-                                &replacement_list,
+                                replacement_list,
                                 Some(parameters),
                                 str_maps,
                                 defines,
@@ -1409,7 +1128,7 @@ fn macro_substitutions(
                 } else {
                     Some(process_replacement_list(
                         &[],
-                        &replacement_list,
+                        replacement_list,
                         None,
                         str_maps,
                         defines,
@@ -1417,25 +1136,23 @@ fn macro_substitutions(
                     )?)
                 };
                 if let Some(processed_replacement_list) = processed_replacement_list {
-                    let idx = token_index_state.get_index();
-                    token_index_state
-                        .replacements
-                        .push(processed_replacement_list);
-                    macros_being_replaced.iter().for_each(|key| {
-                        dbg!(String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap());
-                    });
+                    macros_being_replaced.push(str_map_key);
+                    //macros_being_replaced.iter().for_each(|key| {
+                    //    dbg!(String::from_utf8(str_maps.key_to_byte_vec[*key].clone()).unwrap());
+                    //});
+                    for i in 0..processed_replacement_list.len() {
+                        if i < macro_replacement_buffer.len() {
+                            macro_replacement_buffer[i] = processed_replacement_list[i];
+                        } else {
+                            macro_replacement_buffer.insert(i, processed_replacement_list[i]);
+                        }
+                    }
+                    macro_replacement_buffer.truncate(processed_replacement_list.len());
                     macro_substitutions(
-                        TokenIndexState::new(
-                            token_index_state.tokens,
-                            token_index_state.replacements,
-                            match start_of_macro {
-                                IndexInfo::ReplacementIdx { .. } => start_of_macro,
-                                IndexInfo::TokensIdx(idx) => IndexInfo::ReplacementIdx {
-                                    idx_of_replacement_token: idx,
-                                    replacement_list_idx: 0,
-                                },
-                            },
-                        ),
+                        tokens,
+                        index,
+                        preprocessed_tokens,
+                        macro_replacement_buffer,
                         str_maps,
                         defines,
                         macros_being_replaced,
@@ -1443,11 +1160,9 @@ fn macro_substitutions(
                     macros_being_replaced.pop();
                 }
             }
-            TokenType::RCC_INTERNAL_MACRO_REPLACEMENT { .. } => {
-                dbg!(token_index_state.index);
-                unreachable!();
+            _ => {
+                buffer_idx += 1;
             }
-            _ => {}
         }
     }
     Ok(())
@@ -2040,27 +1755,6 @@ fn parse_group(
     Ok(())
 }
 
-fn replace_all_replacements(tokens: Vec<Token>, replacements: Vec<Vec<Token>>) -> Vec<Token> {
-    let mut new_tokens = Vec::new();
-    let mut i = 0;
-    for t in tokens {
-        match t.r#type {
-            TokenType::RCC_INTERNAL_MACRO_REPLACEMENT {
-                idx_of_macro_replacement,
-            } => {
-                new_tokens.extend(&replacements[idx_of_macro_replacement]);
-                continue;
-            }
-            TokenType::RCC_INTERNAL_NOTHING => {
-                continue;
-            }
-            _ => {}
-        }
-        new_tokens.push(t);
-    }
-    new_tokens
-}
-
 fn do_pp_stage_conditional(
     mut tokens: Vec<Token>,
     str_maps: &mut ByteVecMaps,
@@ -2088,60 +1782,66 @@ fn do_pp_stage_conditional(
 
 fn control_directive_stage_and_macro_replacement(
     tokens: &mut [Token],
-    replacements: &mut Vec<Vec<Token>>,
+    preprocessed_tokens: &mut Vec<Token>,
     str_maps: &mut ByteVecMaps,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
 ) -> Result<(), String> {
     let mut index = 0;
+    let mut macro_replacement_buffer = Vec::new();
     while index < tokens.len() {
         let Token { r#type, .. } = tokens[index];
         match r#type {
-            TokenType::HASH => {
-                if is_valid_directive(&tokens, index) {
-                    let start_of_directive = index;
-                    index += 1;
-                    consume_specifically_spaces(&tokens, &mut index);
+            TokenType::HASH if is_valid_directive(&tokens, index) => {
+                let start_of_directive = index;
+                index += 1;
+                consume_specifically_spaces(&tokens, &mut index);
 
-                    let Some(Token {
-                        r#type: TokenType::IDENT { str_map_key },
-                        location: Some(Location { line, column }),
-                    }) = tokens.get(index)
-                    else {
-                        unreachable!()
-                    };
-                    let d = str_maps.key_to_byte_vec[*str_map_key].clone();
-                    match d.as_slice() {
-                        b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
-                            index += 1;
-                            consume_specifically_spaces(tokens, &mut index);
-                            parse_control_line(
-                                tokens,
-                                &mut index,
-                                curr_path,
-                                include_paths,
-                                defines,
-                                str_maps,
-                                &d,
-                                start_of_directive,
-                                PPStage::ControlDirectives,
-                            )?;
-                        }
-                        _ => unreachable!(),
+                let Some(Token {
+                    r#type: TokenType::IDENT { str_map_key },
+                    location: Some(Location { line, column }),
+                }) = tokens.get(index)
+                else {
+                    unreachable!()
+                };
+                let d = str_maps.key_to_byte_vec[*str_map_key].clone();
+                match d.as_slice() {
+                    b"include" | b"define" | b"error" | b"line" | b"undef" | b"pragma" => {
+                        index += 1;
+                        consume_specifically_spaces(tokens, &mut index);
+                        parse_control_line(
+                            tokens,
+                            &mut index,
+                            curr_path,
+                            include_paths,
+                            defines,
+                            str_maps,
+                            &d,
+                            start_of_directive,
+                            PPStage::ControlDirectives,
+                        )?;
                     }
-                    continue;
+                    _ => unreachable!(),
                 }
+                continue;
             }
-            TokenType::IDENT { str_map_key } => {
+            TokenType::IDENT { str_map_key } if defines.contains_key(&str_map_key) => {
+                macro_replacement_buffer.push(tokens[index]);
                 macro_substitutions(
-                    TokenIndexState::new(tokens, replacements, IndexInfo::TokensIdx(index)),
+                    tokens,
+                    &mut index,
+                    preprocessed_tokens,
+                    &mut macro_replacement_buffer,
                     str_maps,
                     defines,
                     &mut Vec::new(),
                 );
+                preprocessed_tokens.extend_from_slice(&macro_replacement_buffer);
             }
-            _ => {}
+            _ => {
+                preprocessed_tokens.push(tokens[index]);
+            }
         }
         index += 1;
     }
@@ -2154,17 +1854,17 @@ fn do_pp_stage_control_directives(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
-) -> Result<(Vec<Token>, Vec<Vec<Token>>), String> {
-    let mut replacements = Vec::new();
+) -> Result<Vec<Token>, String> {
+    let mut preprocessed_tokens = Vec::new();
     control_directive_stage_and_macro_replacement(
         &mut tokens,
-        &mut replacements,
+        &mut preprocessed_tokens,
         str_maps,
         curr_path,
         include_paths,
         defines,
     )?;
-    Ok((tokens, replacements))
+    Ok((preprocessed_tokens))
 }
 
 fn preprocessing_directives(
@@ -2185,10 +1885,9 @@ fn preprocessing_directives(
     // constants, enumeration constants, character constants
     let tokens = do_pp_stage_conditional(tokens, str_maps, curr_path, include_paths, defines)?;
     defines.clear();
-    let (tokens, replacements) =
+    let tokens =
         do_pp_stage_control_directives(tokens, str_maps, curr_path, include_paths, defines)?;
-    let new_tokens = replace_all_replacements(tokens, replacements);
-    Ok(new_tokens)
+    Ok(tokens)
 }
 
 pub fn output_tokens_dbg(tokens: &[Token], str_maps: &ByteVecMaps) {
@@ -2730,7 +2429,7 @@ join(x, y)
                 TokenType::StringLiteral {
                     str_lit: StringLiteral {
                         prefix_key: None,
-                        sequence_key: str_maps.add_byte_vec(b"\"x ## y\"")
+                        sequence_key: str_maps.add_byte_vec(b"x ## y")
                     }
                 }
             ],
