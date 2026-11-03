@@ -29,95 +29,49 @@ struct Macro {
 }
 
 fn concat_adjacent_strings(
-    tokens: &[Token],
+    mut tokens: Vec<Token>,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Token>, String> {
-    let mut adjacent_strings_concated = Vec::new();
     let mut token_string_concated_index = 0;
     while token_string_concated_index < tokens.len() {
-        if let Some(Token {
+        if let Token {
             r#type:
                 TokenType::StringLiteral {
-                    str_lit: first_string_lit,
-                    ..
+                    str_lit: mut first_string_lit,
                 },
-            ..
-        }) = tokens.get(token_string_concated_index)
+            location,
+        } = tokens[token_string_concated_index]
         {
             let mut prev_prefix = first_string_lit.prefix_key;
-            let mut first_byte_vec =
-                str_maps.key_to_byte_vec[first_string_lit.sequence_key].clone();
             let mut adjacent_string_lit_index = token_string_concated_index + 1;
-            while matches!(
-                tokens.get(adjacent_string_lit_index),
-                Some(Token {
-                    r#type: TokenType::WHITESPACE
-                        | TokenType::NEWLINE
-                        | TokenType::StringLiteral { .. },
-                    ..
-                })
-            ) && adjacent_string_lit_index < tokens.len()
-            {
-                if let Some(Token {
-                    r#type:
-                        TokenType::StringLiteral {
-                            str_lit: second_string_lit,
-                            ..
-                        },
-                    ..
-                }) = tokens.get(adjacent_string_lit_index)
-                {
-                    match (prev_prefix, second_string_lit.prefix_key) {
-                        (Some(prev_key), Some(second_prefix_key)) => {
-                            let first_prefix = str_maps.key_to_byte_vec[prev_key].as_slice();
-                            let second_prefix =
-                                str_maps.key_to_byte_vec[second_prefix_key].as_slice();
-                            if *first_prefix != *second_prefix {
-                                return Err(format!(
-                                    "Cannot concatenate string literals with differing prefixes"
-                                ));
-                            }
-                        }
-                        _ => {}
-                    }
-                    let second_byte_vec = &str_maps.key_to_byte_vec[second_string_lit.sequence_key];
-                    first_byte_vec.extend_from_slice(second_byte_vec);
-                    prev_prefix = second_string_lit.prefix_key;
-                }
-                adjacent_string_lit_index += 1;
-            }
-            adjacent_strings_concated.push(Token {
-                r#type: TokenType::StringLiteral {
-                    str_lit: StringLiteral {
-                        prefix_key: prev_prefix,
-                        sequence_key: str_maps.add_byte_vec(first_byte_vec.as_slice()),
+            consume_whitespace(&tokens, &mut adjacent_string_lit_index);
+            while let Some(Token {
+                r#type:
+                    TokenType::StringLiteral {
+                        str_lit: second_string_lit,
                     },
-                },
-                location: None,
-            });
-            // If there is a StringLiteral at adjacent_string_lit_index, then we
-            // set token_string_concated_index = adjacent_string_lit_index.
-            // else we just increment token_string_concated_index so that it moves on from
-            // the current StringLiteral
-            if matches!(
-                tokens.get(adjacent_string_lit_index),
-                Some(Token {
-                    r#type: TokenType::StringLiteral { .. },
-                    ..
-                })
-            ) {
-                token_string_concated_index = adjacent_string_lit_index;
-            } else {
-                token_string_concated_index += 1;
+                ..
+            }) = tokens.get(adjacent_string_lit_index).copied()
+            {
+                let first = str_maps.key_to_byte_vec[first_string_lit.sequence_key].as_slice();
+                let second = str_maps.key_to_byte_vec[second_string_lit.sequence_key].as_slice();
+                first_string_lit.sequence_key = str_maps.add_byte_vec(&[first, second].concat());
+                tokens[token_string_concated_index] = Token {
+                    r#type: TokenType::StringLiteral {
+                        str_lit: first_string_lit,
+                    },
+                    location,
+                };
+                tokens[adjacent_string_lit_index].r#type = TokenType::WHITESPACE;
+                consume_whitespace(&tokens, &mut adjacent_string_lit_index);
+                continue;
             }
+            token_string_concated_index = adjacent_string_lit_index;
             continue;
-        }
-        if token_string_concated_index < tokens.len() {
-            adjacent_strings_concated.push(tokens[token_string_concated_index]);
         }
         token_string_concated_index += 1;
     }
-    Ok(adjacent_strings_concated)
+    Ok(tokens)
 }
 
 fn process_comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -2020,7 +1974,7 @@ pub fn cpp(
     let preprocessed =
         preprocessing_directives(lexed_tokens, curr_path, include_paths, defines, str_maps)?;
     // concatenating adjacent string literals together
-    let tokens = concat_adjacent_strings(preprocessed.as_slice(), str_maps)?;
+    let tokens = concat_adjacent_strings(preprocessed, str_maps)?;
     // TODO: go through tokens again and make sure location data is correct!
     Ok(tokens)
 }
@@ -2675,27 +2629,60 @@ INVOKE(FOO,BAR)"##
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
-output_tokens_dbg(&tokens, &str_maps);
         assert_eq!(
             vec![
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("printf".as_bytes())
-                },
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::IDENT { str_map_key: 4 },
                 TokenType::OPEN_PAR,
                 TokenType::StringLiteral {
                     str_lit: StringLiteral {
                         prefix_key: None,
-                        sequence_key: str_maps.add_byte_vec("FOO".as_bytes())
-                    },
+                        sequence_key: 1
+                    }
                 },
                 TokenType::WHITESPACE,
-                TokenType::StringLiteral {
-                    str_lit: StringLiteral {
-                        prefix_key: None,
-                        sequence_key: str_maps.add_byte_vec(" BAR".as_bytes())
-                    },
-                },
-                TokenType::CLOSE_PAR,
+                TokenType::WHITESPACE,
+                TokenType::CLOSE_PAR
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
