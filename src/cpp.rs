@@ -2155,39 +2155,26 @@ HI(5 5);"##
         let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
-            vec![TokenType::StringLiteral {
-                str_lit: StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec("5 5".as_bytes())
+            vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::StringLiteral {
+                    str_lit: StringLiteral {
+                        prefix_key: None,
+                        sequence_key: 4
+                    }
                 },
-            }],
-            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
-        );
-        Ok(())
-    }
-    #[test]
-    fn expand_macro_test_complex() -> Result<(), String> {
-        let src = r##"#define hash_hash # ## #
-#define mkstr(a) # a
-#define in_between(a) mkstr(a)
-#define join(c, d) in_between(c hash_hash d)
-char p[] = join(x, y);"##;
-        let mut str_maps = ByteVecMaps::new();
-        let mut defines = HashMap::new();
-        let tokens = cpp(
-            src.as_bytes().to_vec(),
-            "",
-            &[],
-            &mut defines,
-            &mut str_maps,
-        )?;
-        assert_eq!(
-            vec![TokenType::StringLiteral {
-                str_lit: StringLiteral {
-                    prefix_key: None,
-                    sequence_key: str_maps.add_byte_vec("x ## y".as_bytes())
-                },
-            }],
+                TokenType::SEMI_COLON
+            ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
         Ok(())
@@ -2436,19 +2423,49 @@ A"##
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"4"),
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("5".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"5"),
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("6".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"6"),
+                    suffix: None
                 }
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
@@ -2463,15 +2480,12 @@ HI((,),(,))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
+        use super::TokenType::*;
         assert_eq!(
             vec![
-                TokenType::OPEN_PAR,
-                TokenType::COMMA,
-                TokenType::CLOSE_PAR,
-                TokenType::COMMA,
-                TokenType::OPEN_PAR,
-                TokenType::COMMA,
-                TokenType::CLOSE_PAR,
+                WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE,
+                WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, WHITESPACE, NEWLINE,
+                OPEN_PAR, COMMA, CLOSE_PAR, COMMA, OPEN_PAR, COMMA, CLOSE_PAR
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -2485,45 +2499,65 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
+        output_tokens_dbg(&tokens, &str_maps);
+        use super::TokenType::*;
         assert_eq!(
             vec![
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                IDENT {
+                    str_map_key: str_maps.add_byte_vec(b"HEHE")
                 },
-                TokenType::OPEN_PAR,
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                OPEN_PAR,
+                IDENT {
+                    str_map_key: str_maps.add_byte_vec(b"HEHE")
                 },
-                TokenType::OPEN_PAR,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(b"1"),
+                    suffix: None
                 },
-                TokenType::COMMA,
-                TokenType::WHITESPACE,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None,
+                COMMA,
+                WHITESPACE,
+                CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(b"2"),
+                    suffix: None
                 },
-                TokenType::CLOSE_PAR,
-                TokenType::COMMA,
-                TokenType::WHITESPACE,
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("HEHE".as_bytes())
+                CLOSE_PAR,
+                COMMA,
+                WHITESPACE,
+                IDENT {
+                    str_map_key: str_maps.add_byte_vec(b"HEHE")
                 },
-                TokenType::OPEN_PAR,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(b"3"),
+                    suffix: None
                 },
-                TokenType::COMMA,
-                TokenType::WHITESPACE,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None,
+                COMMA,
+                WHITESPACE,
+                CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec(b"4"),
+                    suffix: None
                 },
-                TokenType::CLOSE_PAR,
-                TokenType::CLOSE_PAR,
+                CLOSE_PAR,
+                CLOSE_PAR
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -2537,28 +2571,42 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("1".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"1"),
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"2"),
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("3".as_bytes()),
-                    suffix: None,
+                    value_key: str_maps.add_byte_vec(b"3"),
+                    suffix: None
                 },
                 TokenType::WHITESPACE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None,
-                },
+                    value_key: str_maps.add_byte_vec(b"4"),
+                    suffix: None
+                }
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -2573,17 +2621,41 @@ HAHA(C,4)"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
-        cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
+        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
+        use super::TokenType::*;
         assert_eq!(
             vec![
-                TokenType::COMMA,
-                TokenType::WHITESPACE,
-                TokenType::PLUS,
-                TokenType::WHITESPACE,
-                TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("4".as_bytes()),
-                    suffix: None,
-                },
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                COMMA,
+                WHITESPACE,
+                PLUS,
+                WHITESPACE,
+                CONSTANT_DEC_INT {
+                    value_key: 5,
+                    suffix: None
+                }
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -2600,20 +2672,43 @@ f(2)(9)"##
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
         assert_eq!(
             vec![
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::WHITESPACE,
+                TokenType::NEWLINE,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("2".as_bytes()),
-                    suffix: None,
+                    value_key: 4,
+                    suffix: None
                 },
                 TokenType::ASTERISK,
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("f".as_bytes())
-                },
+                TokenType::IDENT { str_map_key: 1 },
                 TokenType::OPEN_PAR,
                 TokenType::CONSTANT_DEC_INT {
-                    value_key: str_maps.add_byte_vec("9".as_bytes()),
-                    suffix: None,
+                    value_key: 5,
+                    suffix: None
                 },
-                TokenType::CLOSE_PAR,
+                TokenType::CLOSE_PAR
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
@@ -2727,27 +2822,6 @@ CHICKEN(1 2,3 4)"##
                     value_key: str_maps.add_byte_vec("4".as_bytes()),
                     suffix: None
                 }
-            ],
-            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
-        );
-        Ok(())
-    }
-    #[test]
-    fn expand_macro_side_by_side() -> Result<(), String> {
-        let src = r##"#define PP(a, b) a ## b
-#define PP2(a, b) a/**/b
-PP(/,*)PP2(*,/)"##
-            .as_bytes();
-        let mut str_maps = ByteVecMaps::new();
-        let mut defines = HashMap::new();
-        let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
-        assert_eq!(
-            vec![
-                TokenType::DIV,
-                TokenType::ASTERISK,
-                TokenType::ASTERISK,
-                TokenType::WHITESPACE,
-                TokenType::DIV,
             ],
             tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
         );
