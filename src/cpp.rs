@@ -573,12 +573,12 @@ fn parse_macro_fn_arguments(
 ) -> Option<Vec<Range<usize>>> {
     let mut stack = Vec::new();
     let mut args = Vec::new();
-    let mut start_of_arg = *buffer_idx + 1;
+    let mut start_of_arg = *buffer_idx;
     let has_var_args = parameters
         .iter()
         .any(|key| str_maps.key_to_byte_vec[*key] == b"__VA_ARGS__");
     while let Some(t) =
-        get_next_nonwhitespace_token(tokens, index, macro_replacement_buffer, buffer_idx)
+        consume_next_nonwhitespace_token(tokens, index, macro_replacement_buffer, buffer_idx, None)
     {
         match t.r#type {
             TokenType::OPEN_PAR => {
@@ -588,7 +588,7 @@ fn parse_macro_fn_arguments(
                 if let Some(TokenType::OPEN_PAR) = stack.last() {
                     stack.pop();
                 } else if stack.len() == 0 {
-                    args.push(start_of_arg..*buffer_idx);
+                    args.push(start_of_arg..*buffer_idx - 1);
                     return Some(args);
                 }
             }
@@ -601,16 +601,58 @@ fn parse_macro_fn_arguments(
                             parameters.len()
                         }
                 {
-                    args.push(start_of_arg..*buffer_idx);
-                    start_of_arg = *buffer_idx + 1;
+                    args.push(start_of_arg..*buffer_idx - 1);
+                    start_of_arg = *buffer_idx;
                     continue;
                 }
             }
             _ => {}
         }
     }
-    dbg!(&args);
     None
+}
+
+#[macro_export]
+macro_rules! output_tokens_dbg {
+    ($tokens:expr, $str_maps:ident) => {
+        let vec_bytes = $tokens
+            .iter()
+            .map(|t| t.to_byte_vec(&$str_maps).unwrap())
+            .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
+                a.extend_from_slice(&e);
+                a
+            });
+        dbg!(String::from_utf8(vec_bytes).unwrap());
+    };
+}
+
+fn start_macro_replacement(
+    tokens: &[Token],
+    index: &mut usize,
+    macro_replacement_buffer: &mut Vec<Token>,
+    preprocessed_tokens: &mut Vec<Token>,
+    str_maps: &mut ByteVecMaps,
+    defines: &HashMap<usize, Define>,
+    macros_being_replaced: &mut Vec<usize>,
+) -> Result<(), String> {
+    let was_macro_replaced = macro_substitutions(
+        tokens,
+        index,
+        preprocessed_tokens,
+        macro_replacement_buffer,
+        str_maps,
+        defines,
+        macros_being_replaced,
+    )?;
+    if was_macro_replaced {
+        preprocessed_tokens.extend_from_slice(&macro_replacement_buffer);
+    } else {
+        let mut ending_idx = 1;
+        consume_whitespace(&macro_replacement_buffer, &mut ending_idx);
+        preprocessed_tokens.extend_from_slice(&macro_replacement_buffer[..ending_idx]);
+    }
+    macro_replacement_buffer.truncate(0);
+    Ok(())
 }
 
 fn replace_parameter(
@@ -636,27 +678,20 @@ fn replace_parameter(
     let mut preprocessed_tokens = Vec::new();
     let mut macro_replacement_buffer = Vec::new();
     let mut idx = 0;
+    consume_whitespace(&arg, &mut idx);
     while idx < arg.len() {
         let t = arg[idx];
         match t.r#type {
             TokenType::IDENT { str_map_key } if defines.contains_key(&str_map_key) => {
-                macro_replacement_buffer.push(t);
-                let was_macro_replaced = macro_substitutions(
+                start_macro_replacement(
                     &arg,
                     &mut idx,
-                    &mut preprocessed_tokens,
                     &mut macro_replacement_buffer,
+                    &mut preprocessed_tokens,
                     str_maps,
                     defines,
-                    macros_being_replaced,
+                    &mut Vec::new(),
                 )?;
-                if was_macro_replaced {
-                    preprocessed_tokens.extend_from_slice(&macro_replacement_buffer);
-                } else {
-                    let mut ending_idx = 1;
-                    consume_whitespace(&macro_replacement_buffer, &mut ending_idx);
-                    preprocessed_tokens.extend_from_slice(&macro_replacement_buffer[..ending_idx]);
-                }
                 continue;
             }
             _ => {
@@ -1006,14 +1041,14 @@ and when it takes in something that is a macro that is replaceable, it'll start
 macro replacing in that buffer and rescan, consuming tokens from the source tokens.
 */
 
-fn get_next_nonwhitespace_token(
+fn consume_next_nonwhitespace_token(
     tokens: &[Token],
     index: &mut usize,
     macro_replacement_buffer: &mut Vec<Token>,
     buffer_idx: &mut usize,
+    expected_tokentype: Option<TokenType>,
 ) -> Option<Token> {
-    if *buffer_idx == macro_replacement_buffer.len() - 1 {
-        *index += 1;
+    if *buffer_idx == macro_replacement_buffer.len() {
         let start_of_whitespace = *index;
         consume_whitespace(tokens, index);
         if let Some(
@@ -1027,15 +1062,27 @@ fn get_next_nonwhitespace_token(
             macro_replacement_buffer.extend_from_slice(&tokens[start_of_whitespace..*index]);
         }
         match tokens.get(*index) {
-            Some(t) => {
-                macro_replacement_buffer.push(*t);
+            Some(t @ Token { r#type, .. }) => {
+                if expected_tokentype == Some(*r#type) || expected_tokentype.is_none() {
+                    macro_replacement_buffer.push(*t);
+                    if *buffer_idx < macro_replacement_buffer.len() - 1 {
+                        *buffer_idx += 1;
+                    }
+                    *index += 1;
+                }
             }
             None => {}
         }
     }
-    *buffer_idx += 1;
     consume_whitespace(macro_replacement_buffer, buffer_idx);
-    return macro_replacement_buffer.get(*buffer_idx).copied();
+    if let Some(Token { r#type, .. }) = macro_replacement_buffer.get(*buffer_idx) {
+        if Some(*r#type) == expected_tokentype || expected_tokentype.is_none() {
+            let t = macro_replacement_buffer.get(*buffer_idx).copied();
+            *buffer_idx += 1;
+            return t;
+        }
+    }
+    return None;
 }
 
 fn macro_substitutions(
@@ -1048,34 +1095,42 @@ fn macro_substitutions(
     macros_being_replaced: &mut Vec<usize>,
 ) -> Result<bool, String> {
     let mut buffer_idx = 0;
+    if macro_replacement_buffer.is_empty() {
+        macro_replacement_buffer.push(tokens[*index]);
+        *index += 1;
+    }
     /* The idea here is that I go through macro_replacement_buffer and will
        consume more tokens from the tokens source if there are no more tokens to
        process from the buffer and then rescan, repeating the same process.
     */
-    while buffer_idx < macro_replacement_buffer.len() {
-        let Token { r#type, location } = macro_replacement_buffer[buffer_idx];
+    while let Some(Token { r#type, location }) = consume_next_nonwhitespace_token(
+        tokens,
+        index,
+        macro_replacement_buffer,
+        &mut buffer_idx,
+        None,
+    ) {
         let l = location.unwrap();
         match r#type {
             TokenType::IDENT { str_map_key }
                 if defines.contains_key(&str_map_key)
                     && !macros_being_replaced.contains(&str_map_key) =>
             {
-                let start_of_macro = buffer_idx;
+                let start_of_macro = buffer_idx - 1;
                 let Some(define) = defines.get(&str_map_key) else {
                     unreachable!()
                 };
                 let replacement_list = &define.replacement_list;
                 let processed_replacement_list = if let Some(parameters) = &define.parameters {
-                    if let Some(
-                        t @ Token {
-                            r#type: TokenType::OPEN_PAR,
-                            ..
-                        },
-                    ) = get_next_nonwhitespace_token(
+                    if let Some(Token {
+                        r#type: TokenType::OPEN_PAR,
+                        ..
+                    }) = consume_next_nonwhitespace_token(
                         tokens,
                         index,
                         macro_replacement_buffer,
                         &mut buffer_idx,
+                        Some(TokenType::OPEN_PAR),
                     ) {
                         // TODO: make sure each new-line character is considered to be a normal white-space character.
                         let args = parse_macro_fn_arguments(
@@ -1118,8 +1173,10 @@ fn macro_substitutions(
                 };
                 if let Some(processed_replacement_list) = processed_replacement_list {
                     macros_being_replaced.push(str_map_key);
+                output_tokens_dbg!(processed_replacement_list, str_maps);
                     macro_replacement_buffer
-                        .splice(start_of_macro..buffer_idx + 1, processed_replacement_list);
+                        .splice(start_of_macro..buffer_idx, processed_replacement_list);
+                    output_tokens_dbg!(macro_replacement_buffer, str_maps);
                     macro_substitutions(
                         tokens,
                         index,
@@ -1134,14 +1191,7 @@ fn macro_substitutions(
                     return Ok(false);
                 }
             }
-            _ => {
-                let _ = get_next_nonwhitespace_token(
-                    tokens,
-                    index,
-                    macro_replacement_buffer,
-                    &mut buffer_idx,
-                );
-            }
+            _ => {}
         }
     }
     Ok(true)
@@ -1807,24 +1857,15 @@ fn control_directive_stage_and_macro_replacement(
                 continue;
             }
             TokenType::IDENT { str_map_key } if defines.contains_key(&str_map_key) => {
-                macro_replacement_buffer.push(tokens[index]);
-                let was_macro_replaced = macro_substitutions(
+                start_macro_replacement(
                     tokens,
                     &mut index,
-                    preprocessed_tokens,
                     &mut macro_replacement_buffer,
+                    preprocessed_tokens,
                     str_maps,
                     defines,
                     &mut Vec::new(),
                 )?;
-                if was_macro_replaced {
-                    preprocessed_tokens.extend_from_slice(&macro_replacement_buffer);
-                } else {
-                    let mut ending_idx = 1;
-                    consume_whitespace(&macro_replacement_buffer, &mut ending_idx);
-                    preprocessed_tokens.extend_from_slice(&macro_replacement_buffer[..ending_idx]);
-                }
-                macro_replacement_buffer.truncate(0);
                 continue;
             }
             _ => {
@@ -1876,17 +1917,6 @@ fn preprocessing_directives(
     let tokens =
         do_pp_stage_control_directives(tokens, str_maps, curr_path, include_paths, defines)?;
     Ok(tokens)
-}
-
-pub fn output_tokens_dbg(tokens: &[Token], str_maps: &ByteVecMaps) {
-    let vec_bytes = tokens
-        .iter()
-        .map(|t| t.to_byte_vec(str_maps).unwrap())
-        .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
-            a.extend_from_slice(&e);
-            a
-        });
-    dbg!(String::from_utf8(vec_bytes).unwrap());
 }
 
 fn process_trigraphs(program_str: Vec<u8>) -> Vec<u8> {
@@ -1984,13 +2014,13 @@ mod tests {
 
     use crate::cpp::PPStage;
     use crate::lexer::*;
+    use crate::output_tokens_dbg;
     use crate::parser::expressions::*;
     use crate::parser::*;
     use std::collections::HashMap;
 
     use super::{
-        cpp, define_directive, output_tokens_dbg, parse_group, preprocessing_directives,
-        process_comments, Define,
+        cpp, define_directive, parse_group, preprocessing_directives, process_comments, Define,
     };
     #[test]
     fn comments_removal_outside_quotes() -> Result<(), String> {
@@ -2499,7 +2529,7 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
-        output_tokens_dbg(&tokens, &str_maps);
+        output_tokens_dbg!(tokens, str_maps);
         use super::TokenType::*;
         assert_eq!(
             vec![
@@ -3298,6 +3328,7 @@ GET_SECOND(COMMA PP,T)"##;
             &mut defines,
             &mut str_maps,
         )?;
+        output_tokens_dbg!(tokens, str_maps);
         assert_eq!(
             vec![
                 TokenType::WHITESPACE,
