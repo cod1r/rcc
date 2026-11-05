@@ -452,6 +452,20 @@ fn apply_HASH_constraint(
     Ok(())
 }
 
+#[macro_export]
+macro_rules! output_tokens_dbg {
+    ($tokens:expr, $str_maps:ident) => {
+        let vec_bytes = $tokens
+            .iter()
+            .map(|t| t.to_byte_vec(&$str_maps).unwrap())
+            .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
+                a.extend_from_slice(&e);
+                a
+            });
+        dbg!(String::from_utf8(vec_bytes).unwrap());
+    };
+}
+
 fn define_directive(
     tokens: &mut [Token],
     index: &mut usize,
@@ -610,20 +624,6 @@ fn parse_macro_fn_arguments(
         }
     }
     None
-}
-
-#[macro_export]
-macro_rules! output_tokens_dbg {
-    ($tokens:expr, $str_maps:ident) => {
-        let vec_bytes = $tokens
-            .iter()
-            .map(|t| t.to_byte_vec(&$str_maps).unwrap())
-            .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
-                a.extend_from_slice(&e);
-                a
-            });
-        dbg!(String::from_utf8(vec_bytes).unwrap());
-    };
 }
 
 fn start_macro_replacement(
@@ -866,7 +866,6 @@ fn process_hash_operator(
     while let Some(b' ') = byte_vec.last() {
         byte_vec.pop();
     }
-    dbg!(String::from_utf8(byte_vec.clone()).unwrap());
     let sequence_key = str_maps.add_byte_vec(&byte_vec);
     processed_replacement_list.push(Token {
         r#type: TokenType::StringLiteral {
@@ -1065,9 +1064,6 @@ fn consume_next_nonwhitespace_token(
             Some(t @ Token { r#type, .. }) => {
                 if expected_tokentype == Some(*r#type) || expected_tokentype.is_none() {
                     macro_replacement_buffer.push(*t);
-                    if *buffer_idx < macro_replacement_buffer.len() - 1 {
-                        *buffer_idx += 1;
-                    }
                     *index += 1;
                 }
             }
@@ -1112,86 +1108,92 @@ fn macro_substitutions(
     ) {
         let l = location.unwrap();
         match r#type {
-            TokenType::IDENT { str_map_key }
+            TokenType::IDENT { str_map_key } => {
                 if defines.contains_key(&str_map_key)
-                    && !macros_being_replaced.contains(&str_map_key) =>
-            {
-                let start_of_macro = buffer_idx - 1;
-                let Some(define) = defines.get(&str_map_key) else {
-                    unreachable!()
-                };
-                let replacement_list = &define.replacement_list;
-                let processed_replacement_list = if let Some(parameters) = &define.parameters {
-                    if let Some(Token {
-                        r#type: TokenType::OPEN_PAR,
-                        ..
-                    }) = consume_next_nonwhitespace_token(
-                        tokens,
-                        index,
-                        macro_replacement_buffer,
-                        &mut buffer_idx,
-                        Some(TokenType::OPEN_PAR),
-                    ) {
-                        // TODO: make sure each new-line character is considered to be a normal white-space character.
-                        let args = parse_macro_fn_arguments(
+                    && !macros_being_replaced.contains(&str_map_key)
+                {
+                    let start_of_macro = buffer_idx - 1;
+                    let Some(define) = defines.get(&str_map_key) else {
+                        unreachable!()
+                    };
+                    let replacement_list = &define.replacement_list;
+                    let processed_replacement_list = if let Some(parameters) = &define.parameters {
+                        if let Some(Token {
+                            r#type: TokenType::OPEN_PAR,
+                            ..
+                        }) = consume_next_nonwhitespace_token(
                             tokens,
                             index,
                             macro_replacement_buffer,
                             &mut buffer_idx,
-                            parameters,
-                            str_maps,
-                        );
-                        if let Some(args) = args {
-                            let args = args
-                                .iter()
-                                .map(|r| &macro_replacement_buffer[r.start..r.end])
-                                .collect::<Vec<&[Token]>>();
-                            check_args_parity(args.as_slice(), parameters, l, str_maps)?;
-                            Some(process_replacement_list(
-                                &args,
-                                replacement_list,
-                                Some(parameters),
+                            Some(TokenType::OPEN_PAR),
+                        ) {
+                            // TODO: make sure each new-line character is considered to be a normal white-space character.
+                            let args = parse_macro_fn_arguments(
+                                tokens,
+                                index,
+                                macro_replacement_buffer,
+                                &mut buffer_idx,
+                                parameters,
                                 str_maps,
-                                defines,
-                                macros_being_replaced,
-                            )?)
+                            );
+                            if let Some(args) = args {
+                                let args = args
+                                    .iter()
+                                    .map(|r| &macro_replacement_buffer[r.start..r.end])
+                                    .collect::<Vec<&[Token]>>();
+                                check_args_parity(args.as_slice(), parameters, l, str_maps)?;
+                                Some(process_replacement_list(
+                                    &args,
+                                    replacement_list,
+                                    Some(parameters),
+                                    str_maps,
+                                    defines,
+                                    macros_being_replaced,
+                                )?)
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
                     } else {
-                        None
+                        Some(process_replacement_list(
+                            &[],
+                            replacement_list,
+                            None,
+                            str_maps,
+                            defines,
+                            macros_being_replaced,
+                        )?)
+                    };
+                    if let Some(processed_replacement_list) = processed_replacement_list {
+                        macros_being_replaced.push(str_map_key);
+                        let list_len = processed_replacement_list.len();
+                        macro_replacement_buffer
+                            .splice(start_of_macro..buffer_idx, processed_replacement_list);
+                        macro_substitutions(
+                            tokens,
+                            index,
+                            preprocessed_tokens,
+                            macro_replacement_buffer,
+                            str_maps,
+                            defines,
+                            macros_being_replaced,
+                        )?;
+                        buffer_idx = start_of_macro + list_len;
+                        macros_being_replaced.pop();
+                    } else {
+                        return Ok(false);
                     }
-                } else {
-                    Some(process_replacement_list(
-                        &[],
-                        replacement_list,
-                        None,
-                        str_maps,
-                        defines,
-                        macros_being_replaced,
-                    )?)
-                };
-                if let Some(processed_replacement_list) = processed_replacement_list {
-                    macros_being_replaced.push(str_map_key);
-                output_tokens_dbg!(processed_replacement_list, str_maps);
-                    macro_replacement_buffer
-                        .splice(start_of_macro..buffer_idx, processed_replacement_list);
-                    output_tokens_dbg!(macro_replacement_buffer, str_maps);
-                    macro_substitutions(
-                        tokens,
-                        index,
-                        preprocessed_tokens,
-                        macro_replacement_buffer,
-                        str_maps,
-                        defines,
-                        macros_being_replaced,
-                    )?;
-                    macros_being_replaced.pop();
-                } else {
-                    return Ok(false);
                 }
             }
             _ => {}
+        }
+        if buffer_idx == macro_replacement_buffer.len() {
+            // this check, prevents this function from consuming too many tokens won't
+            // be relevant for macro replacement
+            break;
         }
     }
     Ok(true)
@@ -2529,7 +2531,6 @@ HEHE(HEHE(1,2),HEHE(3,4))"##
         let mut defines = HashMap::new();
         let mut str_maps = ByteVecMaps::new();
         let tokens = cpp(src.to_vec(), "", &[], &mut defines, &mut str_maps)?;
-        output_tokens_dbg!(tokens, str_maps);
         use super::TokenType::*;
         assert_eq!(
             vec![
@@ -3328,7 +3329,6 @@ GET_SECOND(COMMA PP,T)"##;
             &mut defines,
             &mut str_maps,
         )?;
-        output_tokens_dbg!(tokens, str_maps);
         assert_eq!(
             vec![
                 TokenType::WHITESPACE,
@@ -3451,11 +3451,114 @@ f(f))"##;
     }
     #[test]
     fn cpp_testing_recursive_expansion() -> Result<(), String> {
-        let src = r##"#define PP_NAIVE_RECURSIVE(x) ((x), PP_NAIVE_RECURSIVE(x))
+        let src = r##"
+#define PP_NAIVE_RECURSIVE(x) ((x), PP_NAIVE_RECURSIVE(x))
 PP_NAIVE_RECURSIVE(5) /* ((5), PP_NAIVE_RECURSIVE(5)) */
 #define PP_EXPAND(...) __VA_ARGS__
 PP_EXPAND(PP_NAIVE_RECURSIVE(5)) /* ((5), PP_NAIVE_RECURSIVE(5)) */"##;
-        todo!("need to do this test");
+        let mut defines = HashMap::new();
+        let mut str_maps = ByteVecMaps::new();
+        let tokens = cpp(
+            src.as_bytes().to_vec(),
+            "",
+            &[],
+            &mut defines,
+            &mut str_maps,
+        )?;
+use super::TokenType::*;
+        assert_eq!(
+            vec![
+                NEWLINE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                OPEN_PAR,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                COMMA,
+                WHITESPACE,
+                IDENT { str_map_key: 1 },
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                CLOSE_PAR,
+                WHITESPACE,
+                NEWLINE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                OPEN_PAR,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                COMMA,
+                WHITESPACE,
+                OPEN_PAR,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                COMMA,
+                WHITESPACE,
+                OPEN_PAR,
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                COMMA,
+                WHITESPACE,
+                IDENT { str_map_key: 1 },
+                OPEN_PAR,
+                CONSTANT_DEC_INT {
+                    value_key: 3,
+                    suffix: None
+                },
+                CLOSE_PAR,
+                CLOSE_PAR,
+                CLOSE_PAR,
+                CLOSE_PAR,
+                WHITESPACE
+            ] as Vec<TokenType>,
+            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>(),
+        );
         Ok(())
     }
 }
