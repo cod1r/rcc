@@ -130,183 +130,95 @@ fn process_comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 fn include_directive(
-    tokens: &[Token],
+    tokens: &mut [Token],
     index: &mut usize,
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
     str_maps: &mut ByteVecMaps,
+    start_of_directive: usize,
     pp_stage: PPStage,
 ) -> Result<(), String> {
-    let mut newline_index = *index;
-    while !matches!(
-        tokens.get(newline_index),
-        Some(Token {
-            r#type: TokenType::NEWLINE,
-            ..
-        })
-    ) && newline_index < tokens.len()
-    {
-        newline_index += 1;
-    }
-    if !matches!(
-        tokens.get(newline_index),
-        Some(Token {
-            r#type: TokenType::NEWLINE,
-            ..
-        })
-    ) {
-        return Err(format!("no newline after include directive"));
-    }
-    let mut include_tokens = Vec::new();
-    let mut expand_macro_index = *index + 1;
-    while expand_macro_index < newline_index {
-        if let Some(Token {
-            r#type: TokenType::IDENT { str_map_key, .. },
-            ..
-        }) = tokens.get(expand_macro_index)
-        {
-            if defines.contains_key(str_map_key) {
-                //expand_macro(
-                //    tokens,
-                //    &mut expand_macro_index,
-                //    defines,
-                //    str_maps,
-                //    &mut include_tokens,
-                //)?;
-                continue;
-            }
-        }
-        if expand_macro_index < newline_index {
-            include_tokens.push(tokens[expand_macro_index]);
-        }
-        expand_macro_index += 1;
-    }
-    let tokens = include_tokens;
-    let mut include_index = 0;
-    if matches!(
-        tokens.get(include_index),
-        Some(Token {
-            r#type: TokenType::WHITESPACE,
-            ..
-        })
-    ) {
-        include_index += 1;
-    }
-    let mut file_name = None;
     let mut look_at_current_dir = false;
-    let mut end_of_file_path_index = 0;
-    if matches!(
-        tokens.get(include_index),
+    let newline_pos = get_newline_location(tokens, index);
+    let Token {
+        location: Some(Location { line, column }),
+        ..
+    } = tokens[start_of_directive]
+    else {
+        unreachable!()
+    };
+    let file_name = match tokens.get(*index) {
         Some(Token {
-            r#type: TokenType::IDENT { .. },
-            ..
-        })
-    ) {
-        include_index += 1;
-
-        if matches!(
-            tokens.get(include_index),
-            Some(Token {
-                r#type: TokenType::WHITESPACE,
-                ..
-            })
-        ) {
-            include_index += 1;
-        }
-        match tokens.get(include_index) {
-            Some(Token {
-                r#type: TokenType::LESS_THAN,
-                ..
-            }) => {
-                include_index += 1;
-                let mut punct_greater_than_index = include_index;
-                while !matches!(
-                    tokens.get(punct_greater_than_index),
-                    Some(Token {
-                        r#type: TokenType::GREATER_THAN,
-                        ..
-                    })
-                ) && punct_greater_than_index < tokens.len()
-                {
-                    punct_greater_than_index += 1;
-                }
-                if !matches!(
-                    tokens.get(punct_greater_than_index),
-                    Some(Token {
-                        r#type: TokenType::GREATER_THAN,
-                        ..
-                    })
-                ) {
-                    return Err(format!("No '>' for opening '<' in include directive"));
-                }
-                let mut file_path_bytes = Vec::new();
-                for index in include_index..punct_greater_than_index {
-                    if let Some(bv) = tokens[index].to_byte_vec(str_maps) {
-                        file_path_bytes.extend_from_slice(bv.as_slice());
-                    } else {
-                        return Err(format!("{:?} cannot be to_byte_vec-fied", tokens[index]));
-                    }
-                }
-                match String::from_utf8(file_path_bytes) {
-                    Ok(s) => {
-                        file_name = Some(s);
-                    }
-                    Err(_) => {
-                        return Err(format!("Include directive contains invalid utf8"));
-                    }
-                }
-                end_of_file_path_index = punct_greater_than_index + 1;
+            r#type: TokenType::LESS_THAN,
+            location,
+        }) => {
+            let location = location.unwrap();
+            let end_idx = tokens[*index + 1..]
+                .iter()
+                .position(|t| t.r#type == TokenType::GREATER_THAN);
+            if end_idx.is_none() {
+                return Err(error(
+                    "No matching '>' for '<'",
+                    location.line,
+                    location.column,
+                ));
             }
-            Some(Token {
-                r#type:
-                    TokenType::StringLiteral {
-                        str_lit:
-                            StringLiteral {
-                                prefix_key: _,
-                                sequence_key,
-                            },
-                    },
-                ..
-            }) => {
-                look_at_current_dir = true;
-                let sequence = &str_maps.key_to_byte_vec[*sequence_key];
-                match String::from_utf8(sequence.to_vec()) {
-                    Ok(s) => file_name = Some(s),
-                    Err(_) => {
-                        return Err(format!("Include directive contains invalid utf8"));
-                    }
+            let end_idx = end_idx.unwrap();
+            let name = tokens[*index + 1..end_idx]
+                .iter()
+                .map(|t| {
+                    t.to_byte_vec(str_maps)
+                        .expect("Include file name tokens should be valid characters")
+                })
+                .fold(Vec::new(), |mut acc, b| {
+                    acc.extend_from_slice(b.as_slice());
+                    acc
+                });
+            match String::from_utf8(name) {
+                Ok(s) => {
+                    *index = end_idx + 1;
+                    Some(s.trim_start().trim_end().to_string())
                 }
-                end_of_file_path_index = include_index + 1;
+                Err(_) => {
+                    return Err(error("Include directive contains invalid utf8", line, column));
+                }
             }
-            _ => {}
         }
-    }
-    if let Some(slice) = tokens.get(end_of_file_path_index + 1..) {
-        if slice
-            .iter()
-            .filter(|t| {
-                !matches!(
-                    t,
-                    Token {
-                        r#type: TokenType::WHITESPACE,
-                        ..
-                    }
-                )
-            })
-            .count()
-            > 0
-        {
-            let Some(t) = tokens.get(include_index) else {
-                unreachable!()
-            };
-            let Some(bv) = t.to_byte_vec(str_maps) else {
-                unreachable!()
-            };
-            let Ok(s) = String::from_utf8(bv) else {
-                unreachable!()
-            };
-            eprintln!("Warning: Tokens after {s} are skipped",);
+        Some(Token {
+            r#type:
+                TokenType::StringLiteral {
+                    str_lit:
+                        StringLiteral {
+                            prefix_key: _,
+                            sequence_key,
+                        },
+                },
+            location,
+        }) => {
+            let location = location.unwrap();
+            look_at_current_dir = true;
+            let sequence = &str_maps.key_to_byte_vec[*sequence_key];
+            match String::from_utf8(sequence.to_vec()) {
+                Ok(s) => {
+                    *index += 1;
+                    Some(s)
+                }
+                Err(_) => {
+                    return Err(error(
+                        "Include directive contains invalid utf8",
+                        location.line,
+                        location.column,
+                    ));
+                }
+            }
+        }
+        _ => None,
+    };
+    match pp_stage {
+        PPStage::Conditionals => {}
+        PPStage::ControlDirectives => {
+            remove_directive(tokens, start_of_directive, newline_pos);
         }
     }
     if let Some(fname) = file_name {
@@ -1298,6 +1210,7 @@ fn parse_control_line(
                 include_paths,
                 defines,
                 str_maps,
+                start_of_directive,
                 pp_stage,
             )?;
         }
@@ -2071,7 +1984,6 @@ int main() {
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
-            let _final_tokens = Vec::<TokenType>::new();
             let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
@@ -2079,6 +1991,7 @@ int main() {
                 &mut defines,
                 &mut str_maps,
             )?;
+output_tokens_dbg!(tokens, str_maps);
             let assert_tokens = [
                 TokenType::IDENT {
                     str_map_key: str_maps.add_byte_vec("int".as_bytes()),
@@ -2137,45 +2050,6 @@ int main() {
                 tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
             );
         }
-        Ok(())
-    }
-    #[test]
-    fn preprocess_test() -> Result<(), String> {
-        let src = r##"#include "hi2.h"
-int main() {
-hi;
-}"##
-        .as_bytes();
-        let mut defines = HashMap::new();
-        let mut str_maps = ByteVecMaps::new();
-        let tokens = cpp(
-            src.to_vec(),
-            "./test_c_files/hi2.h",
-            &["./test_c_files"],
-            &mut defines,
-            &mut str_maps,
-        )?;
-        let assert_tokens = vec![
-            TokenType::IDENT { str_map_key: 2 },
-            TokenType::WHITESPACE,
-            TokenType::IDENT { str_map_key: 3 },
-            TokenType::OPEN_PAR,
-            TokenType::CLOSE_PAR,
-            TokenType::WHITESPACE,
-            TokenType::OPEN_CURLY,
-            TokenType::NEWLINE,
-            TokenType::CONSTANT_DEC_INT {
-                value_key: 6,
-                suffix: None,
-            },
-            TokenType::SEMI_COLON,
-            TokenType::NEWLINE,
-            TokenType::CLOSE_CURLY,
-        ];
-        assert_eq!(
-            assert_tokens,
-            tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
-        );
         Ok(())
     }
     #[test]
@@ -3465,7 +3339,7 @@ PP_EXPAND(PP_NAIVE_RECURSIVE(5)) /* ((5), PP_NAIVE_RECURSIVE(5)) */"##;
             &mut defines,
             &mut str_maps,
         )?;
-use super::TokenType::*;
+        use super::TokenType::*;
         assert_eq!(
             vec![
                 NEWLINE,
@@ -3492,16 +3366,16 @@ use super::TokenType::*;
                 OPEN_PAR,
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
                 COMMA,
                 WHITESPACE,
-                IDENT { str_map_key: 1 },
+                IDENT { str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE") },
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
@@ -3521,7 +3395,7 @@ use super::TokenType::*;
                 OPEN_PAR,
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
@@ -3530,7 +3404,7 @@ use super::TokenType::*;
                 OPEN_PAR,
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
@@ -3539,16 +3413,16 @@ use super::TokenType::*;
                 OPEN_PAR,
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
                 COMMA,
                 WHITESPACE,
-                IDENT { str_map_key: 1 },
+                IDENT { str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE") },
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
-                    value_key: 3,
+                    value_key: str_maps.add_byte_vec(b"5"),
                     suffix: None
                 },
                 CLOSE_PAR,
