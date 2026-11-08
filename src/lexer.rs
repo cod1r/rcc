@@ -402,6 +402,9 @@ pub enum Suffix {
 #[allow(non_camel_case_types)]
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum TokenType {
+    RCC_INCLUDE_TOKEN {
+        include_index: usize,
+    },
     IDENT {
         str_map_key: usize,
     },
@@ -766,6 +769,7 @@ impl Token {
             TokenType::_NORETURN => Some("_Noreturn".as_bytes().to_vec()),
             TokenType::_STATIC_ASSERT => Some("_Static_assert".as_bytes().to_vec()),
             TokenType::_THREAD_LOCAL => Some("_Thread_local".as_bytes().to_vec()),
+            TokenType::RCC_INCLUDE_TOKEN { .. } => Some(Vec::new()),
             _ => None,
         }
     }

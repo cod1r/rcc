@@ -129,26 +129,28 @@ fn process_comments(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(comments_removed)
 }
 
-fn include_directive(
-    tokens: &mut [Token],
-    index: &mut usize,
-    curr_path: &str,
-    include_paths: &[&str],
-    defines: &mut HashMap<usize, Define>,
-    str_maps: &mut ByteVecMaps,
-    start_of_directive: usize,
-    pp_stage: PPStage,
-) -> Result<(), String> {
-    let mut look_at_current_dir = false;
-    let newline_pos = get_newline_location(tokens, index);
-    let Token {
-        location: Some(Location { line, column }),
-        ..
-    } = tokens[start_of_directive]
-    else {
-        unreachable!()
+#[macro_export]
+macro_rules! output_tokens_dbg {
+    ($tokens:expr, $str_maps:ident) => {
+        let vec_bytes = $tokens
+            .iter()
+            .map(|t| t.to_byte_vec(&$str_maps).unwrap())
+            .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
+                a.extend_from_slice(&e);
+                a
+            });
+        dbg!(String::from_utf8(vec_bytes).unwrap());
     };
-    let file_name = match tokens.get(*index) {
+}
+
+fn get_include_file_name(
+    tokens: &[Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+    defines: &HashMap<usize, Define>,
+    look_at_current_dir: &mut bool,
+) -> Result<String, String> {
+    match tokens.get(*index) {
         Some(Token {
             r#type: TokenType::LESS_THAN,
             location,
@@ -178,10 +180,14 @@ fn include_directive(
             match String::from_utf8(name) {
                 Ok(s) => {
                     *index = end_idx + 1;
-                    Some(s.trim_start().trim_end().to_string())
+                    Ok(s.trim_start().trim_end().to_string())
                 }
                 Err(_) => {
-                    return Err(error("Include directive contains invalid utf8", line, column));
+                    return Err(error(
+                        "Include directive contains invalid utf8",
+                        location.line,
+                        location.column,
+                    ));
                 }
             }
         }
@@ -197,12 +203,12 @@ fn include_directive(
             location,
         }) => {
             let location = location.unwrap();
-            look_at_current_dir = true;
+            *look_at_current_dir = true;
             let sequence = &str_maps.key_to_byte_vec[*sequence_key];
             match String::from_utf8(sequence.to_vec()) {
                 Ok(s) => {
                     *index += 1;
-                    Some(s)
+                    Ok(s)
                 }
                 Err(_) => {
                     return Err(error(
@@ -213,60 +219,135 @@ fn include_directive(
                 }
             }
         }
-        _ => None,
+        Some(Token {
+            r#type: TokenType::IDENT { str_map_key },
+            location,
+        }) => {
+            let location = location.unwrap();
+            if defines.contains_key(&str_map_key) {
+                let mut preprocessed_tokens = Vec::new();
+                let mut macro_replacement_buffer = Vec::new();
+                start_macro_replacement(
+                    tokens,
+                    index,
+                    &mut macro_replacement_buffer,
+                    &mut preprocessed_tokens,
+                    str_maps,
+                    defines,
+                    &mut Vec::new(),
+                )?;
+                let mut idx = 0;
+                Ok(get_include_file_name(
+                    &preprocessed_tokens,
+                    &mut idx,
+                    str_maps,
+                    defines,
+                    look_at_current_dir,
+                )?)
+            } else {
+                Err(error(
+                    "Unexpected identifier",
+                    location.line,
+                    location.column,
+                ))
+            }
+        }
+        Some(Token {
+            location: Some(Location { line, column }),
+            ..
+        }) => Err(error(
+            "Expected <INCLUDE_FILE_NAME> or \"INCLUDE_FILE_NAME\"",
+            *line,
+            *column,
+        )),
+        _ => Err("Expected <INCLUDE_FILE_NAME> or \"INCLUDE_FILE_NAME\"".to_string()),
+    }
+}
+
+fn include_directive(
+    tokens: &mut [Token],
+    index: &mut usize,
+    curr_path: &str,
+    include_paths: &[&str],
+    defines: &mut HashMap<usize, Define>,
+    str_maps: &mut ByteVecMaps,
+    start_of_directive: usize,
+    pp_stage: PPStage,
+    included_files: Option<&mut Vec<(String, Vec<Token>)>>,
+) -> Result<(), String> {
+    let mut look_at_current_dir = false;
+    let newline_pos = get_newline_location(tokens, index);
+    let Token {
+        location: Some(Location { line, column }),
+        ..
+    } = tokens[start_of_directive]
+    else {
+        unreachable!()
     };
+    let file_name =
+        get_include_file_name(tokens, index, str_maps, defines, &mut look_at_current_dir)?;
     match pp_stage {
         PPStage::Conditionals => {}
         PPStage::ControlDirectives => {
-            remove_directive(tokens, start_of_directive, newline_pos);
-        }
-    }
-    if let Some(fname) = file_name {
-        if look_at_current_dir {
-            let curr_dir = {
-                let mut split_index = 0;
-                for (i, c) in curr_path.char_indices().rev() {
-                    if c == '/' {
-                        split_index = i;
-                        break;
+            let included_files = included_files.expect("included_files should be some here");
+            if look_at_current_dir {
+                let curr_dir = {
+                    let mut split_index = 0;
+                    for (i, c) in curr_path.char_indices().rev() {
+                        if c == '/' {
+                            split_index = i;
+                            break;
+                        }
                     }
-                }
-                curr_path.split_at(split_index).0
-            };
-            let full_path_file = curr_dir.to_string() + "/" + &fname;
-            match std::fs::read(full_path_file.as_str()) {
-                Ok(file_contents) => {
-                    let tokens_from_file = cpp(
-                        file_contents,
-                        full_path_file.as_str(),
-                        include_paths,
-                        defines,
-                        str_maps,
-                    )?;
-                    return Ok(());
-                }
-                Err(_) => {
-                    eprintln!("fs::read failed for path: {}", full_path_file);
-                }
-            }
-        } else {
-            for path_index in 0..include_paths.len() {
-                let path = include_paths[path_index];
-                let full_path_file = path.to_string() + "/" + &fname;
+                    curr_path.split_at(split_index).0
+                };
+                let full_path_file = curr_dir.to_string() + "/" + &file_name;
                 match std::fs::read(full_path_file.as_str()) {
                     Ok(file_contents) => {
-                        let tokens_from_file =
-                            cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
-                        return Ok(());
+                        let tokens_from_file = cpp(
+                            file_contents,
+                            full_path_file.as_str(),
+                            include_paths,
+                            defines,
+                            str_maps,
+                        )?;
+                        included_files.push((full_path_file, tokens_from_file));
                     }
                     Err(_) => {
-                        eprintln!("fs::read failed for path: {}", full_path_file);
+                        return Err(error(
+                            format!("fs::read failed for path: {}", full_path_file).as_str(),
+                            line,
+                            column,
+                        ));
+                    }
+                }
+            } else {
+                for path_index in 0..include_paths.len() {
+                    let path = include_paths[path_index];
+                    let full_path_file = path.to_string() + "/" + &file_name;
+                    match std::fs::read(full_path_file.as_str()) {
+                        Ok(file_contents) => {
+                            let tokens_from_file =
+                                cpp(file_contents, curr_path, include_paths, defines, str_maps)?;
+                            included_files.push((full_path_file, tokens_from_file));
+                        }
+                        Err(_) => {
+                            return Err(error(
+                                format!("fs::read failed for path: {}", full_path_file).as_str(),
+                                line,
+                                column,
+                            ));
+                        }
                     }
                 }
             }
+            remove_directive(tokens, start_of_directive, newline_pos);
+            tokens[start_of_directive].r#type = TokenType::RCC_INCLUDE_TOKEN {
+                include_index: included_files.len() - 1,
+            };
         }
     }
-    Err(String::from("file not found"))
+    Ok(())
 }
 
 fn parse_identifier_list(
@@ -362,20 +443,6 @@ fn apply_HASH_constraint(
         }
     }
     Ok(())
-}
-
-#[macro_export]
-macro_rules! output_tokens_dbg {
-    ($tokens:expr, $str_maps:ident) => {
-        let vec_bytes = $tokens
-            .iter()
-            .map(|t| t.to_byte_vec(&$str_maps).unwrap())
-            .fold(Vec::new(), |mut a: Vec<u8>, e: Vec<u8>| {
-                a.extend_from_slice(&e);
-                a
-            });
-        dbg!(String::from_utf8(vec_bytes).unwrap());
-    };
 }
 
 fn define_directive(
@@ -1200,6 +1267,7 @@ fn parse_control_line(
     directive: &[u8],
     start_of_directive: usize,
     pp_stage: PPStage,
+    included_files: Option<&mut Vec<(String, Vec<Token>)>>,
 ) -> Result<(), String> {
     match directive {
         b"include" => {
@@ -1212,6 +1280,7 @@ fn parse_control_line(
                 str_maps,
                 start_of_directive,
                 pp_stage,
+                included_files,
             )?;
         }
         b"define" => {
@@ -1670,6 +1739,7 @@ fn parse_group(
                         &d,
                         start_of_directive,
                         pp_stage,
+                        None,
                     )?;
                 }
                 b"else" | b"elif" | b"endif" => {
@@ -1731,6 +1801,7 @@ fn control_directive_stage_and_macro_replacement(
     curr_path: &str,
     include_paths: &[&str],
     defines: &mut HashMap<usize, Define>,
+    included_files: &mut Vec<(String, Vec<Token>)>,
 ) -> Result<(), String> {
     let mut index = 0;
     let mut macro_replacement_buffer = Vec::new();
@@ -1764,6 +1835,7 @@ fn control_directive_stage_and_macro_replacement(
                             &d,
                             start_of_directive,
                             PPStage::ControlDirectives,
+                            Some(included_files),
                         )?;
                     }
                     _ => unreachable!(),
@@ -1800,6 +1872,7 @@ fn do_pp_stage_control_directives(
     defines: &mut HashMap<usize, Define>,
 ) -> Result<Vec<Token>, String> {
     let mut preprocessed_tokens = Vec::new();
+    let mut included_files = Vec::new();
     control_directive_stage_and_macro_replacement(
         &mut tokens,
         &mut preprocessed_tokens,
@@ -1807,6 +1880,7 @@ fn do_pp_stage_control_directives(
         curr_path,
         include_paths,
         defines,
+        &mut included_files,
     )?;
     Ok((preprocessed_tokens))
 }
@@ -1978,50 +2052,15 @@ mod tests {
     #[test]
     fn include_test() -> Result<(), String> {
         {
-            let src = r##"#include "hi.h"
-int main() {
-}"##
-            .as_bytes();
-            let mut defines = HashMap::new();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = cpp(
-                src.to_vec(),
-                "./test_c_files/hi.h",
-                &["./test_c_files"],
-                &mut defines,
-                &mut str_maps,
-            )?;
-output_tokens_dbg!(tokens, str_maps);
-            let assert_tokens = [
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("int".as_bytes()),
-                },
-                TokenType::WHITESPACE,
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("main".as_bytes()),
-                },
-                TokenType::OPEN_PAR,
-                TokenType::CLOSE_PAR,
-                TokenType::WHITESPACE,
-                TokenType::OPEN_CURLY,
-                TokenType::NEWLINE,
-                TokenType::CLOSE_CURLY,
-            ]
-            .to_vec();
-            assert_eq!(
-                assert_tokens,
-                tokens.iter().map(|t| t.r#type).collect::<Vec<TokenType>>()
-            );
-        }
-        {
-            let src = r##"#define FILE "hi.h"
+            let src = r##"
+#define FILE "hi.h"
 #include FILE
+#include "hi.h"
 int main() {
 }"##
             .as_bytes();
             let mut defines = HashMap::new();
             let mut str_maps = ByteVecMaps::new();
-            let _final_tokens = Vec::<TokenType>::new();
             let tokens = cpp(
                 src.to_vec(),
                 "./test_c_files/hi.h",
@@ -2029,20 +2068,36 @@ int main() {
                 &mut defines,
                 &mut str_maps,
             )?;
+            output_tokens_dbg!(tokens, str_maps);
+            use super::TokenType::*;
             let assert_tokens = [
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("int".as_bytes()),
-                },
-                TokenType::WHITESPACE,
-                TokenType::IDENT {
-                    str_map_key: str_maps.add_byte_vec("main".as_bytes()),
-                },
-                TokenType::OPEN_PAR,
-                TokenType::CLOSE_PAR,
-                TokenType::WHITESPACE,
-                TokenType::OPEN_CURLY,
-                TokenType::NEWLINE,
-                TokenType::CLOSE_CURLY,
+                NEWLINE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                RCC_INCLUDE_TOKEN { include_index: 0 },
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                RCC_INCLUDE_TOKEN { include_index: 1 },
+                WHITESPACE,
+                WHITESPACE,
+                WHITESPACE,
+                NEWLINE,
+                IDENT { str_map_key: 4 },
+                WHITESPACE,
+                IDENT { str_map_key: 5 },
+                OPEN_PAR,
+                CLOSE_PAR,
+                WHITESPACE,
+                OPEN_CURLY,
+                NEWLINE,
+                CLOSE_CURLY,
             ]
             .to_vec();
             assert_eq!(
@@ -3372,7 +3427,9 @@ PP_EXPAND(PP_NAIVE_RECURSIVE(5)) /* ((5), PP_NAIVE_RECURSIVE(5)) */"##;
                 CLOSE_PAR,
                 COMMA,
                 WHITESPACE,
-                IDENT { str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE") },
+                IDENT {
+                    str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE")
+                },
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec(b"5"),
@@ -3419,7 +3476,9 @@ PP_EXPAND(PP_NAIVE_RECURSIVE(5)) /* ((5), PP_NAIVE_RECURSIVE(5)) */"##;
                 CLOSE_PAR,
                 COMMA,
                 WHITESPACE,
-                IDENT { str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE") },
+                IDENT {
+                    str_map_key: str_maps.add_byte_vec(b"PP_NAIVE_RECURSIVE")
+                },
                 OPEN_PAR,
                 CONSTANT_DEC_INT {
                     value_key: str_maps.add_byte_vec(b"5"),
