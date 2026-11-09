@@ -11,6 +11,7 @@ pub type CompoundIndex = usize;
 pub type SelectionIndex = usize;
 pub type IterationIndex = usize;
 pub type JumpIndex = usize;
+pub type ExprIndex = usize;
 #[derive(Copy, Clone)]
 pub enum Label {
     Identifier {
@@ -84,6 +85,7 @@ pub enum Jump {
 pub enum Statement {
     Label(LabelIndex),
     Compound(CompoundIndex),
+    Expr(ExprIndex),
     Selection(SelectionIndex),
     Iteration(IterationIndex),
     Jump(JumpIndex),
@@ -147,9 +149,8 @@ pub fn parse_statement(
             r#type: TokenType::WHILE | TokenType::DO { .. } | TokenType::FOR { .. },
             ..
         }) => {
-            *index += 1;
-            consume_whitespace(tokens, index);
             let iteration = parse_iteration_statement(tokens, index, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
             flattened.iteration_statements.push(iteration);
             Ok(Statement::Iteration(
                 flattened.iteration_statements.len() - 1,
@@ -165,8 +166,13 @@ pub fn parse_statement(
             flattened.jump_statements.push(jump);
             Ok(Statement::Jump(flattened.jump_statements.len() - 1))
         }
+        _ => {
+            let expr = parse_expressions(tokens, index, flattened, str_maps)?;
+            expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
+            flattened.expressions.push(expr);
+            Ok(Statement::Expr(flattened.expressions.len() - 1))
+        }
         None => unreachable!(),
-        _ => todo!("parse expression-statement: {:?}", tokens[*index]),
     }
 }
 
@@ -214,6 +220,35 @@ pub fn parse_labeled_statement(
     }
 }
 
+fn parse_block_item_list(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<BlockItem>, String> {
+    let mut block_item_list = Vec::new();
+    while *index < tokens.len() {
+        consume_whitespace(tokens, index);
+        if let Some(token) = tokens.get(*index) {
+            if is_statement_token(token.r#type) {
+                let statement = parse_statement(&tokens, index, flattened, str_maps)?;
+                flattened.statements.push(statement);
+                block_item_list.push(BlockItem::Statement(flattened.statements.len() - 1));
+            } else if declarations::is_declaration_token(*token) {
+                let declaration = parse_declarations(&tokens, index, flattened, str_maps)?;
+                flattened.declarations.push(declaration);
+                block_item_list.push(BlockItem::Declaration(flattened.declarations.len() - 1));
+            } else if matches!(token.r#type, TokenType::CLOSE_CURLY) {
+                break;
+            } else {
+                unreachable!("What the fuck bro: {:?}", token);
+            }
+        }
+        consume_whitespace(tokens, index);
+    }
+    Ok(block_item_list)
+}
+
 pub fn parse_compound_statement(
     tokens: &[Token],
     index: &mut usize,
@@ -223,29 +258,8 @@ pub fn parse_compound_statement(
     let mut compound = Compound {
         block_item_list: Vec::new(),
     };
-    while *index < tokens.len() {
-        consume_whitespace(tokens, index);
-        if let Some(token) = tokens.get(*index) {
-            if is_statement_token(token.r#type) {
-                let statement = parse_statement(&tokens, index, flattened, str_maps)?;
-                flattened.statements.push(statement);
-                compound
-                    .block_item_list
-                    .push(BlockItem::Statement(flattened.statements.len() - 1));
-            } else if declarations::is_declaration_token(*token) {
-                let declaration = parse_declarations(&tokens, index, flattened, str_maps)?;
-                flattened.declarations.push(declaration);
-                compound
-                    .block_item_list
-                    .push(BlockItem::Declaration(flattened.declarations.len() - 1));
-            } else if matches!(token.r#type, TokenType::CLOSE_CURLY) {
-                break;
-            } else {
-                unreachable!("What the fuck bro: {:?}", token);
-            }
-        }
-        consume_whitespace(tokens, index);
-    }
+    compound.block_item_list = parse_block_item_list(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
     expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
     Ok(compound)
 }
@@ -332,8 +346,7 @@ pub fn parse_iteration_statement(
             expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expr = parse_expressions(tokens, index, flattened, str_maps)?;
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
-            let expression = parse_expressions(tokens, index, flattened, str_maps)?;
-            flattened.expressions.push(expression);
+            flattened.expressions.push(expr);
             consume_whitespace(tokens, index);
             let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
@@ -351,11 +364,13 @@ pub fn parse_iteration_statement(
             let stmt = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.statements.push(stmt);
             consume_whitespace(tokens, index);
-            expected_token(tokens, index, TokenType::WHILE, "Expected 'while'");
+            expected_token(tokens, index, TokenType::WHILE, "Expected 'while'")?;
             consume_whitespace(tokens, index);
-            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('");
+            expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
+            consume_whitespace(tokens, index);
+            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Iteration::DoWhile {
@@ -429,7 +444,6 @@ pub fn parse_iteration_statement(
                     })
                 ) {
                     let expression = parse_expressions(tokens, index, flattened, str_maps)?;
-                    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
                         first_expr_index, ..
@@ -447,7 +461,6 @@ pub fn parse_iteration_statement(
                         ..
                     })
                 ) {
-                    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
                     let expression = parse_expressions(tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expression);
                     let Iteration::ForThreeExpr {
@@ -577,7 +590,7 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let stmt = parse_compound_statement(&tokens, &mut 1, &mut flattened, &mut str_maps)?;
+            let stmt = parse_compound_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             let Compound { block_item_list } = stmt;
             assert!(matches!(
                 block_item_list.get(0),

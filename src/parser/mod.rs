@@ -56,11 +56,10 @@ pub fn expected_token(
     Ok(())
 }
 
-pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) -> Result<(), String> {
+pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) {
     if matches!(tokens.get(*index), Some(Token { r#type: token, .. })) {
         *index += 1;
     }
-    Ok(())
 }
 
 pub fn expected_identifier_and_consume(

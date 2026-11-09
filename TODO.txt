@@ -1,6 +1,7 @@
-rewrite Token enum to be a struct with TokenType to reduce the amount of code for types, also add line property to Token struct so error msgs are more clean.
+recursive include files need to be handled
 
 make all tests pass
+    - currently all cpp tests pass as of nov8_2026
 
 reduce and clean up code ( good god what the fuck did i write back then )
 

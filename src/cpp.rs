@@ -2068,7 +2068,6 @@ int main() {
                 &mut defines,
                 &mut str_maps,
             )?;
-            output_tokens_dbg!(tokens, str_maps);
             use super::TokenType::*;
             let assert_tokens = [
                 NEWLINE,

@@ -394,17 +394,70 @@ pub fn is_declaration_token(t: Token) -> bool {
     }
 }
 
+fn parse_init_declarator(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+) -> Result<InitDeclarator, String> {
+    let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    if matches!(
+        tokens.get(*index),
+        Some(Token {
+            r#type: TokenType::ASSIGNMENT,
+            ..
+        })
+    ) {
+        *index += 1;
+        consume_whitespace(tokens, index);
+        let initializer = parse_initializer(tokens, index, flattened, str_maps)?;
+        return Ok(InitDeclarator::DeclaratorWithInitializer(
+            DeclaratorWithInitializer {
+                declarator,
+                initializer,
+            },
+        ));
+    }
+    return Ok(InitDeclarator::Declarator(declarator));
+}
+
 pub fn parse_init_declarator_list(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
-) -> () {
-    todo!()
+) -> Result<Vec<InitDeclarator>, String> {
+    let mut init_declarators = Vec::new();
+    loop {
+        match tokens.get(*index) {
+            Some(Token { .. }) => {
+                let init_declarator = parse_init_declarator(tokens, index, flattened, str_maps)?;
+                init_declarators.push(init_declarator);
+            }
+            Some(Token {
+                r#type: TokenType::COMMA,
+                ..
+            }) => {
+                continue;
+            }
+            Some(Token {
+                r#type: TokenType::SEMI_COLON,
+                ..
+            })
+            | None => {}
+            Some(Token { location, .. }) => {
+                let location = location.unwrap();
+                return Err(error("Unexpected token", location.line, location.column));
+            }
+        }
+        break;
+    }
+    Ok(init_declarators)
 }
 
 pub fn parse_declarations(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
@@ -412,68 +465,10 @@ pub fn parse_declarations(
     let mut declaration = Declaration::new();
     let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
     declaration.declaration_specifiers = declaration_specifier;
-    if !matches!(
-        tokens.get(*index),
-        Some(Token {
-            r#type: TokenType::SEMI_COLON,
-            ..
-        })
-    ) && tokens.get(*index).is_some()
-    {
-        loop {
-            let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
-            consume_whitespace(tokens, index);
-            if !matches!(
-                tokens.get(*index),
-                Some(Token {
-                    r#type: TokenType::ASSIGNMENT,
-                    ..
-                })
-            ) {
-                declaration
-                    .init_declarator_list
-                    .push(InitDeclarator::Declarator(declarator));
-            } else {
-                if !matches!(
-                    tokens.get(*index),
-                    Some(Token {
-                        r#type: TokenType::COMMA,
-                        ..
-                    })
-                ) {
-                    if !matches!(
-                        tokens.get(*index),
-                        Some(Token {
-                            r#type: TokenType::SEMI_COLON,
-                            ..
-                        })
-                    ) {
-                        todo!("ERROR HERE")
-                    }
-                }
-                let initializer = parse_initializer(&tokens, index, flattened, str_maps)?;
-                declaration
-                    .init_declarator_list
-                    .push(InitDeclarator::DeclaratorWithInitializer(
-                        DeclaratorWithInitializer {
-                            declarator,
-                            initializer,
-                        },
-                    ));
-            }
-            if matches!(
-                tokens.get(*index),
-                Some(Token {
-                    r#type: TokenType::SEMI_COLON,
-                    ..
-                })
-            ) {
-                *index += 1;
-                break;
-            }
-            *index += 1;
-        }
-    }
+    declaration.init_declarator_list =
+        parse_init_declarator_list(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
     Ok(declaration)
 }
 
@@ -646,7 +641,7 @@ pub fn parse_initializer_list(
         }
         *index += 1;
     }
-    consume_token(tokens, index, TokenType::COMMA)?;
+    consume_token(tokens, index, TokenType::COMMA);
     expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
     Ok(first_initializer_list.unwrap())
 }
