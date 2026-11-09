@@ -195,11 +195,13 @@ pub fn parse_labeled_statement(
             })
         }
         TokenType::CASE => {
+            *index += 1;
             consume_whitespace(tokens, index);
-            expected_token(tokens, index, TokenType::COLON, "Expected ':'")?;
             // TODO: this is a constant expression so I might need to eval it
             // to make sure the constant expression restraints are applied
             let expression = parse_expressions(tokens, index, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
+            expected_token(tokens, index, TokenType::COLON, "Expected ':'")?;
             consume_whitespace(tokens, index);
             let statement = parse_statement(tokens, index, flattened, str_maps)?;
             flattened.expressions.push(expression);
@@ -276,6 +278,7 @@ pub fn parse_selection_statement(
             ..
         }) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expression = parse_expressions(tokens, index, flattened, str_maps)?;
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
@@ -312,6 +315,8 @@ pub fn parse_selection_statement(
             r#type: TokenType::SWITCH,
             ..
         }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::OPEN_PAR, "Expected '('")?;
             let expression = parse_expressions(&tokens, index, flattened, str_maps)?;
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
@@ -536,6 +541,7 @@ pub fn parse_jump_statement(
             r#type: TokenType::CONTINUE,
             ..
         }) => {
+            *index += 1;
             consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Jump::Continue)
@@ -544,6 +550,7 @@ pub fn parse_jump_statement(
             r#type: TokenType::BREAK,
             ..
         }) => {
+            *index += 1;
             consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
             Ok(Jump::Break)
@@ -552,6 +559,7 @@ pub fn parse_jump_statement(
             r#type: TokenType::RETURN,
             ..
         }) => {
+            *index += 1;
             consume_whitespace(tokens, index);
             let mut r = Jump::Return(None);
             if !matches!(
@@ -590,8 +598,9 @@ mod tests {
             let mut flattened = Flattened::new();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-            let stmt = parse_compound_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            let Compound { block_item_list } = stmt;
+            let stmt = parse_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            let Statement::Compound (idx) = stmt else { unreachable!() };
+            let Compound { block_item_list } = &flattened.compound_statements[idx];
             assert!(matches!(
                 block_item_list.get(0),
                 Some(BlockItem::Declaration(_))
