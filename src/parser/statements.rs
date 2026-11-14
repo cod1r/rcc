@@ -599,7 +599,9 @@ mod tests {
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
             let stmt = parse_statement(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            let Statement::Compound (idx) = stmt else { unreachable!() };
+            let Statement::Compound(idx) = stmt else {
+                unreachable!()
+            };
             let Compound { block_item_list } = &flattened.compound_statements[idx];
             assert!(matches!(
                 block_item_list.get(0),

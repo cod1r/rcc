@@ -19,7 +19,7 @@ pub fn parse_translation_units(
 }
 pub enum ExternalDeclaration {
     FunctionDef {
-        declaration_specifier: DeclarationSpecifier,
+        declaration_specifier: DeclarationSpecifiers,
         declarator: Declarator,
         declaration_list: Option<Vec<Declaration>>,
         compound_statement: Compound,
