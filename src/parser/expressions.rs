@@ -2,7 +2,6 @@ use crate::cpp::*;
 use crate::error::*;
 use crate::lexer::*;
 use crate::parser::declarations::*;
-use crate::parser::statements::*;
 use crate::parser::*;
 use std::collections::HashMap;
 
@@ -27,7 +26,7 @@ pub enum Type {
 
 pub type ExpressionIndex = usize;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UnaryType {
     Expr {
         op: TokenType,
@@ -38,13 +37,13 @@ pub enum UnaryType {
     AlignOf(TypeNameIndex),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Cast {
     type_name: TypeNameIndex,
     cast_expr: ExpressionIndex,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PostFix {
     WithSubscript {
         first: ExpressionIndex,
@@ -72,7 +71,7 @@ pub enum PostFix {
     },
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum BinaryExprType {
     Comma,
     Assignment,
@@ -97,20 +96,20 @@ enum BinaryExprType {
     ArgExprList,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Conditional {
     pub first: ExpressionIndex,
     pub second: ExpressionIndex,
     pub third: ExpressionIndex,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PrimaryType {
     Token(Token),
     Expr(ExpressionIndex),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Expr {
     Binary {
         r#type: BinaryExprType,

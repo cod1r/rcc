@@ -2,12 +2,10 @@ use std::collections::HashMap;
 
 use crate::error::*;
 use crate::lexer::*;
+use crate::parser::declarations::*;
 use crate::parser::expressions::*;
 use crate::parser::*;
-use std::cmp::{min, Ord, Ordering};
 use std::ops::Range;
-use std::ops::{Index, IndexMut};
-use std::slice::SliceIndex;
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Define {
@@ -348,75 +346,6 @@ fn include_directive(
         }
     }
     Ok(())
-}
-
-fn parse_identifier_list(
-    tokens: &[Token],
-    index: &mut usize,
-    str_maps: &mut ByteVecMaps,
-) -> Result<Vec<usize>, String> {
-    let mut identifier_keys = Vec::new();
-    loop {
-        consume_specifically_spaces(tokens, index);
-        if let Some(Token {
-            r#type: TokenType::IDENT { str_map_key },
-            location: Some(Location { line, column }),
-        }) = tokens.get(*index)
-        {
-            *index += 1;
-            let arg = &str_maps.key_to_byte_vec[*str_map_key];
-            if identifier_keys.contains(str_map_key) {
-                // A parameter identifier in a function-like macro shall be uniquely declared within its scope.
-                return Err(error(
-                    &format!(
-                        "duplicate parameter name: '{}'",
-                        String::from_utf8(str_maps.key_to_byte_vec[*str_map_key].clone()).unwrap()
-                    ),
-                    *line,
-                    *column,
-                ));
-            }
-            if *arg == *b"__VA_ARGS__" {
-                return Err(error(
-                    "__VA_ARGS__ cannot be used as a parameter name",
-                    *line,
-                    *column,
-                ));
-            }
-            identifier_keys.push(*str_map_key);
-        }
-        if matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::COMMA,
-                ..
-            })
-        ) {
-            *index += 1;
-            continue;
-        }
-        consume_specifically_spaces(tokens, index);
-        if matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::ELLIPSIS,
-                ..
-            })
-        ) {
-            *index += 1;
-            identifier_keys.push(str_maps.add_byte_vec(b"__VA_ARGS__"));
-            break Ok(identifier_keys);
-        }
-        if matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::CLOSE_PAR,
-                ..
-            })
-        ) {
-            break Ok(identifier_keys);
-        }
-    }
 }
 
 fn apply_HASH_constraint(

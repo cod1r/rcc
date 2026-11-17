@@ -4,19 +4,18 @@ use crate::lexer::*;
 use crate::parser::expressions::*;
 use crate::parser::statements::*;
 use crate::parser::*;
-use crate::*;
 use std::fmt::Display;
 
 pub type TypeNameIndex = usize;
 pub type DeclarationIndex = usize;
 #[derive(Copy, Clone)]
 pub enum StorageClassSpecifier {
-    TypeDef,
-    Extern,
-    Static,
-    ThreadLocal,
-    Auto,
-    Register,
+    TypeDef = 1,
+    Extern = 2,
+    Static = 4,
+    ThreadLocal = 8,
+    Auto = 16,
+    Register = 32,
 }
 impl Display for StorageClassSpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -30,38 +29,51 @@ impl Display for StorageClassSpecifier {
         })
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParameterDeclaration {
-    declaration_specifiers: DeclarationSpecifiers,
-    declarator: Declarator,
+    pub declaration_specifiers: DeclarationSpecifiers,
+    pub declarator: Declarator,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParameterTypeList {
     pub parameter_list: ParameterList,
     pub ellipsis: bool,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParameterList {
     pub parameter_declarations: Vec<ParameterDeclaration>,
 }
 
-#[derive(Clone, Copy)]
-enum DeclaratorType {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DeclaratorType {
     Abstract,
-    Direct { identifier: usize },
+    Direct { identifier: Option<usize> },
 }
 
-#[derive(Clone)]
-pub struct Declarator {
-    r#type: DeclaratorType,
-    pub declarator: Option<Box<Declarator>>,
-    pub type_qualifier_flags: u8,
-    pub is_static: bool,
-    pub pointer: Vec<Pointer>,
-    pub parameter_type_list: Option<ParameterTypeList>,
-    pub assign_expr: Option<ExpressionIndex>,
+#[derive(Clone, Debug, PartialEq)]
+pub enum DeclaratorForm {
+    Array {
+        type_qualifier_flags: u8,
+        is_static: bool,
+        variable_length: bool,
+        assign_expr: Option<ExpressionIndex>,
+    },
+    Function {
+        parameter_type_list: Option<ParameterTypeList>,
+        identifier_list: Option<Vec<usize>>,
+    },
 }
-#[derive(Clone)]
+
+// This Declarator type is used for BOTH
+// AbstractDeclarator and Declarator
+#[derive(Clone, Debug, PartialEq)]
+pub struct Declarator {
+    pub r#type: DeclaratorType,
+    pub declarator: Option<Box<Declarator>>,
+    pub pointer: Vec<Pointer>,
+    pub declarator_form: Option<DeclaratorForm>,
+}
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeName {
     pub specifier_qualifier_list: SpecifierQualifierList,
     pub abstract_declarator: Option<Declarator>,
@@ -74,16 +86,16 @@ impl TypeName {
         }
     }
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum StructOrUnion {
     Struct,
     Union,
 }
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pointer {
-    type_qualifier_flags: u8,
+    pub type_qualifier_flags: u8,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StructDeclarator {
     Declarator(Declarator),
     WithConstExpr {
@@ -91,27 +103,27 @@ pub enum StructDeclarator {
         const_expr: ExpressionIndex,
     },
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SpecifierQualifierList {
-    pub type_qualifiers_flags: u8,
+    pub type_qualifier_flags: u8,
     pub type_specifiers: Vec<TypeSpecifier>,
     pub alignment_specifier: Vec<AlignmentSpecifier>,
 }
 impl SpecifierQualifierList {
     fn new() -> Self {
         Self {
-            type_qualifiers_flags: 0,
+            type_qualifier_flags: 0,
             type_specifiers: Vec::new(),
             alignment_specifier: Vec::new(),
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StructDeclaration {
-    specifier_qualifier_list: SpecifierQualifierList,
-    struct_declarator_list: Vec<StructDeclarator>,
+    pub specifier_qualifier_list: SpecifierQualifierList,
+    pub struct_declarator_list: Vec<StructDeclarator>,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StructUnionSpecifier {
     pub struct_or_union: StructOrUnion,
     pub identifier: Option<usize>,
@@ -122,12 +134,12 @@ pub enum Enumerator {
     Enum(usize),
     EnumWithConstantExpr(usize, i128),
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnumSpecifier {
     identifier: Option<usize>,
     enumerator_list: Vec<Enumerator>,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypeSpecifier {
     Void,
     Char,
@@ -183,7 +195,7 @@ impl Display for TypeQualifier {
         })
     }
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FunctionSpecifier {
     Inline,
     _Noreturn,
@@ -196,26 +208,26 @@ impl Display for FunctionSpecifier {
         })
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlignmentSpecifier {
     _Alignas(TypeNameIndex),
     _AlignasConstExpr(ExpressionIndex),
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeclarationSpecifiers {
-    pub storage_class_specifiers: Vec<StorageClassSpecifier>,
+    pub storage_class_specifiers_flags: u8,
     pub type_specifiers: Vec<TypeSpecifier>,
-    pub type_qualifiers_flags: u8,
-    pub function_specifiers: Vec<FunctionSpecifier>,
+    pub type_qualifier_flags: u8,
+    pub function_specifier: Option<FunctionSpecifier>,
     pub alignment_specifiers: Vec<AlignmentSpecifier>,
 }
 impl DeclarationSpecifiers {
     fn new() -> Self {
         Self {
-            storage_class_specifiers: Vec::new(),
+            storage_class_specifiers_flags: 0,
             type_specifiers: Vec::new(),
-            type_qualifiers_flags: 0,
-            function_specifiers: Vec::new(),
+            type_qualifier_flags: 0,
+            function_specifier: None,
             alignment_specifiers: Vec::new(),
         }
     }
@@ -575,6 +587,75 @@ fn parse_pointer(tokens: &[lexer::Token], index: &mut usize) -> Vec<Pointer> {
     pointer_stack
 }
 
+pub fn parse_identifier_list(
+    tokens: &[Token],
+    index: &mut usize,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<usize>, String> {
+    let mut identifier_keys = Vec::new();
+    loop {
+        consume_specifically_spaces(tokens, index);
+        if let Some(Token {
+            r#type: TokenType::IDENT { str_map_key },
+            location: Some(Location { line, column }),
+        }) = tokens.get(*index)
+        {
+            *index += 1;
+            let arg = &str_maps.key_to_byte_vec[*str_map_key];
+            if identifier_keys.contains(str_map_key) {
+                // A parameter identifier in a function-like macro shall be uniquely declared within its scope.
+                return Err(error(
+                    &format!(
+                        "duplicate parameter name: '{}'",
+                        String::from_utf8(str_maps.key_to_byte_vec[*str_map_key].clone()).unwrap()
+                    ),
+                    *line,
+                    *column,
+                ));
+            }
+            if *arg == *b"__VA_ARGS__" {
+                return Err(error(
+                    "__VA_ARGS__ cannot be used as a parameter name",
+                    *line,
+                    *column,
+                ));
+            }
+            identifier_keys.push(*str_map_key);
+        }
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::COMMA,
+                ..
+            })
+        ) {
+            *index += 1;
+            continue;
+        }
+        consume_specifically_spaces(tokens, index);
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::ELLIPSIS,
+                ..
+            })
+        ) {
+            *index += 1;
+            identifier_keys.push(str_maps.add_byte_vec(b"__VA_ARGS__"));
+            break Ok(identifier_keys);
+        }
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::CLOSE_PAR,
+                ..
+            })
+        ) {
+            break Ok(identifier_keys);
+        }
+    }
+}
+
 pub fn parse_declarator(
     tokens: &[Token],
     index: &mut usize,
@@ -584,11 +665,8 @@ pub fn parse_declarator(
     let mut declarator = Declarator {
         r#type: DeclaratorType::Abstract,
         declarator: None,
-        type_qualifier_flags: 0,
-        is_static: false,
         pointer: Vec::new(),
-        parameter_type_list: None,
-        assign_expr: None,
+        declarator_form: None,
     };
     declarator.pointer = parse_pointer(tokens, index);
     match tokens.get(*index) {
@@ -599,7 +677,7 @@ pub fn parse_declarator(
             *index += 1;
             consume_whitespace(tokens, index);
             declarator.r#type = DeclaratorType::Direct {
-                identifier: *str_map_key,
+                identifier: Some(*str_map_key),
             };
         }
         Some(Token {
@@ -620,7 +698,7 @@ pub fn parse_declarator(
                 location.column,
             ));
         }
-        None => {}
+        None => return Err("Expected identifier or open parentheses".to_string()),
     }
     match tokens.get(*index) {
         Some(Token {
@@ -629,17 +707,23 @@ pub fn parse_declarator(
         }) => {
             *index += 1;
             consume_whitespace(tokens, index);
+            let mut is_static = false;
+            let mut type_qualifier_flags = 0;
+            let mut variable_length = false;
+            let mut assign_expr = None;
             match tokens.get(*index) {
                 Some(Token {
                     r#type: TokenType::STATIC,
                     ..
                 }) => {
                     *index += 1;
-                    declarator.is_static = true;
-                    declarator.type_qualifier_flags = parse_type_qualifiers(tokens, index);
+                    consume_whitespace(tokens, index);
+                    is_static = true;
+                    type_qualifier_flags = parse_type_qualifiers(tokens, index);
+                    consume_whitespace(tokens, index);
                     let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                     flattened.expressions.push(expr);
-                    declarator.assign_expr = Some(flattened.expressions.len() - 1);
+                    assign_expr = Some(flattened.expressions.len() - 1);
                     expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                 }
                 Some(Token {
@@ -649,7 +733,7 @@ pub fn parse_declarator(
                     *index += 1;
                 }
                 _ => {
-                    declarator.type_qualifier_flags = parse_type_qualifiers(tokens, index);
+                    type_qualifier_flags = parse_type_qualifiers(tokens, index);
                     consume_whitespace(tokens, index);
                     if let Some(Token {
                         r#type: TokenType::STATIC,
@@ -658,30 +742,66 @@ pub fn parse_declarator(
                     {
                         let location = location.unwrap();
                         *index += 1;
-                        if declarator.type_qualifier_flags == 0 {
+                        if type_qualifier_flags == 0 {
                             return Err(error(
                                 "Expected type qualifiers",
                                 location.line,
                                 location.column,
                             ));
                         }
-                        declarator.is_static = true;
+                        is_static = true;
                     }
-                    let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
-                    flattened.expressions.push(expr);
-                    declarator.assign_expr = Some(flattened.expressions.len() - 1);
+                    if let Some(Token {
+                        r#type: TokenType::ASTERISK,
+                        ..
+                    }) = tokens.get(*index)
+                    {
+                        *index += 1;
+                        consume_whitespace(tokens, index);
+                        variable_length = true;
+                        expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
+                    }
+                    if !matches!(
+                        tokens.get(*index),
+                        Some(Token {
+                            r#type: TokenType::CLOSE_SQR,
+                            ..
+                        })
+                    ) {
+                        let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
+                        flattened.expressions.push(expr);
+                        assign_expr = Some(flattened.expressions.len() - 1);
+                    }
                     expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                 }
             }
+            declarator.declarator_form = Some(DeclaratorForm::Array {
+                type_qualifier_flags,
+                is_static,
+                variable_length,
+                assign_expr,
+            });
         }
         Some(Token {
             r#type: TokenType::OPEN_PAR,
             ..
         }) => {
             *index += 1;
-            let ptl = parse_parameter_type_list(&tokens, index, flattened, str_maps)?;
-            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
-            declarator.parameter_type_list = Some(ptl);
+            consume_whitespace(tokens, index);
+            if is_declaration_token(tokens[*index]) {
+                let ptl = parse_parameter_type_list(&tokens, index, flattened, str_maps)?;
+                expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
+                declarator.declarator_form = Some(DeclaratorForm::Function {
+                    parameter_type_list: Some(ptl),
+                    identifier_list: None,
+                });
+            } else {
+                let ident_list = parse_identifier_list(tokens, index, str_maps)?;
+                declarator.declarator_form = Some(DeclaratorForm::Function {
+                    parameter_type_list: None,
+                    identifier_list: Some(ident_list),
+                });
+            }
         }
         _ => {}
     }
@@ -901,9 +1021,11 @@ pub fn is_type_qualifier_token(tokens: &[Token], index: &mut usize) -> bool {
             },
         ) => {
             if t.r#type == TokenType::_ATOMIC {
+                let mut index_copy = *index + 1;
+                consume_whitespace(tokens, &mut index_copy);
                 if let Some(Token {
                     r#type: OPEN_PAR, ..
-                }) = tokens.get(*index + 1)
+                }) = tokens.get(index_copy)
                 {
                     return false;
                 }
@@ -967,7 +1089,7 @@ pub fn parse_specifiers_qualifiers(
                     .type_specifiers
                     .extend_from_slice(&specifiers);
             } else if is_type_qualifier_token(tokens, index) {
-                specifier_qualifier.type_qualifiers_flags = parse_type_qualifiers(tokens, index);
+                specifier_qualifier.type_qualifier_flags = parse_type_qualifiers(tokens, index);
             } else if is_alignment_specifier_token(*t) {
                 *index += 1;
                 consume_whitespace(tokens, index);
@@ -987,39 +1109,39 @@ pub fn parse_specifiers_qualifiers(
 }
 
 pub fn parse_type_qualifiers(tokens: &[lexer::Token], index: &mut usize) -> u8 {
-    let mut type_qualifiers_flags = 0;
+    let mut type_qualifier_flags = 0;
     while *index < tokens.len() {
         match tokens[*index] {
             Token {
                 r#type: TokenType::CONST,
                 ..
             } => {
-                type_qualifiers_flags |= TypeQualifier::Const as u8;
+                type_qualifier_flags |= TypeQualifier::Const as u8;
             }
             Token {
                 r#type: TokenType::RESTRICT,
                 ..
             } => {
-                type_qualifiers_flags |= TypeQualifier::Restrict as u8;
+                type_qualifier_flags |= TypeQualifier::Restrict as u8;
             }
             Token {
                 r#type: TokenType::VOLATILE,
                 ..
             } => {
-                type_qualifiers_flags |= TypeQualifier::Volatile as u8;
+                type_qualifier_flags |= TypeQualifier::Volatile as u8;
             }
             Token {
                 r#type: TokenType::_ATOMIC,
                 ..
             } => {
-                type_qualifiers_flags |= TypeQualifier::_Atomic as u8;
+                type_qualifier_flags |= TypeQualifier::_Atomic as u8;
             }
             _ => break,
         }
         *index += 1;
         consume_whitespace(tokens, index);
     }
-    type_qualifiers_flags
+    type_qualifier_flags
 }
 
 pub fn is_type_specifier_token(t: Token) -> bool {
@@ -1170,39 +1292,45 @@ pub fn parse_declaration_specifiers(
             Token {
                 r#type: TokenType::TYPEDEF,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::TypeDef),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::TypeDef as u8
+            }
             Token {
                 r#type: TokenType::EXTERN,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Extern),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::Extern as u8
+            }
             Token {
                 r#type: TokenType::STATIC,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Static),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::Static as u8
+            }
             Token {
                 r#type: TokenType::_THREAD_LOCAL,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::ThreadLocal),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::ThreadLocal as u8
+            }
             Token {
                 r#type: TokenType::AUTO,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Auto),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::Auto as u8
+            }
             Token {
                 r#type: TokenType::REGISTER,
                 ..
-            } => declaration_specifier
-                .storage_class_specifiers
-                .push(StorageClassSpecifier::Register),
+            } => {
+                declaration_specifier.storage_class_specifiers_flags |=
+                    StorageClassSpecifier::Register as u8
+            }
             Token {
                 r#type: TokenType::VOID,
                 ..
@@ -1280,15 +1408,15 @@ pub fn parse_declaration_specifiers(
             Token {
                 r#type: TokenType::CONST,
                 ..
-            } => declaration_specifier.type_qualifiers_flags |= TypeQualifier::Const as u8,
+            } => declaration_specifier.type_qualifier_flags |= TypeQualifier::Const as u8,
             Token {
                 r#type: TokenType::RESTRICT,
                 ..
-            } => declaration_specifier.type_qualifiers_flags |= TypeQualifier::Restrict as u8,
+            } => declaration_specifier.type_qualifier_flags |= TypeQualifier::Restrict as u8,
             Token {
                 r#type: TokenType::VOLATILE,
                 ..
-            } => declaration_specifier.type_qualifiers_flags |= TypeQualifier::Volatile as u8,
+            } => declaration_specifier.type_qualifier_flags |= TypeQualifier::Volatile as u8,
             Token {
                 r#type: TokenType::_ATOMIC,
                 ..
@@ -1306,21 +1434,17 @@ pub fn parse_declaration_specifiers(
                         .type_specifiers
                         .push(TypeSpecifier::_Atomic(type_name));
                 } else {
-                    declaration_specifier.type_qualifiers_flags |= TypeQualifier::_Atomic as u8
+                    declaration_specifier.type_qualifier_flags |= TypeQualifier::_Atomic as u8
                 }
             }
             Token {
                 r#type: TokenType::INLINE,
                 ..
-            } => declaration_specifier
-                .function_specifiers
-                .push(FunctionSpecifier::Inline),
+            } => declaration_specifier.function_specifier = Some(FunctionSpecifier::Inline),
             Token {
                 r#type: TokenType::_NORETURN,
                 ..
-            } => declaration_specifier
-                .function_specifiers
-                .push(FunctionSpecifier::_Noreturn),
+            } => declaration_specifier.function_specifier = Some(FunctionSpecifier::_Noreturn),
             Token {
                 r#type: TokenType::_ALIGNAS,
                 ..
@@ -1425,9 +1549,10 @@ pub fn parse_type_names(
 mod tests {
     use super::{
         parse_declarations, parse_declarator, parse_enumerator_specifier, parse_initializer,
-        parse_parameter_type_list, parse_struct_declarator, parse_struct_union_specifier,
-        parse_type_names, Declaration, Declarator, Designation, Designator, Enumerator,
-        InitDeclarator, Initializer, InitializerList, TypeQualifier, TypeSpecifier,
+        parse_parameter_list, parse_parameter_type_list, parse_struct_declarator,
+        parse_struct_union_specifier, parse_type_names, Declaration, Declarator, DeclaratorForm,
+        DeclaratorType, Designation, Designator, Enumerator, InitDeclarator, Initializer,
+        InitializerList, TypeQualifier, TypeSpecifier,
     };
     use crate::lexer::*;
     use crate::parser::expressions::*;
@@ -1609,76 +1734,83 @@ mod tests {
             type_name.specifier_qualifier_list.type_specifiers.first(),
             Some(TypeSpecifier::Int)
         ));
-        assert!(type_name.abstract_declarator.is_some());
-        let Some(abd) = type_name.abstract_declarator else {
+        assert_eq!(
+            type_name.abstract_declarator,
+            Some(Declarator {
+                r#type: DeclaratorType::Abstract,
+                pointer: Vec::new(),
+                declarator: Some(Box::new(Declarator {
+                    r#type: DeclaratorType::Abstract,
+                    pointer: vec![Pointer {
+                        type_qualifier_flags: 0
+                    }],
+                    declarator: None,
+                    declarator_form: None,
+                })),
+                declarator_form: Some(DeclaratorForm::Array {
+                    is_static: false,
+                    variable_length: false,
+                    type_qualifier_flags: 0,
+                    assign_expr: Some(flattened.expressions.len() - 1)
+                })
+            })
+        );
+        let DeclaratorForm::Array { assign_expr, .. } = type_name
+            .abstract_declarator
+            .unwrap()
+            .declarator_form
+            .unwrap()
+        else {
             unreachable!()
         };
-        assert!(abd.pointer.is_empty());
-        assert!(abd.direct_abstract_declarator.is_some());
-        let Some(dad) = abd.direct_abstract_declarator else {
-            unreachable!()
-        };
-        assert!(dad.abstract_declarator.is_some());
-        let Some(abd) = &dad.abstract_declarator else {
-            unreachable!()
-        };
-        assert!(!abd.pointer.is_empty());
-        assert!(matches!(
-            dad,
-            DirectAbstractDeclarator {
-                is_static: false,
-                mult: false,
-                parameter_type_list: None,
-                ..
-            }
-        ));
-        let Some(expr_idx) = dad.assign_expr else {
-            unreachable!()
-        };
-        assert!(matches!(flattened.expressions[expr_idx], Expr::Primary(_)));
-        let Expr::Primary(PrimaryType::Token(t)) = flattened.expressions[expr_idx] else {
-            unreachable!()
-        };
-        let TokenType::CONSTANT_DEC_INT { value_key, .. } = t.r#type else {
-            unreachable!()
-        };
-        assert_eq!(value_key, str_maps.add_byte_vec(b"3"));
+        let expr_idx = assign_expr.unwrap();
+        assert_eq!(
+            flattened.expressions[expr_idx],
+            Expr::Primary(PrimaryType::Token(Token {
+                r#type: TokenType::CONSTANT_DEC_INT {
+                    value_key: str_maps.add_byte_vec("3".as_bytes()),
+                    suffix: None
+                },
+                location: Some(Location { line: 0, column: 8 })
+            }))
+        );
         Ok(())
     }
     #[test]
     fn parse_type_names_test_pointer_to_variable_length_int_array() -> Result<(), String> {
-        let src = r#"int (*)[*]"#.as_bytes();
+        let src = r##"int (*)[*]"##.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
         let tokens = lexer(src, false, &mut str_maps)?;
         let type_name = parse_type_names(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-        assert!(matches!(
-            type_name.specifier_qualifier_list.type_specifiers.first(),
-            Some(TypeSpecifier::Int)
-        ));
-        assert!(type_name.abstract_declarator.is_some());
-        let Some(abd) = type_name.abstract_declarator else {
-            unreachable!()
-        };
-        assert!(abd.pointer.is_empty());
-        assert!(abd.direct_abstract_declarator.is_some());
-        let Some(dad) = abd.direct_abstract_declarator else {
-            unreachable!()
-        };
-        assert!(dad.abstract_declarator.is_some());
-        let Some(abd) = &dad.abstract_declarator else {
-            unreachable!()
-        };
-        assert!(!abd.pointer.is_empty());
-        assert!(matches!(
-            dad,
-            DirectAbstractDeclarator {
-                is_static: false,
-                mult: true,
-                parameter_type_list: None,
-                ..
+        assert_eq!(
+            type_name,
+            TypeName {
+                specifier_qualifier_list: SpecifierQualifierList {
+                    type_qualifier_flags: 0,
+                    type_specifiers: vec![TypeSpecifier::Int],
+                    alignment_specifier: vec![],
+                },
+                abstract_declarator: Some(Declarator {
+                    r#type: DeclaratorType::Abstract,
+                    pointer: vec![],
+                    declarator: Some(Box::new(Declarator {
+                        r#type: DeclaratorType::Abstract,
+                        declarator: None,
+                        declarator_form: None,
+                        pointer: vec![Pointer {
+                            type_qualifier_flags: 0
+                        }],
+                    })),
+                    declarator_form: Some(DeclaratorForm::Array {
+                        type_qualifier_flags: 0,
+                        is_static: false,
+                        variable_length: true,
+                        assign_expr: None,
+                    })
+                })
             }
-        ));
+        );
         Ok(())
     }
     #[test]
@@ -1689,31 +1821,88 @@ mod tests {
             let mut flattened = Flattened::new();
             let tokens = lexer(src, false, &mut str_maps)?;
             let dec = parse_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(dec, Declarator { .. }));
             let Declarator {
                 pointer,
-                direct_declarator,
+                declarator,
+                ..
             } = dec;
-            assert!(direct_declarator.is_some());
-            let Some(direct_declarator) = direct_declarator else {
+            assert!(declarator.is_some());
+            let Some(declarator) = declarator else {
                 unreachable!()
             };
-            let Some(key) = direct_declarator.identifier else {
+            let DeclaratorType::Direct { identifier } = declarator.r#type else {
                 unreachable!()
             };
-            assert_eq!(key, str_maps.add_byte_vec("hi".as_bytes()));
+            assert_eq!(identifier, Some(str_maps.add_byte_vec("hi".as_bytes())));
             assert!(!pointer.is_empty());
         }
         Ok(())
     }
     #[test]
-    fn parse_parameter_type_list_test() -> Result<(), String> {
-        let src = r#"int hi, int hi2, int hi3;"#.as_bytes();
+    fn parse_parameter_list_test() -> Result<(), String> {
+        let src = r#"int hi, int hi2, int hi3"#.as_bytes();
         let mut str_maps = ByteVecMaps::new();
         let mut flattened = Flattened::new();
         let tokens = lexer(src, false, &mut str_maps)?;
-        let ptl = parse_parameter_type_list(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-        assert!(ptl.parameter_declarations.len() == 3);
+        let ptl = parse_parameter_list(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+        assert_eq!(
+            ptl,
+            ParameterList {
+                parameter_declarations: vec![
+                    ParameterDeclaration {
+                        declaration_specifiers: DeclarationSpecifiers {
+                            type_specifiers: vec![TypeSpecifier::Int],
+                            type_qualifier_flags: 0,
+                            storage_class_specifiers_flags: 0,
+                            alignment_specifiers: vec![],
+                            function_specifier: None,
+                        },
+                        declarator: Declarator {
+                            r#type: DeclaratorType::Direct {
+                                identifier: Some(str_maps.add_byte_vec("hi".as_bytes()))
+                            },
+                            pointer: vec![],
+                            declarator: None,
+                            declarator_form: None,
+                        }
+                    },
+                    ParameterDeclaration {
+                        declaration_specifiers: DeclarationSpecifiers {
+                            type_specifiers: vec![TypeSpecifier::Int],
+                            type_qualifier_flags: 0,
+                            storage_class_specifiers_flags: 0,
+                            alignment_specifiers: vec![],
+                            function_specifier: None,
+                        },
+                        declarator: Declarator {
+                            r#type: DeclaratorType::Direct {
+                                identifier: Some(str_maps.add_byte_vec("hi2".as_bytes()))
+                            },
+                            declarator: None,
+                            pointer: vec![],
+                            declarator_form: None
+                        }
+                    },
+                    ParameterDeclaration {
+                        declaration_specifiers: DeclarationSpecifiers {
+                            type_specifiers: vec![TypeSpecifier::Int],
+                            type_qualifier_flags: 0,
+                            storage_class_specifiers_flags: 0,
+                            alignment_specifiers: vec![],
+                            function_specifier: None,
+                        },
+                        declarator: Declarator {
+                            r#type: DeclaratorType::Direct {
+                                identifier: Some(str_maps.add_byte_vec("hi3".as_bytes()))
+                            },
+                            declarator: None,
+                            declarator_form: None,
+                            pointer: vec![],
+                        }
+                    }
+                ]
+            }
+        );
         Ok(())
     }
     #[test]
@@ -1726,24 +1915,15 @@ mod tests {
             let struct_declarator =
                 parse_struct_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
-                struct_declarator.declarator,
-                Some(Declarator {
-                    direct_declarator: Some(DirectDeclarator { .. }),
+                struct_declarator,
+                StructDeclarator::WithConstExpr {
+                    declarator: Declarator {
+                        r#type: DeclaratorType::Direct { .. },
+                        ..
+                    },
                     ..
-                })
+                }
             ));
-            assert_eq!(
-                struct_declarator
-                    .declarator
-                    .clone()
-                    .unwrap()
-                    .direct_declarator
-                    .unwrap()
-                    .identifier
-                    .unwrap(),
-                str_maps.add_byte_vec("hi".as_bytes())
-            );
-            assert!(struct_declarator.const_expr.is_some());
         }
         Ok(())
     }
@@ -1767,40 +1947,10 @@ int : 4;
                     .len()
                     == 1
             );
-            assert!(
-                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
-                    .const_expr
-                    .is_some()
-            );
-        }
-        {
-            let src = r#"struct {
-int hi;
-};"#
-            .as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let mut flattened = Flattened::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            let struct_union_specifier =
-                parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
-            assert!(
-                struct_union_specifier.struct_declaration_list[0]
-                    .specifier_qualifier_list
-                    .type_specifiers
-                    .len()
-                    == 1
-            );
-            assert!(
-                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
-                    .declarator
-                    .clone()
-                    .unwrap()
-                    .direct_declarator
-                    .unwrap()
-                    .identifier
-                    .is_some()
-            );
+            assert!(matches!(
+                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0],
+                StructDeclarator::WithConstExpr { .. }
+            ));
         }
         {
             let src = r#"struct HEHE {
@@ -1824,16 +1974,10 @@ int hi;
                     .len()
                     == 1
             );
-            assert!(
-                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0]
-                    .declarator
-                    .clone()
-                    .unwrap()
-                    .direct_declarator
-                    .unwrap()
-                    .identifier
-                    .is_some()
-            );
+            assert!(matches!(
+                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0],
+                StructDeclarator::Declarator(_)
+            ));
         }
         Ok(())
     }
@@ -1900,36 +2044,37 @@ int hi;
             let Some(InitDeclarator::Declarator(d)) = init_declarator_list.get(0) else {
                 unreachable!()
             };
-            assert!(d.pointer.is_empty());
-            assert!(d.direct_declarator.is_some());
-            let Some(dd) = &d.direct_declarator else {
-                unreachable!()
-            };
-            assert!(dd.declarator.is_some());
-            assert!(dd.parameter_type_list.is_some());
-            let Some(ddd) = &dd.declarator else {
-                unreachable!()
-            };
-            assert!(!ddd.pointer.is_empty());
-            assert!(ddd.direct_declarator.is_some());
-            let Some(ddddd) = &ddd.direct_declarator else {
-                unreachable!()
-            };
-            assert!(ddddd.parameter_type_list.is_some());
-            assert!(ddddd.declarator.is_some());
-            let Some(dddddd) = &ddddd.declarator else {
-                unreachable!()
-            };
-            assert!(!dddddd.pointer.is_empty());
-            assert!(dddddd.direct_declarator.is_some());
-            let Some(ddddddd) = &dddddd.direct_declarator else {
-                unreachable!()
-            };
-            assert!(ddddddd.identifier.is_some());
-            let Some(key) = ddddddd.identifier else {
-                unreachable!()
-            };
-            assert_eq!(str_maps.key_to_byte_vec[key], b"f");
+            assert_eq!(
+                *d,
+                Declarator {
+                    r#type: DeclaratorType::Direct { identifier: None },
+                    declarator: Some(Box::new(Declarator {
+                        r#type: DeclaratorType::Direct { identifier: None },
+                        declarator: Some(Box::new(Declarator {
+                            r#type: DeclaratorType::Direct {
+                                identifier: Some(str_maps.add_byte_vec("f".as_bytes()))
+                            },
+                            declarator: None,
+                            pointer: vec![Pointer {
+                                type_qualifier_flags: 0
+                            }],
+                            declarator_form: None
+                        })),
+                        pointer: vec![Pointer {
+                            type_qualifier_flags: 0
+                        }],
+                        declarator_form: Some(DeclaratorForm::Function {
+                            parameter_type_list: None,
+                            identifier_list: None
+                        }),
+                    })),
+                    pointer: vec![],
+                    declarator_form: Some(DeclaratorForm::Function {
+                        parameter_type_list: None,
+                        identifier_list: None
+                    }),
+                }
+            );
         }
         Ok(())
     }

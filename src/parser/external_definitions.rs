@@ -82,6 +82,7 @@ pub fn parse_external_declarations(
 #[cfg(test)]
 mod tests {
     use super::{parse_external_declarations, ExternalDeclaration};
+    use crate::parser::declarations::*;
     use crate::{lexer, parser};
     #[test]
     fn parse_external_declarations_test() -> Result<(), String> {
@@ -111,24 +112,62 @@ mod tests {
                 declaration_specifier.type_specifiers.get(0),
                 Some(parser::declarations::TypeSpecifier::Void)
             ));
-            assert!(declarator.direct_declarator.is_some());
-            let Some(direct_declarator) = declarator.direct_declarator else {
-                unreachable!()
+            let correct_declarator = Declarator {
+                r#type: DeclaratorType::Direct {
+                    identifier: Some(str_maps.add_byte_vec("f".as_bytes())),
+                },
+                declarator: None,
+                pointer: vec![],
+                declarator_form: Some(DeclaratorForm::Function {
+                    parameter_type_list: Some(ParameterTypeList {
+                        parameter_list: ParameterList {
+                            parameter_declarations: vec![
+                                ParameterDeclaration {
+                                    declaration_specifiers: DeclarationSpecifiers {
+                                        storage_class_specifiers_flags: 0,
+                                        type_specifiers: vec![TypeSpecifier::Int],
+                                        type_qualifier_flags: 0,
+                                        function_specifier: None,
+                                        alignment_specifiers: vec![],
+                                    },
+                                    declarator: Declarator {
+                                        r#type: DeclaratorType::Direct {
+                                            identifier: Some(
+                                                str_maps.add_byte_vec("hi".as_bytes()),
+                                            ),
+                                        },
+                                        pointer: vec![],
+                                        declarator: None,
+                                        declarator_form: None,
+                                    },
+                                },
+                                ParameterDeclaration {
+                                    declaration_specifiers: DeclarationSpecifiers {
+                                        storage_class_specifiers_flags: 0,
+                                        type_specifiers: vec![TypeSpecifier::Int],
+                                        type_qualifier_flags: 0,
+                                        function_specifier: None,
+                                        alignment_specifiers: vec![],
+                                    },
+                                    declarator: Declarator {
+                                        r#type: DeclaratorType::Direct {
+                                            identifier: Some(
+                                                str_maps.add_byte_vec("hi2".as_bytes()),
+                                            ),
+                                        },
+                                        declarator: None,
+                                        pointer: vec![],
+                                        declarator_form: None,
+                                    },
+                                },
+                            ],
+                        },
+                        ellipsis: false,
+                    }),
+                    identifier_list: None,
+                }),
             };
-            assert!(direct_declarator.parameter_type_list.is_some());
-            let Some(ptl) = direct_declarator.parameter_type_list else {
-                unreachable!()
-            };
-            assert!(ptl.parameter_declarations.len() == 2);
-            assert!(matches!(
-                ptl.parameter_declarations.get(0),
-                Some(parser::declarations::ParameterDeclaration::WithDeclarator { .. })
-            ));
-            assert!(matches!(
-                ptl.parameter_declarations.get(1),
-                Some(parser::declarations::ParameterDeclaration::WithDeclarator { .. })
-            ));
-            assert!(declaration_list.is_none());
+            assert_eq!(declarator, correct_declarator);
         }
         {
             let src = r#"void f(int hi, int hi2);"#;
