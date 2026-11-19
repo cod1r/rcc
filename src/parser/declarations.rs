@@ -132,7 +132,7 @@ pub struct StructUnionSpecifier {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Enumerator {
     Enum(usize),
-    EnumWithConstantExpr(usize, i128),
+    EnumWithConstantExpr(usize, Expr),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumSpecifier {
@@ -352,7 +352,9 @@ pub fn parse_init_declarator_list(
     let mut init_declarators = Vec::new();
     loop {
         match tokens.get(*index) {
-            Some(Token { .. }) => {
+            Some(Token { r#type, .. })
+                if *r#type != TokenType::COMMA && *r#type != TokenType::SEMI_COLON =>
+            {
                 let init_declarator = parse_init_declarator(tokens, index, flattened, str_maps)?;
                 init_declarators.push(init_declarator);
             }
@@ -384,8 +386,9 @@ pub fn parse_declarations(
     str_maps: &mut ByteVecMaps,
 ) -> Result<Declaration, String> {
     let mut declaration = Declaration::new();
-    let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
-    declaration.declaration_specifiers = declaration_specifier;
+    let declaration_specifiers = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
+    consume_whitespace(tokens, index);
+    declaration.declaration_specifiers = declaration_specifiers;
     declaration.init_declarator_list =
         parse_init_declarator_list(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
@@ -687,6 +690,9 @@ pub fn parse_declarator(
             *index += 1;
             consume_whitespace(tokens, index);
             let inner_declarator = parse_declarator(&tokens, index, flattened, str_maps)?;
+            if matches!(inner_declarator.r#type, DeclaratorType::Direct { .. }) {
+                declarator.r#type = DeclaratorType::Direct { identifier: None };
+            }
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             declarator.declarator = Some(Box::new(inner_declarator));
         }
@@ -797,9 +803,14 @@ pub fn parse_declarator(
                 });
             } else {
                 let ident_list = parse_identifier_list(tokens, index, str_maps)?;
+                expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
                 declarator.declarator_form = Some(DeclaratorForm::Function {
                     parameter_type_list: None,
-                    identifier_list: Some(ident_list),
+                    identifier_list: if !ident_list.is_empty() {
+                        Some(ident_list)
+                    } else {
+                        None
+                    },
                 });
             }
         }
@@ -937,12 +948,15 @@ fn parse_struct_union_specifier(
 fn parse_enumerator_specifier(
     tokens: &[lexer::Token],
     index: &mut usize,
-    str_maps: &mut lexer::ByteVecMaps,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
 ) -> Result<EnumSpecifier, String> {
     let mut enum_specifier = EnumSpecifier {
         identifier: None,
         enumerator_list: Vec::new(),
     };
+    expected_token(tokens, index, TokenType::ENUM, "Expected 'enum'")?;
+    *index += 1;
     consume_whitespace(tokens, index);
     if let Some(Token {
         r#type: TokenType::IDENT { str_map_key, .. },
@@ -954,20 +968,21 @@ fn parse_enumerator_specifier(
     }
     consume_whitespace(tokens, index);
     expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
-    while *index < tokens.len() {
+    loop {
         match tokens[*index] {
             Token {
                 r#type: TokenType::WHITESPACE | TokenType::NEWLINE,
                 ..
-            } => {}
-            Token {
-                r#type: TokenType::CLOSE_CURLY,
-                ..
-            } => break,
+            } => {
+                consume_whitespace(tokens, index);
+                continue;
+            }
             Token {
                 r#type: TokenType::IDENT { str_map_key, .. },
                 ..
             } => {
+                *index += 1;
+                consume_whitespace(tokens, index);
                 if matches!(
                     tokens.get(*index),
                     Some(Token {
@@ -975,38 +990,54 @@ fn parse_enumerator_specifier(
                         ..
                     })
                 ) {
-                    // TODO: probably call parse_expressions here instead of evaluating
-                    //let expr = parse_conditional_expression(tokens, index, str_maps, ...)?;
+                    *index += 1;
+                    consume_whitespace(tokens, index);
+                    let expr = parse_conditional_expression(tokens, index, flattened, str_maps)?;
                     enum_specifier
                         .enumerator_list
-                        .push(Enumerator::EnumWithConstantExpr(str_map_key, 0));
+                        .push(Enumerator::EnumWithConstantExpr(str_map_key, expr));
                 } else {
                     enum_specifier
                         .enumerator_list
                         .push(Enumerator::Enum(str_map_key));
                 }
-                if !matches!(
-                    tokens.get(*index),
+                consume_whitespace(tokens, index);
+                match tokens.get(*index) {
                     Some(Token {
                         r#type: TokenType::CLOSE_CURLY,
                         ..
-                    })
-                ) {
-                    expected_token(tokens, index, TokenType::COMMA, "Expected ','")?;
-                } else if !matches!(
-                    tokens.get(*index),
+                    }) => {
+                        *index += 1;
+                        break;
+                    }
                     Some(Token {
                         r#type: TokenType::COMMA,
                         ..
-                    }),
-                ) {
-                    expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
-                    break;
+                    }) => {
+                        *index += 1;
+                        continue;
+                    }
+                    Some(Token { location, .. }) => {
+                        let location = location.unwrap();
+                        return Err(error("Unexpected token", location.line, location.column));
+                    }
+                    None => {
+                        return Err("Unexpected end of tokens".to_string());
+                    }
                 }
             }
-            _ => return Err(format!("Unexpected token: {:?}", tokens[*index])),
+            Token {
+                location: Some(location),
+                ..
+            } => {
+                return Err(error(
+                    "Unexpected token",
+                    location.line,
+                    location.column,
+                ))
+            }
+            _ => unreachable!(),
         }
-        *index += 1;
     }
     Ok(enum_specifier)
 }
@@ -1261,7 +1292,8 @@ pub fn parse_type_specifiers(
                 r#type: TokenType::ENUM,
                 ..
             } => {
-                let enum_specifier = parse_enumerator_specifier(tokens, index, str_maps)?;
+                let enum_specifier =
+                    parse_enumerator_specifier(tokens, index, flattened, str_maps)?;
                 type_specifiers.push(TypeSpecifier::Enum(enum_specifier));
                 continue;
             }
@@ -1560,30 +1592,20 @@ mod tests {
     #[test]
     fn parse_enumerator_specifier_test() -> Result<(), String> {
         {
-            let src = r#"
-        enum HI {
+            let src = r#"enum HI {
             YOUR_MOM,
-            HEHE,
-        }
-"#
+            HEHE
+        }"#
             .as_bytes();
             let mut str_maps = ByteVecMaps::new();
             let tokens = lexer(src, false, &mut str_maps)?;
-            let mut start_index = {
-                let mut index = 0;
-                while !matches!(
-                    tokens.get(index),
-                    Some(Token {
-                        r#type: TokenType::ENUM,
-                        ..
-                    })
-                ) {
-                    index += 1;
-                }
-                index + 1
-            };
-            let enum_specifier =
-                parse_enumerator_specifier(tokens.as_slice(), &mut start_index, &mut str_maps)?;
+            let mut flattened = Flattened::new();
+            let enum_specifier = parse_enumerator_specifier(
+                tokens.as_slice(),
+                &mut 0,
+                &mut flattened,
+                &mut str_maps,
+            )?;
             assert_eq!(
                 enum_specifier.identifier,
                 Some(str_maps.add_byte_vec("HI".as_bytes()))
@@ -1593,49 +1615,6 @@ mod tests {
                 vec![
                     Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
                     Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes()))
-                ],
-                "failed 1"
-            );
-        }
-        {
-            let src = r#"
-        enum HI {
-            YOUR_MOM,
-            HEHE,
-            THIS_PIGGY = 4,
-        }
-"#
-            .as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            let mut start_index = {
-                let mut index = 0;
-                while !matches!(
-                    tokens.get(index),
-                    Some(Token {
-                        r#type: TokenType::ENUM,
-                        ..
-                    })
-                ) {
-                    index += 1;
-                }
-                index + 1
-            };
-            let enum_specifier =
-                parse_enumerator_specifier(tokens.as_slice(), &mut start_index, &mut str_maps)?;
-            assert_eq!(
-                enum_specifier.identifier,
-                Some(str_maps.add_byte_vec("HI".as_bytes()))
-            );
-            assert_eq!(
-                enum_specifier.enumerator_list,
-                vec![
-                    Enumerator::Enum(str_maps.add_byte_vec("YOUR_MOM".as_bytes())),
-                    Enumerator::Enum(str_maps.add_byte_vec("HEHE".as_bytes())),
-                    Enumerator::EnumWithConstantExpr(
-                        str_maps.add_byte_vec("THIS_PIGGY".as_bytes()),
-                        4
-                    ),
                 ],
                 "failed 1"
             );
@@ -1814,31 +1793,6 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn parse_declarators_test_simple() -> Result<(), String> {
-        {
-            let src = r#"* hi"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let mut flattened = Flattened::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            let dec = parse_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            let Declarator {
-                pointer,
-                declarator,
-                ..
-            } = dec;
-            assert!(declarator.is_some());
-            let Some(declarator) = declarator else {
-                unreachable!()
-            };
-            let DeclaratorType::Direct { identifier } = declarator.r#type else {
-                unreachable!()
-            };
-            assert_eq!(identifier, Some(str_maps.add_byte_vec("hi".as_bytes())));
-            assert!(!pointer.is_empty());
-        }
-        Ok(())
-    }
-    #[test]
     fn parse_parameter_list_test() -> Result<(), String> {
         let src = r#"int hi, int hi2, int hi3"#.as_bytes();
         let mut str_maps = ByteVecMaps::new();
@@ -1983,39 +1937,39 @@ int hi;
     }
     #[test]
     fn parse_declarations_test() -> Result<(), String> {
-        //{
-        //    let src = r#"int hi = 4;"#;
-        //    let mut str_maps = ByteVecMaps::new();
-        //    let mut flattened = Flattened::new();
-        //    let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
-        //    let declaration = parse_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-        //    let Declaration {
-        //        declaration_specifiers,
-        //        init_declarator_list,
-        //    } = declaration;
-        //    assert!(
-        //        matches!(
-        //            declaration_specifiers.type_specifiers.get(0),
-        //            Some(TypeSpecifier::Int)
-        //        ),
-        //        "int was not added to the type specifier list"
-        //    );
-        //    assert!(
-        //        matches!(
-        //            init_declarator_list.get(0),
-        //            Some(InitDeclarator::DeclaratorWithInitializer(_))
-        //        ),
-        //        "declarator and initializer not added to list",
-        //    );
-        //    let Some(InitDeclarator::DeclaratorWithInitializer(di)) = init_declarator_list.get(0)
-        //    else {
-        //        unreachable!()
-        //    };
-        //    assert!(matches!(
-        //        di.initializer,
-        //        Initializer::AssignmentExpression(_)
-        //    ));
-        //}
+        {
+            let src = r#"int hi = 4;"#;
+            let mut str_maps = ByteVecMaps::new();
+            let mut flattened = Flattened::new();
+            let tokens = lexer(src.as_bytes(), false, &mut str_maps)?;
+            let declaration = parse_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            let Declaration {
+                declaration_specifiers,
+                init_declarator_list,
+            } = declaration;
+            assert!(
+                matches!(
+                    declaration_specifiers.type_specifiers.get(0),
+                    Some(TypeSpecifier::Int)
+                ),
+                "int was not added to the type specifier list"
+            );
+            assert!(
+                matches!(
+                    init_declarator_list.get(0),
+                    Some(InitDeclarator::DeclaratorWithInitializer(_))
+                ),
+                "declarator and initializer not added to list",
+            );
+            let Some(InitDeclarator::DeclaratorWithInitializer(di)) = init_declarator_list.get(0)
+            else {
+                unreachable!()
+            };
+            assert!(matches!(
+                di.initializer,
+                Initializer::AssignmentExpression(_)
+            ));
+        }
         {
             // gnarly
             let src = r#"void (*(*f[])())();"#;
@@ -2058,7 +2012,12 @@ int hi;
                             pointer: vec![Pointer {
                                 type_qualifier_flags: 0
                             }],
-                            declarator_form: None
+                            declarator_form: Some(DeclaratorForm::Array {
+                                type_qualifier_flags: 0,
+                                is_static: false,
+                                variable_length: false,
+                                assign_expr: None
+                            })
                         })),
                         pointer: vec![Pointer {
                             type_qualifier_flags: 0

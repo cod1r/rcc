@@ -959,7 +959,7 @@ fn parse_logical_OR_expression(
     }
 }
 
-fn parse_conditional_expression(
+pub fn parse_conditional_expression(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
