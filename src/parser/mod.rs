@@ -57,8 +57,10 @@ pub fn expected_token(
 }
 
 pub fn consume_token(tokens: &[Token], index: &mut usize, token: TokenType) {
-    if matches!(tokens.get(*index), Some(Token { r#type: token, .. })) {
-        *index += 1;
+    if let Some(Token { r#type, .. }) = tokens.get(*index) {
+        if *r#type == token {
+            *index += 1;
+        }
     }
 }
 

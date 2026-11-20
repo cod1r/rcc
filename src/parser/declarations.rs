@@ -245,12 +245,15 @@ pub type InitializerIndex = usize;
 pub type DesignationIndex = usize;
 pub type InitializerListIndex = usize;
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub struct InitializerList {
-    designation: Option<DesignationIndex>,
-    initializer: InitializerIndex,
-    next: Option<InitializerListIndex>,
+pub struct DesignationInitializer {
+    pub designation: Option<DesignationIndex>,
+    pub initializer: InitializerIndex,
 }
-#[derive(Copy, Clone)]
+#[derive(Debug, PartialEq, Clone)]
+pub struct InitializerList {
+    designation_initializers: Vec<DesignationInitializer>,
+}
+#[derive(Copy, Clone, PartialEq)]
 pub enum Initializer {
     AssignmentExpression(ExpressionIndex),
     InitializerList(InitializerListIndex),
@@ -396,35 +399,6 @@ pub fn parse_declarations(
     Ok(declaration)
 }
 
-pub fn parse_initializer(
-    tokens: &[lexer::Token],
-    index: &mut usize,
-    flattened: &mut Flattened,
-    str_maps: &mut lexer::ByteVecMaps,
-) -> Result<Initializer, String> {
-    consume_whitespace(tokens, index);
-    match tokens.get(*index) {
-        Some(Token {
-            r#type: TokenType::OPEN_CURLY,
-            ..
-        }) => {
-            *index += 1;
-            let il = parse_initializer_list(&tokens, index, flattened, str_maps)?;
-            flattened.initializer_lists.push(il);
-            Ok(Initializer::InitializerList(
-                flattened.initializer_lists.len() - 1,
-            ))
-        }
-        _ => {
-            let expr = parse_expressions(tokens, index, flattened, str_maps)?;
-            flattened.expressions.push(expr);
-            Ok(Initializer::AssignmentExpression(
-                flattened.expressions.len() - 1,
-            ))
-        }
-    }
-}
-
 fn parse_designator(
     tokens: &[Token],
     index: &mut usize,
@@ -437,7 +411,9 @@ fn parse_designator(
             ..
         }) => {
             *index += 1;
+            consume_whitespace(tokens, index);
             let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
+            consume_whitespace(tokens, index);
             expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
             flattened.expressions.push(expr);
             return Ok(Designator::WithConstantExpr(
@@ -454,24 +430,27 @@ fn parse_designator(
             let Some(Token {
                 r#type: TokenType::IDENT { str_map_key, .. },
                 ..
-            }) = tokens.get(*index)
+            }) = tokens.get(*index - 1)
             else {
                 unreachable!()
             };
             return Ok(Designator::WithIdentifier(*str_map_key));
         }
-        _ => {}
-    }
-    match tokens.get(*index) {
-        Some(Token {
-            location: Some(Location { line, column }),
-            ..
-        }) => {
-            return Err(error("Unexpected =, expected . or [", *line, *column));
+        Some(t @ Token { location, .. }) => {
+            let location = location.unwrap();
+            return Err(error(
+                format!(
+                    "Unexpected {}",
+                    str::from_utf8(&t.to_byte_vec(str_maps).unwrap()).unwrap()
+                )
+                .as_str(),
+                location.line,
+                location.column,
+            ));
         }
-        _ => {}
+        None => {}
     }
-    return Err("Unexpected =, expected . or [".to_string());
+    return Err("Expected . or [".to_string());
 }
 
 fn parse_designator_list(
@@ -481,14 +460,37 @@ fn parse_designator_list(
     str_maps: &mut ByteVecMaps,
 ) -> Result<Vec<Designator>, String> {
     let mut designators = Vec::new();
-    while !matches!(
-        tokens.get(*index),
-        Some(Token {
-            r#type: TokenType::ASSIGNMENT,
-            ..
-        })
-    ) {
+    loop {
         designators.push(parse_designator(tokens, index, flattened, str_maps)?);
+        consume_whitespace(tokens, index);
+        match tokens.get(*index) {
+            Some(Token {
+                r#type: TokenType::ASSIGNMENT,
+                ..
+            }) => {}
+            Some(Token {
+                r#type: TokenType::OPEN_SQR | TokenType::DOT,
+                ..
+            }) => {
+                continue;
+            }
+            Some(t @ Token { location, .. }) => {
+                let location = location.unwrap();
+                return Err(error(
+                    format!(
+                        "Unexpected {}",
+                        str::from_utf8(&t.to_byte_vec(str_maps).unwrap()).unwrap()
+                    )
+                    .as_str(),
+                    location.line,
+                    location.column,
+                ));
+            }
+            None => {
+                return Err("Unexpected end of tokens".to_string());
+            }
+        }
+        break;
     }
     Ok(designators)
 }
@@ -499,10 +501,11 @@ fn parse_designation(
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
 ) -> Result<Designation, String> {
-    let mut designation = Designation {
+    let designation = Designation {
         designator_list: parse_designator_list(tokens, index, flattened, str_maps)?,
     };
     consume_whitespace(tokens, index);
+    expected_token(tokens, index, TokenType::ASSIGNMENT, "Expected '='")?;
     Ok(designation)
 }
 
@@ -515,11 +518,8 @@ pub fn parse_initializer_list(
     str_maps: &mut ByteVecMaps,
 ) -> Result<InitializerList, String> {
     consume_whitespace(tokens, index);
-    let mut first_initializer_list = None;
+    let mut designation_initializers = Vec::new();
     loop {
-        if *index >= tokens.len() {
-            break;
-        }
         let mut designation = None;
         if matches!(
             tokens.get(*index),
@@ -534,40 +534,89 @@ pub fn parse_initializer_list(
         }
         let init = parse_initializer(&tokens, index, flattened, str_maps)?;
         flattened.initializers.push(init);
-        let designation_initializer = InitializerList {
+        let designation_initializer = DesignationInitializer {
             designation,
             initializer: flattened.initializers.len() - 1,
-            next: None,
         };
-        if first_initializer_list.is_none() {
-            // i dont push to flattened.initializer_lists here bc once this function returns first_initializer_list, it'll be pushed to flattened by the caller.
-            first_initializer_list = Some(designation_initializer);
-        } else {
-            flattened.initializer_lists.push(designation_initializer);
-            if first_initializer_list.unwrap().next.is_none() {
-                let Some(il) = &mut first_initializer_list else {
-                    unreachable!()
-                };
-                il.next = Some(flattened.initializer_lists.len() - 1);
-            } else {
-                let mut il = flattened.initializer_lists[flattened.initializer_lists.len() - 2];
-                il.next = Some(flattened.initializer_lists.len() - 1);
-            }
-        }
-        if !matches!(
-            tokens.get(*index),
+        designation_initializers.push(designation_initializer);
+        consume_whitespace(tokens, index);
+        match tokens.get(*index) {
             Some(Token {
                 r#type: TokenType::COMMA,
                 ..
-            })
-        ) {
-            break;
+            }) => {
+                *index += 1;
+                consume_whitespace(tokens, index);
+                if matches!(
+                    tokens.get(*index),
+                    Some(Token {
+                        r#type: TokenType::CLOSE_CURLY,
+                        ..
+                    })
+                ) {
+                    break;
+                }
+                continue;
+            }
+            Some(Token {
+                r#type: TokenType::CLOSE_CURLY,
+                ..
+            }) => {
+                break;
+            }
+            Some(t @ Token { location, .. }) => {
+                let location = location.unwrap();
+                return Err(error(
+                    format!(
+                        "Unexpected {}",
+                        str::from_utf8(&t.to_byte_vec(str_maps).unwrap()).unwrap()
+                    )
+                    .as_str(),
+                    location.line,
+                    location.column,
+                ));
+            }
+            None => {
+                return Err("Unexpected end of tokens".to_string());
+            }
         }
-        *index += 1;
     }
     consume_token(tokens, index, TokenType::COMMA);
+    consume_whitespace(tokens, index);
     expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
-    Ok(first_initializer_list.unwrap())
+    Ok(InitializerList {
+        designation_initializers,
+    })
+}
+
+pub fn parse_initializer(
+    tokens: &[lexer::Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<Initializer, String> {
+    consume_whitespace(tokens, index);
+    match tokens.get(*index) {
+        Some(Token {
+            r#type: TokenType::OPEN_CURLY,
+            ..
+        }) => {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            let il = parse_initializer_list(&tokens, index, flattened, str_maps)?;
+            flattened.initializer_lists.push(il);
+            Ok(Initializer::InitializerList(
+                flattened.initializer_lists.len() - 1,
+            ))
+        }
+        _ => {
+            let expr = parse_assignment_expression(tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(expr);
+            Ok(Initializer::AssignmentExpression(
+                flattened.expressions.len() - 1,
+            ))
+        }
+    }
 }
 
 fn parse_pointer(tokens: &[lexer::Token], index: &mut usize) -> Vec<Pointer> {
@@ -1029,13 +1078,7 @@ fn parse_enumerator_specifier(
             Token {
                 location: Some(location),
                 ..
-            } => {
-                return Err(error(
-                    "Unexpected token",
-                    location.line,
-                    location.column,
-                ))
-            }
+            } => return Err(error("Unexpected token", location.line, location.column)),
             _ => unreachable!(),
         }
     }
@@ -1632,59 +1675,48 @@ mod tests {
             let Initializer::InitializerList(ili) = i else {
                 unreachable!()
             };
-            let il = flattened.initializer_lists[ili].clone();
-            let il1 = flattened.initializer_lists[il.next.unwrap()];
-            let il2 = flattened.initializer_lists[il1.next.unwrap()];
-            let Some(des1_idx) = il1.designation else {
-                unreachable!()
-            };
-            let des1 = flattened.designations[des1_idx].clone();
+            let il = &flattened.initializer_lists[ili];
             assert_eq!(
-                Designation {
-                    designator_list: vec![Designator::WithIdentifier(
-                        str_maps.add_byte_vec("hi".as_bytes()),
-                    )],
-                },
-                des1
+                *il,
+                InitializerList {
+                    designation_initializers: vec![
+                        DesignationInitializer {
+                            designation: Some(
+                                flattened
+                                    .designations
+                                    .iter()
+                                    .position(|d| d.designator_list
+                                        == vec![Designator::WithIdentifier(
+                                            str_maps.add_byte_vec("hi".as_bytes())
+                                        )])
+                                    .unwrap()
+                            ),
+                            initializer: flattened
+                                .initializers
+                                .iter()
+                                .position(|i| *i == Initializer::AssignmentExpression(0))
+                                .expect("Expected to get an initializer that is in flattened")
+                        },
+                        DesignationInitializer {
+                            designation: Some(
+                                flattened
+                                    .designations
+                                    .iter()
+                                    .position(|d| d.designator_list
+                                        == vec![Designator::WithIdentifier(
+                                            str_maps.add_byte_vec("hi2".as_bytes())
+                                        )])
+                                    .unwrap()
+                            ),
+                            initializer: flattened
+                                .initializers
+                                .iter()
+                                .position(|i| *i == Initializer::AssignmentExpression(1))
+                                .expect("Expected to get an initializer that is in flattened")
+                        }
+                    ]
+                }
             );
-            let ini1_idx = il1.initializer else {
-                unreachable!()
-            };
-            let ini1 = flattened.initializers[ini1_idx].clone();
-            let Initializer::AssignmentExpression(key) = ini1 else {
-                unreachable!()
-            };
-            let expr = flattened.expressions[key];
-            assert!(matches!(expr, Expr::Primary(PrimaryType::Token(_))));
-
-            let Some(des2_idx) = il2.designation else {
-                unreachable!()
-            };
-            let des2 = flattened.designations[des2_idx].clone();
-            assert_eq!(
-                Designation {
-                    designator_list: vec![Designator::WithIdentifier(
-                        str_maps.add_byte_vec("hi2".as_bytes()),
-                    )],
-                },
-                des2
-            );
-            let ini2_idx = il2.initializer else {
-                unreachable!()
-            };
-            let ini2 = flattened.initializers[ini2_idx].clone();
-            let Initializer::AssignmentExpression(key) = ini2 else {
-                unreachable!()
-            };
-            let expr = flattened.expressions[key];
-            assert!(matches!(expr, Expr::Primary(PrimaryType::Token(_))));
-        }
-        {
-            let src = r#"{}"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let mut flattened = Flattened::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            assert!(parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps).is_err());
         }
         {
             let src = r#"{ {[100] = 5}, 8, .baz = "" }"#.as_bytes();
@@ -1692,13 +1724,81 @@ mod tests {
             let mut flattened = Flattened::new();
             let tokens = lexer(src, false, &mut str_maps)?;
             let i = parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-        }
-        {
-            let src = r#"{ 8, 8, .baz = "" }"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let mut flattened = Flattened::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            let i = parse_initializer(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
+            let Initializer::InitializerList(ili) = i else {
+                unreachable!()
+            };
+            let il = &flattened.initializer_lists[ili];
+            assert_eq!(
+                *il,
+                InitializerList {
+                    designation_initializers: vec![
+                        DesignationInitializer {
+                            designation: None,
+                            initializer: flattened
+                                .initializers
+                                .iter()
+                                .position(|i| *i
+                                    == Initializer::InitializerList(
+                                        flattened
+                                            .initializer_lists
+                                            .iter()
+                                            .position(|ii| *ii
+                                                == InitializerList {
+                                                    designation_initializers: vec![
+                                                        DesignationInitializer {
+                                                            designation: Some(
+                                                                flattened
+                                                                    .designations
+                                                                    .iter()
+                                                                    .position(|d| d.designator_list
+                                                                        == vec![
+                                                                    Designator::WithConstantExpr(0)
+                                                                ])
+                                                                    .unwrap()
+                                                            ),
+                                                            initializer: flattened
+                                                                .initializers
+                                                                .iter()
+                                                                .position(|ir| {
+                                                                    *ir
+                                                            == Initializer::AssignmentExpression(1)
+                                                                })
+                                                                .unwrap()
+                                                        }
+                                                    ]
+                                                })
+                                            .unwrap()
+                                    ))
+                                .unwrap()
+                        },
+                        DesignationInitializer {
+                            designation: None,
+                            initializer: flattened
+                                .initializers
+                                .iter()
+                                .position(|i| *i == Initializer::AssignmentExpression(2))
+                                .unwrap()
+                        },
+                        DesignationInitializer {
+                            designation: Some(
+                                flattened
+                                    .designations
+                                    .iter()
+                                    .position(|d| d.designator_list
+                                        == vec![Designator::WithIdentifier(
+                                            str_maps.add_byte_vec("baz".as_bytes())
+                                        )])
+                                    .unwrap()
+                            ),
+                            initializer: flattened
+                                .initializers
+                                .iter()
+                                .position(|ir| { *ir == Initializer::AssignmentExpression(3) })
+                                .unwrap()
+                        }
+                    ]
+                }
+            );
         }
         Ok(())
     }
