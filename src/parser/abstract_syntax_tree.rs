@@ -8,15 +8,6 @@ pub fn print_abstract_syntax_tree(
     println!("Translation Unit:");
     for external_dec in translation_units {
         println!("External Declaration:");
-        match external_dec {
-            ExternalDeclaration::FunctionDef {
-                declaration_specifier,
-                declarator,
-                declaration_list,
-                compound_statement,
-            } => {}
-            ExternalDeclaration::Declaration(declaration) => {}
-        }
     }
 }
 

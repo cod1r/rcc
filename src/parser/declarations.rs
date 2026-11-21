@@ -253,22 +253,22 @@ pub struct DesignationInitializer {
 pub struct InitializerList {
     designation_initializers: Vec<DesignationInitializer>,
 }
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Initializer {
     AssignmentExpression(ExpressionIndex),
     InitializerList(InitializerListIndex),
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DeclaratorWithInitializer {
     declarator: Declarator,
     initializer: Initializer,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InitDeclarator {
     Declarator(Declarator),
     DeclaratorWithInitializer(DeclaratorWithInitializer),
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Declaration {
     pub declaration_specifiers: DeclarationSpecifiers,
     pub init_declarator_list: Vec<InitDeclarator>,
@@ -745,7 +745,10 @@ pub fn parse_declarator(
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             declarator.declarator = Some(Box::new(inner_declarator));
         }
-        Some(Token { r#type: TokenType::CLOSE_PAR, .. }) => {}
+        Some(Token {
+            r#type: TokenType::CLOSE_PAR,
+            ..
+        }) => {}
         Some(Token { location, .. }) => {
             let location = location.unwrap();
             return Err(error(
@@ -816,13 +819,15 @@ pub fn parse_declarator(
                         consume_whitespace(tokens, index);
                         variable_length = true;
                     }
-                    if *index < tokens.len() && !matches!(
-                        tokens.get(*index),
-                        Some(Token {
-                            r#type: TokenType::CLOSE_SQR,
-                            ..
-                        })
-                    ) {
+                    if *index < tokens.len()
+                        && !matches!(
+                            tokens.get(*index),
+                            Some(Token {
+                                r#type: TokenType::CLOSE_SQR,
+                                ..
+                            })
+                        )
+                    {
                         let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
                         consume_whitespace(tokens, index);
                         flattened.expressions.push(expr);
@@ -893,7 +898,13 @@ fn parse_struct_declarator(
     } else {
         let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
         consume_whitespace(tokens, index);
-        if matches!(tokens.get(*index), Some(Token { r#type: TokenType::COLON, .. })) {
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::COLON,
+                ..
+            })
+        ) {
             *index += 1;
             consume_whitespace(tokens, index);
             let const_expr = parse_expressions(&tokens, index, flattened, str_maps)?;
@@ -1602,7 +1613,7 @@ fn parse_parameter_list(
 }
 
 pub fn parse_parameter_type_list(
-    tokens: &[lexer::Token],
+    tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
     str_maps: &mut lexer::ByteVecMaps,
@@ -1618,7 +1629,6 @@ pub fn parse_parameter_type_list(
             true
         }
         _ => {
-            expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             false
         }
     };

@@ -1330,9 +1330,6 @@ fn recursive_eval(
             todo!("the case of `defined identifier` or `defined(identifier)` isn't handled at all.")
         }
         Expr::Unary(u) => {
-            todo!(
-                "the case of `defined identifier` or `defined(identifier)` isn't handled at all."
-            );
             let UnaryType::Expr { op, first } = u else {
                 unreachable!()
             };
@@ -1598,13 +1595,13 @@ mod tests {
     #[test]
     fn eval_expression_test_conditional() -> Result<(), String> {
         let srcs = [
-            r##"1 ? 1 : 0"##.as_bytes(),
-            r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes(),
-            r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes(),
-            r##"0 ? 0 : 1 * 4"##.as_bytes(),
-            r##"0 ? 0 : !(1 * 4)"##.as_bytes(),
+            (r##"1 ? 1 : 0"##.as_bytes(), 1),
+            (r##"(1 + 1 == 3) ? 1 : 0"##.as_bytes(), 0),
+            (r##"~0 ? (1 + 1 == 2) : 0 * 4"##.as_bytes(), 1),
+            (r##"0 ? 0 : 1 * 4"##.as_bytes(), 4),
+            (r##"0 ? 0 : !(1 * 4)"##.as_bytes(), 0),
         ];
-        for src in srcs {
+        for (src, correct) in srcs {
             let mut str_maps = ByteVecMaps::new();
             let mut tokens = lexer(&src.to_vec(), true, &mut str_maps)?;
             let res = eval_constant_expression_integer_when_preprocess(
@@ -1612,7 +1609,7 @@ mod tests {
                 &mut str_maps,
                 &HashMap::new(),
             )?;
-            assert!(res != 0);
+            assert!(res == correct, "{}", str::from_utf8(src).unwrap());
         }
         Ok(())
     }

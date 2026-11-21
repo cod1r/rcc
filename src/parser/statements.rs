@@ -24,12 +24,12 @@ pub enum Label {
     },
     Default(StatementIndex),
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum BlockItem {
     Declaration(declarations::DeclarationIndex),
     Statement(StatementIndex),
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Compound {
     block_item_list: Vec<BlockItem>,
 }

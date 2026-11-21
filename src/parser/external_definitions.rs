@@ -17,63 +17,98 @@ pub fn parse_translation_units(
     }
     Ok(translation_units)
 }
+#[derive(Clone, Debug, PartialEq)]
+struct FunctionDef {
+    declaration_specifiers: DeclarationSpecifiers,
+    declarator: Declarator,
+    declaration_list: Option<Vec<Declaration>>,
+    compound_statement: Compound,
+}
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExternalDeclaration {
-    FunctionDef {
-        declaration_specifier: DeclarationSpecifiers,
-        declarator: Declarator,
-        declaration_list: Option<Vec<Declaration>>,
-        compound_statement: Compound,
-    },
+    FunctionDef(FunctionDef),
     Declaration(Declaration),
 }
+fn parse_declaration_list(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+) -> Result<Vec<Declaration>, String> {
+    let mut declaration_list = Vec::new();
+    loop {
+        let declaration = parse_declarations(tokens, index, flattened, str_maps)?;
+        declaration_list.push(declaration);
+        consume_whitespace(tokens, index);
+        if !matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::OPEN_CURLY,
+                ..
+            })
+        ) {
+            continue;
+        }
+        break;
+    }
+    Ok(declaration_list)
+}
+
+fn parse_rest_of_function_definition(
+    tokens: &[Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut ByteVecMaps,
+    is_declaration_token: bool,
+) -> Result<(Option<Vec<Declaration>>, Compound), String> {
+    let declaration_list = if is_declaration_token {
+        Some(parse_declaration_list(tokens, index, flattened, str_maps)?)
+    } else {
+        None
+    };
+    expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
+    let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
+    Ok((declaration_list, compound))
+}
+
 pub fn parse_external_declarations(
     tokens: &[Token],
     index: &mut usize,
     flattened: &mut Flattened,
     str_maps: &mut ByteVecMaps,
 ) -> Result<ExternalDeclaration, String> {
-    let declaration_specifier = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
+    let start_idx = *index;
+    let declaration_specifiers = parse_declaration_specifiers(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
+    if let Some(Token {
+        r#type: TokenType::SEMI_COLON,
+        ..
+    }) = tokens.get(*index)
+    {
+        *index += 1;
+        return Ok(ExternalDeclaration::Declaration(Declaration {
+            declaration_specifiers: declaration_specifiers,
+            init_declarator_list: vec![],
+        }));
+    }
     let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
     consume_whitespace(tokens, index);
     let Some(t) = tokens.get(*index) else {
         return Err("Unexpected end of tokens".to_string());
     };
-    if is_declaration_token(*t)
-        || matches!(
-            *t,
-            Token {
-                r#type: TokenType::OPEN_CURLY,
-                ..
-            }
-        )
-    {
-        let mut declaration_list = Vec::new();
-        while !matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::OPEN_CURLY,
-                ..
-            }) | None
-        ) {
-            let declaration = parse_declarations(tokens, index, flattened, str_maps)?;
-            declaration_list.push(declaration);
-            consume_whitespace(tokens, index);
-        }
-        expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
-        let compound = parse_compound_statement(tokens, index, flattened, str_maps)?;
-        expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
-        Ok(ExternalDeclaration::FunctionDef {
-            declaration_specifier,
+    let idt = is_declaration_token(*t);
+    if idt || t.r#type == TokenType::OPEN_CURLY {
+        let (declaration_list, compound) =
+            parse_rest_of_function_definition(tokens, index, flattened, str_maps, idt)?;
+        Ok(ExternalDeclaration::FunctionDef(FunctionDef {
+            declaration_specifiers,
             declarator,
-            declaration_list: if !declaration_list.is_empty() {
-                Some(declaration_list)
-            } else {
-                None
-            },
+            declaration_list,
             compound_statement: compound,
-        })
+        }))
     } else {
+        // restart the index so that it's easier to call parse_declarations
+        *index = start_idx;
         let declaration = parse_declarations(tokens, index, flattened, str_maps)?;
         Ok(ExternalDeclaration::Declaration(declaration))
     }
@@ -81,7 +116,7 @@ pub fn parse_external_declarations(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_external_declarations, ExternalDeclaration};
+    use super::{parse_external_declarations, ExternalDeclaration, FunctionDef};
     use crate::parser::declarations::*;
     use crate::{lexer, parser};
     #[test]
@@ -97,19 +132,19 @@ mod tests {
                 parse_external_declarations(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
             assert!(matches!(
                 external_declaration,
-                ExternalDeclaration::FunctionDef { .. }
+                ExternalDeclaration::FunctionDef (_)
             ));
-            let ExternalDeclaration::FunctionDef {
-                declaration_specifier,
+            let ExternalDeclaration::FunctionDef (FunctionDef {
+                declaration_specifiers,
                 declarator,
                 declaration_list,
                 compound_statement,
-            } = external_declaration
+            }) = external_declaration
             else {
                 unreachable!()
             };
             assert!(matches!(
-                declaration_specifier.type_specifiers.get(0),
+                declaration_specifiers.type_specifiers.get(0),
                 Some(parser::declarations::TypeSpecifier::Void)
             ));
             let correct_declarator = Declarator {
