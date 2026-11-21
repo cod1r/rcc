@@ -99,7 +99,7 @@ pub struct Pointer {
 pub enum StructDeclarator {
     Declarator(Declarator),
     WithConstExpr {
-        declarator: Declarator,
+        declarator: Option<Declarator>,
         const_expr: ExpressionIndex,
     },
 }
@@ -745,6 +745,7 @@ pub fn parse_declarator(
             expected_token(tokens, index, TokenType::CLOSE_PAR, "Expected ')'")?;
             declarator.declarator = Some(Box::new(inner_declarator));
         }
+        Some(Token { r#type: TokenType::CLOSE_PAR, .. }) => {}
         Some(Token { location, .. }) => {
             let location = location.unwrap();
             return Err(error(
@@ -814,9 +815,8 @@ pub fn parse_declarator(
                         *index += 1;
                         consume_whitespace(tokens, index);
                         variable_length = true;
-                        expected_token(tokens, index, TokenType::CLOSE_SQR, "Expected ']'")?;
                     }
-                    if !matches!(
+                    if *index < tokens.len() && !matches!(
                         tokens.get(*index),
                         Some(Token {
                             r#type: TokenType::CLOSE_SQR,
@@ -824,6 +824,7 @@ pub fn parse_declarator(
                         })
                     ) {
                         let expr = parse_expressions(&tokens, index, flattened, str_maps)?;
+                        consume_whitespace(tokens, index);
                         flattened.expressions.push(expr);
                         assign_expr = Some(flattened.expressions.len() - 1);
                     }
@@ -874,8 +875,6 @@ fn parse_struct_declarator(
     flattened: &mut Flattened,
     str_maps: &mut lexer::ByteVecMaps,
 ) -> Result<StructDeclarator, String> {
-    let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
-    consume_whitespace(tokens, index);
     if matches!(
         tokens.get(*index),
         Some(Token {
@@ -884,14 +883,28 @@ fn parse_struct_declarator(
         })
     ) {
         *index += 1;
+        consume_whitespace(tokens, index);
         let const_expr = parse_expressions(&tokens, index, flattened, str_maps)?;
         flattened.expressions.push(const_expr);
         Ok(StructDeclarator::WithConstExpr {
-            declarator,
+            declarator: None,
             const_expr: flattened.expressions.len() - 1,
         })
     } else {
-        Ok(StructDeclarator::Declarator(declarator))
+        let declarator = parse_declarator(tokens, index, flattened, str_maps)?;
+        consume_whitespace(tokens, index);
+        if matches!(tokens.get(*index), Some(Token { r#type: TokenType::COLON, .. })) {
+            *index += 1;
+            consume_whitespace(tokens, index);
+            let const_expr = parse_expressions(&tokens, index, flattened, str_maps)?;
+            flattened.expressions.push(const_expr);
+            Ok(StructDeclarator::WithConstExpr {
+                declarator: Some(declarator),
+                const_expr: flattened.expressions.len() - 1,
+            })
+        } else {
+            Ok(StructDeclarator::Declarator(declarator))
+        }
     }
 }
 
@@ -920,12 +933,36 @@ fn parse_struct_declaration(
                 ..
             })
         ) {
-            *index += 1;
-            return Ok(struct_declaration);
+            break;
         }
         expected_token(tokens, index, TokenType::COMMA, "Expected ','")?;
     }
     expected_token(tokens, index, TokenType::SEMI_COLON, "Expected ';'")?;
+    return Ok(struct_declaration);
+}
+
+fn parse_struct_declaration_list(
+    tokens: &[lexer::Token],
+    index: &mut usize,
+    flattened: &mut Flattened,
+    str_maps: &mut lexer::ByteVecMaps,
+) -> Result<Vec<StructDeclaration>, String> {
+    let mut struct_declaration_list = Vec::new();
+    loop {
+        let struct_declaration = parse_struct_declaration(tokens, index, flattened, str_maps)?;
+        struct_declaration_list.push(struct_declaration);
+        consume_whitespace(tokens, index);
+        if matches!(
+            tokens.get(*index),
+            Some(Token {
+                r#type: TokenType::CLOSE_CURLY,
+                ..
+            })
+        ) {
+            break;
+        }
+    }
+    Ok(struct_declaration_list)
 }
 
 fn parse_struct_union_specifier(
@@ -944,11 +981,20 @@ fn parse_struct_union_specifier(
                 r#type: TokenType::UNION,
                 ..
             }) => StructOrUnion::Union,
-            _ => unreachable!(),
+            Some(Token { location, .. }) => {
+                let location = location.unwrap();
+                return Err(error(
+                    "Expected 'struct' or 'union'",
+                    location.line,
+                    location.column,
+                ));
+            }
+            None => return Err("Expected 'struct' or 'union'".to_string()),
         },
         identifier: None,
         struct_declaration_list: Vec::new(),
     };
+    *index += 1;
     consume_whitespace(tokens, index);
     if let Some(Token {
         r#type: TokenType::IDENT { str_map_key, .. },
@@ -963,35 +1009,10 @@ fn parse_struct_union_specifier(
         return Ok(struct_union_specifier);
     }
     expected_token(tokens, index, TokenType::OPEN_CURLY, "Expected '{'")?;
-    while *index < tokens.len() {
-        let struct_declaration = parse_struct_declaration(tokens, index, flattened, str_maps)?;
-        struct_union_specifier
-            .struct_declaration_list
-            .push(struct_declaration);
-        consume_whitespace(tokens, index);
-        if matches!(
-            tokens.get(*index),
-            Some(Token {
-                r#type: TokenType::CLOSE_CURLY,
-                ..
-            })
-        ) {
-            *index += 1;
-            return Ok(struct_union_specifier);
-        }
-    }
-    let Token {
-        location: Some(Location { line, .. }),
-        ..
-    } = tokens.last().unwrap()
-    else {
-        unreachable!()
-    };
-    return Err(error(
-        "Unexpected end of struct-or-union specific",
-        *line,
-        0,
-    ));
+    struct_union_specifier.struct_declaration_list =
+        parse_struct_declaration_list(tokens, index, flattened, str_maps)?;
+    expected_token(tokens, index, TokenType::CLOSE_CURLY, "Expected '}'")?;
+    return Ok(struct_union_specifier);
 }
 
 fn parse_enumerator_specifier(
@@ -1527,6 +1548,7 @@ pub fn parse_declaration_specifiers(
             _ => break,
         }
         *index += 1;
+        consume_whitespace(tokens, index);
     }
     Ok(declaration_specifier)
 }
@@ -1960,28 +1982,6 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn parse_struct_declarator_test() -> Result<(), String> {
-        {
-            let src = r#"hi : 4"#.as_bytes();
-            let mut str_maps = ByteVecMaps::new();
-            let mut flattened = Flattened::new();
-            let tokens = lexer(src, false, &mut str_maps)?;
-            let struct_declarator =
-                parse_struct_declarator(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(matches!(
-                struct_declarator,
-                StructDeclarator::WithConstExpr {
-                    declarator: Declarator {
-                        r#type: DeclaratorType::Direct { .. },
-                        ..
-                    },
-                    ..
-                }
-            ));
-        }
-        Ok(())
-    }
-    #[test]
     fn parse_struct_union_specifier_test() -> Result<(), String> {
         {
             let src = r#"struct {
@@ -1993,18 +1993,24 @@ int : 4;
             let tokens = lexer(src, false, &mut str_maps)?;
             let struct_union_specifier =
                 parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
-            assert!(
-                struct_union_specifier.struct_declaration_list[0]
-                    .specifier_qualifier_list
-                    .type_specifiers
-                    .len()
-                    == 1
+            assert_eq!(
+                struct_union_specifier,
+                StructUnionSpecifier {
+                    struct_or_union: StructOrUnion::Struct,
+                    identifier: None,
+                    struct_declaration_list: vec![StructDeclaration {
+                        specifier_qualifier_list: SpecifierQualifierList {
+                            type_qualifier_flags: 0,
+                            type_specifiers: vec![TypeSpecifier::Int],
+                            alignment_specifier: vec![]
+                        },
+                        struct_declarator_list: vec![StructDeclarator::WithConstExpr {
+                            declarator: None,
+                            const_expr: 0
+                        }]
+                    }]
+                }
             );
-            assert!(matches!(
-                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0],
-                StructDeclarator::WithConstExpr { .. }
-            ));
         }
         {
             let src = r#"struct HEHE {
@@ -2016,22 +2022,28 @@ int hi;
             let tokens = lexer(src, false, &mut str_maps)?;
             let struct_union_specifier =
                 parse_struct_union_specifier(&tokens, &mut 0, &mut flattened, &mut str_maps)?;
-            assert!(struct_union_specifier.struct_declaration_list.len() == 1);
-            assert!(
-                struct_union_specifier.identifier.unwrap()
-                    == str_maps.add_byte_vec("HEHE".as_bytes())
+            assert_eq!(
+                struct_union_specifier,
+                StructUnionSpecifier {
+                    struct_or_union: StructOrUnion::Struct,
+                    identifier: Some(str_maps.add_byte_vec("HEHE".as_bytes())),
+                    struct_declaration_list: vec![StructDeclaration {
+                        specifier_qualifier_list: SpecifierQualifierList {
+                            type_qualifier_flags: 0,
+                            type_specifiers: vec![TypeSpecifier::Int],
+                            alignment_specifier: vec![]
+                        },
+                        struct_declarator_list: vec![StructDeclarator::Declarator(Declarator {
+                            r#type: DeclaratorType::Direct {
+                                identifier: Some(str_maps.add_byte_vec("hi".as_bytes()))
+                            },
+                            pointer: vec![],
+                            declarator: None,
+                            declarator_form: None,
+                        })]
+                    }]
+                }
             );
-            assert!(
-                struct_union_specifier.struct_declaration_list[0]
-                    .specifier_qualifier_list
-                    .type_specifiers
-                    .len()
-                    == 1
-            );
-            assert!(matches!(
-                struct_union_specifier.struct_declaration_list[0].struct_declarator_list[0],
-                StructDeclarator::Declarator(_)
-            ));
         }
         Ok(())
     }
